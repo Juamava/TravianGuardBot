@@ -480,6 +480,12 @@ namespace MainCore.UI.ViewModels.Tabs
                 return;
             }
 
+            if (minMinutes < 1 || repeatMinutes < 1)
+            {
+                await _dialogService.SendMessage("Warning", "Para iniciar, el mínimo por aldea y la revisión de la lista tienen que ser de 1 minuto o más.");
+                return;
+            }
+
             var listId = CowLists.SelectedItem.Id;
             if (!SaveListSettings(listId, minMinutes, repeatMinutes))
             {

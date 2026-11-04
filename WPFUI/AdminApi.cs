@@ -792,7 +792,7 @@ namespace WPFUI
 
         private static IResult StartCowList(IServiceProvider services, int accountId, int listId, CowListBody body)
         {
-            if (body.MinMinutes < 0 || body.RepeatMinutes < 0) return Fail("Los minutos tienen que ser 0 o más.");
+            if (body.MinMinutes < 1 || body.RepeatMinutes < 1) return Fail("Para iniciar, el mínimo por aldea y la revisión de la lista tienen que ser de 1 minuto o más.");
             var account = new AccountId(accountId);
             var tasks = services.GetRequiredService<TaskManager>();
             if (tasks.IsExist<RaidCowListTask.Task>(account)) return Fail("Ya hay un raid de vacas en la cola. Detenelo antes de iniciar otra lista.");
@@ -806,9 +806,7 @@ namespace WPFUI
             if (!context.CowVillages.Any(x => x.CowListId == listId)) return Fail("La lista no tiene aldeas.");
 
             tasks.Add(new RaidCowListTask.Task(account, listId));
-            return Ok(body.RepeatMinutes == 0
-                ? $"Empieza la revisión. Mínimo por aldea: {body.MinMinutes} minutos."
-                : $"Empieza la revisión. Mínimo por aldea: {body.MinMinutes} minutos. La próxima revisión es {body.RepeatMinutes} minutos después de que termine esta.");
+            return Ok($"Empieza la revisión. Mínimo por aldea: {body.MinMinutes} minutos. La próxima revisión es {body.RepeatMinutes} minutos después de que termine esta.");
         }
 
         private static IResult StopCowList(IServiceProvider services, int accountId, int listId)
