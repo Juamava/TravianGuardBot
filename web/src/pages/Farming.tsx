@@ -155,6 +155,13 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
   }
 
   const cows = data?.cows.filter(cow => cow.listId === listId) ?? []
+  const activeId = cows.find(cow => cow.status === 'Analizando' || cow.status === 'Atacando')?.id ?? 0
+  const scrolledId = useRef(0)
+  useEffect(() => {
+    if (!activeId || scrolledId.current === activeId) return
+    scrolledId.current = activeId
+    document.getElementById(`cow-${activeId}`)?.scrollIntoView({ block: 'nearest' })
+  }, [activeId])
   const countdown = data?.countdown ?? ''
   const selectedList = data?.lists.find(list => list.id === listId)
   if (data && data.villages.length === 0) {
@@ -230,13 +237,16 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
               <Typography variant="caption" color="text.secondary">Tropas</Typography>
               <Typography variant="caption" color="text.secondary">Estado</Typography>
             </Box>
-            {cows.map(cow => (
-              <Box key={cow.id} onClick={() => selectCow(cow)} sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 160px 180px', gap: 2, alignItems: 'center', px: 1.5, py: 1.25, borderRadius: 1, cursor: 'pointer', bgcolor: cow.id === cowId ? '#404249' : 'transparent', '&:hover': { bgcolor: cow.id === cowId ? '#404249' : '#35373c' } }}>
-                <Typography sx={{ fontWeight: 600, fontSize: 15, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{cow.name}</Typography>
-                <Typography sx={{ color: '#dbdee1' }}>{cow.troops}</Typography>
-                <Typography sx={{ color: '#b5bac1', fontSize: 13 }}>{cow.status}</Typography>
-              </Box>
-            ))}
+            {cows.map(cow => {
+              const live = cow.status === 'Analizando' || cow.status === 'Atacando'
+              return (
+                <Box id={`cow-${cow.id}`} key={cow.id} onClick={() => selectCow(cow)} sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 160px 180px', gap: 2, alignItems: 'center', px: 1.5, py: 1.25, borderRadius: 1, cursor: 'pointer', bgcolor: live ? '#3c4280' : cow.id === cowId ? '#404249' : 'transparent', boxShadow: live ? 'inset 3px 0 0 #5865f2' : 'none', '&:hover': { bgcolor: live ? '#3c4280' : cow.id === cowId ? '#404249' : '#35373c' } }}>
+                  <Typography sx={{ fontWeight: 600, fontSize: 15, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{cow.name}</Typography>
+                  <Typography sx={{ color: '#dbdee1' }}>{cow.troops}</Typography>
+                  <Typography sx={{ color: cow.status === 'Atacando' ? '#23a559' : cow.status === 'Analizando' ? '#f0b232' : '#b5bac1', fontSize: 13, fontWeight: live ? 700 : 400 }}>{cow.status}</Typography>
+                </Box>
+              )
+            })}
             {listId > 0 && cows.length === 0 && <Empty title="Lista vacía" text="Agregá una aldea a mano o buscá oasis." />}
             {listId === 0 && <Empty title="Elegí una lista" text="Las aldeas de esa lista se ven acá, con el nombre completo." />}
           </Stack>

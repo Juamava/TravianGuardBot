@@ -820,6 +820,11 @@ namespace WPFUI
             if (running is not null) running.KeepRepeating = false;
             tasks.CancelIfCurrent<RaidCowListTask.Task>(account);
             tasks.Remove<RaidCowListTask.Task>(account);
+            using var context = Context(services);
+            context.CowVillages
+                .Where(x => x.CowListId == listId && x.CowList.AccountId == accountId)
+                .Where(x => x.LastSkipReason == "Analizando" || x.LastSkipReason == "Atacando")
+                .ExecuteUpdate(x => x.SetProperty(village => village.LastSkipReason, ""));
             return Ok("Se detuvo el raid y la repetición.");
         }
 
@@ -1170,6 +1175,7 @@ namespace WPFUI
 
         private static string FormatStatus(DateTime? lastAttackedAt, string skipReason)
         {
+            if (skipReason is "Analizando" or "Atacando") return skipReason;
             if (lastAttackedAt is not null)
             {
                 var minutes = (int)Math.Floor((DateTime.Now - lastAttackedAt.Value).TotalMinutes);

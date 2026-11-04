@@ -753,6 +753,7 @@ namespace MainCore.UI.ViewModels.Tabs
 
         private static string FormatStatus(DateTime? lastAttackedAt, string? skipReason)
         {
+            if (skipReason is "Analizando" or "Atacando") return skipReason;
             if (lastAttackedAt is not null)
             {
                 var minutes = (int)Math.Floor((DateTime.Now - lastAttackedAt.Value).TotalMinutes);

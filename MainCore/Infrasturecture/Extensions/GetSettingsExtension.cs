@@ -40,6 +40,20 @@
             return settingValue;
         }
 
+        public static int Normal(int min, int max)
+        {
+            if (max < min) (min, max) = (max, min);
+            if (min == max) return min;
+
+            var mean = (min + max) / 2.0;
+            var stdDev = (max - min) / 6.0;
+            var u1 = 1.0 - Random.Shared.NextDouble();
+            var u2 = 1.0 - Random.Shared.NextDouble();
+            var standardNormal = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Cos(2.0 * Math.PI * u2);
+            var value = Math.Clamp(mean + (stdDev * standardNormal), min, max);
+            return (int)Math.Round(value);
+        }
+
         extension(AppDbContext context)
         {
             public int ByName(VillageId villageId, VillageSettingEnums settingMin, VillageSettingEnums settingMax, int multiplier = 1)
@@ -57,9 +71,9 @@
                        .ToList();
 
                 if (settingValues.Count != 2) return 0;
-                var min = settingValues.Min();
-                var max = settingValues.Max();
-                return Random.Shared.Next(min * multiplier, max * multiplier);
+                var min = settingValues.Min() * multiplier;
+                var max = settingValues.Max() * multiplier;
+                return GetSettingsExtension.Normal(min, max);
             }
 
             public int ByName(AccountId accountId, AccountSettingEnums setting)
@@ -83,10 +97,9 @@
                        .ToList();
 
                 if (settingValues.Count != 2) return 1000;
-                var min = settingValues.Min();
-                var max = settingValues.Max();
-
-                return Random.Shared.Next(min * multiplier, max * multiplier);
+                var min = settingValues.Min() * multiplier;
+                var max = settingValues.Max() * multiplier;
+                return GetSettingsExtension.Normal(min, max);
             }
 
             public Dictionary<VillageSettingEnums, int> ByName(VillageId villageId, List<VillageSettingEnums> settings)
