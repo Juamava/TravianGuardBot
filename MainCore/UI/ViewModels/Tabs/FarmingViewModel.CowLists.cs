@@ -1,5 +1,6 @@
 using System.Globalization;
 
+using MainCore.Parsers;
 using MainCore.UI.Models.Output;
 using MainCore.UI.ViewModels.UserControls;
 
@@ -17,9 +18,6 @@ namespace MainCore.UI.ViewModels.Tabs
         public ListBoxItemViewModel CowListVillages { get; } = new();
         public ListBoxItemViewModel CowLists { get; } = new();
         public ListBoxItemViewModel CowVillages { get; } = new();
-
-        [Reactive]
-        private bool _isOasisListSelected;
 
         [Reactive]
         private string _cowListName = "";
@@ -66,7 +64,6 @@ namespace MainCore.UI.ViewModels.Tabs
                 .Subscribe(items =>
                 {
                     CowLists.Load(items);
-                    IsOasisListSelected = IsOasisName(CowLists.SelectedItem?.Content);
                 });
 
             LoadCowVillagesCommand
@@ -78,7 +75,6 @@ namespace MainCore.UI.ViewModels.Tabs
                 .Subscribe(item =>
                 {
                     CowListName = item?.Content ?? "";
-                    IsOasisListSelected = IsOasisName(item?.Content);
                     var settings = ReadListSettings(item);
                     CowListMinMinutes = settings.MinMinutes;
                     CowListRepeatMinutes = settings.RepeatMinutes;
@@ -174,12 +170,12 @@ namespace MainCore.UI.ViewModels.Tabs
                 .Where(x => x.CowListId == cowListId)
                 .Where(x => x.CowList.AccountId == AccountId.Value)
                 .OrderBy(x => x.Id)
-                .Select(x => new { x.Id, x.TroopCount, x.TroopPlan, x.Url, x.LastAttackedAt, x.LastSkipReason })
+                .Select(x => new { x.Id, x.Name, x.TroopCount, x.TroopPlan, x.Url, x.LastAttackedAt, x.LastSkipReason })
                 .AsEnumerable()
                 .Select(x => new ListBoxItem
                 {
                     Id = x.Id,
-                    Content = CowTroopPlan.Describe(x.TroopPlan, x.TroopCount) + "  " + x.Url,
+                    Content = CowTroopPlan.Describe(x.TroopPlan, x.TroopCount) + "  " + (string.IsNullOrWhiteSpace(x.Name) ? CowOasisParser.MissingName : x.Name),
                     Detail = FormatStatus(x.LastAttackedAt, x.LastSkipReason),
                     Color = SplatColor.Black,
                 })
@@ -389,6 +385,7 @@ namespace MainCore.UI.ViewModels.Tabs
             context.CowVillages.Add(new CowVillage
             {
                 CowListId = listId,
+                Name = CowOasisParser.MissingName,
                 Url = url,
                 TroopCount = troopCount,
                 TroopPlan = troopPlan,
@@ -568,17 +565,11 @@ namespace MainCore.UI.ViewModels.Tabs
             {
                 var list = context.CowLists
                     .Where(x => x.Id == listId && x.AccountId == AccountId.Value)
-                    .Select(x => new { x.Name, x.VillageId })
+                    .Select(x => new { x.VillageId })
                     .FirstOrDefault();
                 if (list is null)
                 {
                     await _dialogService.SendMessage("Warning", "No se encontró la lista.");
-                    return;
-                }
-
-                if (!IsOasisName(list.Name))
-                {
-                    await _dialogService.SendMessage("Information", "Buscar oasis solo está disponible cuando la lista se llama Oasis.");
                     return;
                 }
 
@@ -676,6 +667,7 @@ namespace MainCore.UI.ViewModels.Tabs
                 context.CowVillages.Add(new CowVillage
                 {
                     CowListId = listId,
+                    Name = CowOasisParser.MissingName,
                     Url = url,
                     TroopCount = troopCount,
                     TroopPlan = troopPlan,
@@ -770,11 +762,6 @@ namespace MainCore.UI.ViewModels.Tabs
 
             if (!string.IsNullOrWhiteSpace(skipReason)) return skipReason;
             return "sin atacar";
-        }
-
-        private static bool IsOasisName(string? name)
-        {
-            return string.Equals(name?.Trim(), "Oasis", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool TryParseDistance(string input, out double distance)

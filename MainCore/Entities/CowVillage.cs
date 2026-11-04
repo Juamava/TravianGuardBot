@@ -10,6 +10,7 @@ namespace MainCore.Entities
         public int Id { get; set; }
 
         public int CowListId { get; set; }
+        public string Name { get; set; }
         public string Url { get; set; }
         public int TroopCount { get; set; }
         public string TroopPlan { get; set; }

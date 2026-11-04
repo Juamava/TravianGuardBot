@@ -21,24 +21,8 @@ namespace WPFUI.Views.Tabs
             InitializeComponent();
             this.WhenActivated(d =>
             {
-                this.BindCommand(ViewModel, vm => vm.SaveCommand, v => v.SaveButton).DisposeWith(d);
-                this.BindCommand(ViewModel, vm => vm.StartCommand, v => v.StartButton).DisposeWith(d);
-                this.BindCommand(ViewModel, vm => vm.StopCommand, v => v.StopButton).DisposeWith(d);
-                this.BindCommand(ViewModel, vm => vm.ActiveFarmListCommand, v => v.ActiveButton).DisposeWith(d);
-                this.BindCommand(ViewModel, vm => vm.UpdateFarmListCommand, v => v.Load).DisposeWith(d);
-
-                this.OneWayBind(ViewModel, vm => vm.FarmLists.Items, v => v.FarmlistGrid.ItemsSource).DisposeWith(d);
-                this.Bind(ViewModel, vm => vm.FarmLists.SelectedItem, v => v.FarmlistGrid.SelectedItem).DisposeWith(d);
-
-                this.Bind(ViewModel, vm => vm.AccountSettingInput.UseStartAllButton, v => v.UseStartAllCheckbox.IsChecked).DisposeWith(d);
-                this.OneWayBind(ViewModel, vm => vm.AccountSettingInput.FarmInterval, v => v.FarmInterval.ViewModel).DisposeWith(d);
-
-                this.Bind(ViewModel, vm => vm.ActiveText, v => v.ActiveButton.Content).DisposeWith(d);
-
                 this.OneWayBind(ViewModel, vm => vm.CowListVillages.Items, v => v.CowListVillageCombo.ItemsSource).DisposeWith(d);
                 this.Bind(ViewModel, vm => vm.CowListVillages.SelectedItem, v => v.CowListVillageCombo.SelectedItem).DisposeWith(d);
-                this.OneWayBind(ViewModel, vm => vm.IsOasisListSelected, v => v.SearchOasisButton.Visibility,
-                    selected => selected ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed).DisposeWith(d);
 
                 this.OneWayBind(ViewModel, vm => vm.CowLists.Items, v => v.CowListGrid.ItemsSource).DisposeWith(d);
                 this.Bind(ViewModel, vm => vm.CowLists.SelectedItem, v => v.CowListGrid.SelectedItem).DisposeWith(d);

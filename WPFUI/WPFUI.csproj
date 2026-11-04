@@ -35,8 +35,28 @@
   </ItemGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\MainCore\MainCore.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="CopyElectronRuntime" AfterTargets="Build">
+    <PropertyGroup>
+      <ElectronDist>$(MSBuildProjectDirectory)\..\web\node_modules\electron\dist</ElectronDist>
+      <ElectronOut>$(OutputPath)electron\</ElectronOut>
+    </PropertyGroup>
+    <ItemGroup>
+      <ElectronFiles Include="$(ElectronDist)\**\*" Condition="Exists('$(ElectronDist)\electron.exe')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ElectronFiles)" DestinationFiles="@(ElectronFiles->'$(ElectronOut)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="Exists('$(ElectronDist)\electron.exe')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\web\electron\main.cjs" DestinationFiles="$(ElectronOut)main.cjs" SkipUnchangedFiles="true" Condition="Exists('$(MSBuildProjectDirectory)\..\web\electron\main.cjs')" />
+  </Target>
   
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">

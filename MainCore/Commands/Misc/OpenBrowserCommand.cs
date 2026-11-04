@@ -25,6 +25,7 @@ namespace MainCore.Commands.Misc
 
             await browser.Setup(chromeSetting);
             await browser.Navigate($"{server}");
+            await browser.CurrentPage.BringToFrontAsync();
 
             UpdateLastUsed(access);
         }
