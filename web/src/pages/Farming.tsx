@@ -66,6 +66,8 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
   const [adding, setAdding] = useState(false)
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkText, setBulkText] = useState('')
   const syncAbort = useRef<AbortController | null>(null)
 
   async function load(nextVillage = villageId) {
@@ -91,6 +93,24 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
     setCowName('')
     setUrl('')
     setTroops('')
+    setBulkOpen(false)
+    setBulkText('')
+  }
+
+  function openBulk() {
+    const text = cows.map(cow => cow.name && cow.name !== 'Aldea sin nombre'
+      ? `${cow.name} | ${cow.url} | ${cow.troops}`
+      : `${cow.url} | ${cow.troops}`).join('\n')
+    setAdding(false)
+    setCowId(0)
+    setBulkText(text)
+    setBulkOpen(true)
+  }
+
+  async function saveBulk() {
+    if (!await ui.confirm('Las aldeas que no estén en el texto se borran de la lista. ¿Guardar?')) return
+    const saved = await run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/bulk`, { text: bulkText }))
+    if (saved) setBulkOpen(false)
   }
 
   function selectCow(cow: Cow) {
@@ -172,6 +192,7 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
     document.getElementById(`cow-${activeId}`)?.scrollIntoView({ block: 'nearest' })
   }, [activeId])
   const countdown = data?.countdown ?? ''
+  const raidRunning = countdown.length > 0
   const timesReady = minMinutes >= 1 && repeatMinutes >= 1
   const selectedList = data?.lists.find(list => list.id === listId)
   if (data && data.villages.length === 0) {
@@ -202,15 +223,23 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
           <Box sx={{ ...panel }}>
             <Typography fontWeight={700} sx={{ mb: 1.5 }}>{selectedList ? selectedList.name : 'Elegí una lista'}</Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 1 }}>
-              <Tile color="#5865f2" icon={<SyncIcon />} label={syncing ? 'Sync...' : 'Sync'} disabled={!listId || cows.length === 0 || saving || syncing} onClick={syncNames} />
-              <Tile color="#23a559" icon={<AddIcon />} label="Agregar" disabled={!listId || saving || syncing} onClick={() => { setAdding(true); setCowId(0); setCowName(''); setUrl(''); setTroops('') }} />
-              <Tile color="#f0b232" icon={<SearchIcon />} label="Oasis" disabled={!listId || saving || syncing} onClick={search} />
-              <Tooltip title={timesReady ? '' : 'Completá el mínimo por aldea y cada cuánto se revisa la lista. Los dos tienen que ser de 1 minuto o más.'}>
+              <Tooltip title={raidRunning ? 'Hay un raid iniciado. Detenelo para poder sincronizar.' : ''}>
                 <Box sx={{ minWidth: 0, display: 'flex', '& > .MuiButton-root': { flex: 1 } }}>
-                  <Tile color="#23a559" icon={<PlayArrowIcon />} label="Iniciar" disabled={!listId || saving || syncing || !timesReady} onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/start`, { minMinutes, repeatMinutes }))} />
+                  <Tile color="#5865f2" icon={<SyncIcon />} label={syncing ? 'Sync...' : 'Sync'} disabled={!listId || cows.length === 0 || saving || syncing || raidRunning} onClick={syncNames} />
                 </Box>
               </Tooltip>
-              <Tile color="#ed4245" icon={<StopIcon />} label="Detener" disabled={!listId || (saving && !syncing)} onClick={stopAll} />
+              <Tile color="#23a559" icon={<AddIcon />} label="Agregar" disabled={!listId || saving || syncing} onClick={() => { setAdding(true); setCowId(0); setCowName(''); setUrl(''); setTroops('') }} />
+              <Tile color="#f0b232" icon={<SearchIcon />} label="Oasis" disabled={!listId || saving || syncing} onClick={search} />
+              <Tooltip title={raidRunning ? 'Ya hay un raid iniciado.' : timesReady ? '' : 'Completá el mínimo por aldea y cada cuánto se revisa la lista. Los dos tienen que ser de 1 minuto o más.'}>
+                <Box sx={{ minWidth: 0, display: 'flex', '& > .MuiButton-root': { flex: 1 } }}>
+                  <Tile color="#23a559" icon={<PlayArrowIcon />} label="Iniciar" disabled={!listId || saving || syncing || !timesReady || raidRunning} onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/start`, { minMinutes, repeatMinutes }))} />
+                </Box>
+              </Tooltip>
+              <Tooltip title={listId > 0 && !raidRunning && !syncing ? 'Se habilita cuando hay un raid iniciado.' : ''}>
+                <Box sx={{ minWidth: 0, display: 'flex', '& > .MuiButton-root': { flex: 1 } }}>
+                  <Tile color="#ed4245" icon={<StopIcon />} label="Detener" disabled={!listId || (saving && !syncing) || (!raidRunning && !syncing)} onClick={stopAll} />
+                </Box>
+              </Tooltip>
             </Box>
             {countdown && <Typography color="error" fontWeight={800} sx={{ mt: 1.5 }}>{countdown}</Typography>}
           </Box>
@@ -251,7 +280,25 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
             </Stack>
           )}
 
+          {bulkOpen && (
+            <Stack spacing={1.5} sx={{ ...panel }}>
+              <Stack direction="row" spacing={0.75} alignItems="center">
+                <Typography fontWeight={700}>Edición masiva</Typography>
+                <Hint text="Una aldea por línea: enlace | tropas. Para el nombre: nombre | enlace | tropas. También podés separar el enlace y las tropas con un espacio. Las líneas que saques se borran. Las nuevas quedan como Aldea sin nombre hasta que uses Sync." />
+              </Stack>
+              <TextField multiline minRows={8} value={bulkText} onChange={event => setBulkText(event.target.value)} placeholder={'https://servidor/karte.php?d=1 | 2\nOasis norte | https://servidor/karte.php?d=2 | A:2 D:1'} />
+              <Stack direction="row" spacing={1}>
+                <Button variant="contained" disabled={saving || syncing} onClick={saveBulk}>{saving ? 'Guardando...' : 'Guardar lista'}</Button>
+                <Button onClick={() => setBulkOpen(false)}>Cerrar</Button>
+              </Stack>
+            </Stack>
+          )}
+
           <Stack spacing={0.5} sx={{ ...panel, p: 1 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 0.5, pb: 0.5 }}>
+              <Typography variant="caption" color="text.secondary">Aldeas de la lista</Typography>
+              <Button size="small" disabled={!listId || saving || syncing} onClick={openBulk}>Edición masiva</Button>
+            </Stack>
             <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 160px 180px', gap: 2, px: 1.5, py: 0.5 }}>
               <Typography variant="caption" color="text.secondary">Aldea</Typography>
               <Typography variant="caption" color="text.secondary">Tropas</Typography>
