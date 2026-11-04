@@ -35,6 +35,7 @@ namespace WPFUI
         {
             base.OnStartup(e);
             var hostBuilder = AppMixins.GetHostBuilder()
+                .ConfigureServices(services => services.AddHostedService<AdminWebHost>())
                 .ConfigureSplatForMicrosoftDependencyResolver()
                 .ConfigureWpf(wpfBuilder => wpfBuilder
                     .UseCurrentApplication(this)
