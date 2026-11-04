@@ -29,6 +29,8 @@ namespace MainCore.Services
 
         Task Setup(ChromeSetting setting);
 
+        Task OpenAdminTab(string url);
+
         Task Shutdown();
 
         Task<Result> Wait(ILocator locator, [CallerArgumentExpression(nameof(locator))] string? expression = null);

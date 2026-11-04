@@ -15,8 +15,13 @@
     TextElement.FontWeight="Medium"
     TextElement.FontSize="13"
     Title="Travian Bot Sharp"
-    WindowState="Maximized"
-    Height="512" Width="1024">
+    WindowState="Normal"
+    ShowInTaskbar="False"
+    ShowActivated="False"
+    Opacity="0"
+    Left="-32000"
+    Top="-32000"
+    Height="720" Width="1100">
     <Grid>
         <ContentControl x:Name="MainLayout">
             <ContentControl.Resources>
