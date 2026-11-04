@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Box, Button, MenuItem, Stack, TextField, Typography } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
@@ -57,6 +57,7 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
   const [adding, setAdding] = useState(false)
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const syncAbort = useRef<AbortController | null>(null)
 
   async function load(nextVillage = villageId) {
     const result = await api<FarmingData>(`/api/accounts/${accountId}/farming?villageId=${nextVillage}`)
@@ -105,6 +106,35 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
     }
   }
 
+  async function syncNames() {
+    const controller = new AbortController()
+    syncAbort.current = controller
+    setSyncing(true)
+    try {
+      const result = await api(`/api/accounts/${accountId}/farming/lists/${listId}/sync`, { method: 'POST', signal: controller.signal })
+      notify(result.message)
+      await load()
+    } catch (error) {
+      if (controller.signal.aborted) return
+      notify(error instanceof Error ? error.message : 'No se pudo sincronizar')
+    } finally {
+      if (syncAbort.current === controller) syncAbort.current = null
+      setSyncing(false)
+    }
+  }
+
+  async function stopAll() {
+    const wasSyncing = syncAbort.current !== null
+    syncAbort.current?.abort()
+    try {
+      const result = await post(`/api/accounts/${accountId}/farming/lists/${listId}/stop`)
+      notify(wasSyncing ? 'Sync detenido.' : result.message)
+      await load()
+    } catch (error) {
+      notify(wasSyncing ? 'Sync detenido.' : error instanceof Error ? error.message : 'No se pudo detener')
+    }
+  }
+
   async function search() {
     const troopText = await ui.prompt('Tropas para cada oasis. Ejemplo: 2 o A:2 D:1', '2')
     if (!troopText) return
@@ -125,6 +155,13 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
   }
 
   const cows = data?.cows.filter(cow => cow.listId === listId) ?? []
+  const activeId = cows.find(cow => cow.status === 'Analizando' || cow.status === 'Atacando')?.id ?? 0
+  const scrolledId = useRef(0)
+  useEffect(() => {
+    if (!activeId || scrolledId.current === activeId) return
+    scrolledId.current = activeId
+    document.getElementById(`cow-${activeId}`)?.scrollIntoView({ block: 'nearest' })
+  }, [activeId])
   const countdown = data?.countdown ?? ''
   const selectedList = data?.lists.find(list => list.id === listId)
   if (data && data.villages.length === 0) {
@@ -155,11 +192,11 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
           <Box sx={{ ...panel }}>
             <Typography fontWeight={700} sx={{ mb: 1.5 }}>{selectedList ? selectedList.name : 'Elegí una lista'}</Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 1 }}>
-              <Tile color="#5865f2" icon={<SyncIcon />} label={syncing ? 'Sync...' : 'Sync'} disabled={!listId || cows.length === 0 || saving} onClick={async () => { setSyncing(true); await run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/sync`)); setSyncing(false) }} />
-              <Tile color="#23a559" icon={<AddIcon />} label="Agregar" disabled={!listId || saving} onClick={() => { setAdding(true); setCowId(0); setCowName(''); setUrl(''); setTroops('') }} />
-              <Tile color="#f0b232" icon={<SearchIcon />} label="Oasis" disabled={!listId || saving} onClick={search} />
-              <Tile color="#23a559" icon={<PlayArrowIcon />} label="Iniciar" disabled={!listId || saving} onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/start`, { minMinutes, repeatMinutes }))} />
-              <Tile color="#ed4245" icon={<StopIcon />} label="Detener" disabled={!listId || saving} onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/stop`))} />
+              <Tile color="#5865f2" icon={<SyncIcon />} label={syncing ? 'Sync...' : 'Sync'} disabled={!listId || cows.length === 0 || saving || syncing} onClick={syncNames} />
+              <Tile color="#23a559" icon={<AddIcon />} label="Agregar" disabled={!listId || saving || syncing} onClick={() => { setAdding(true); setCowId(0); setCowName(''); setUrl(''); setTroops('') }} />
+              <Tile color="#f0b232" icon={<SearchIcon />} label="Oasis" disabled={!listId || saving || syncing} onClick={search} />
+              <Tile color="#23a559" icon={<PlayArrowIcon />} label="Iniciar" disabled={!listId || saving || syncing} onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/start`, { minMinutes, repeatMinutes }))} />
+              <Tile color="#ed4245" icon={<StopIcon />} label="Detener" disabled={!listId || (saving && !syncing)} onClick={stopAll} />
             </Box>
             {countdown && <Typography color="error" fontWeight={800} sx={{ mt: 1.5 }}>{countdown}</Typography>}
           </Box>
@@ -200,13 +237,16 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
               <Typography variant="caption" color="text.secondary">Tropas</Typography>
               <Typography variant="caption" color="text.secondary">Estado</Typography>
             </Box>
-            {cows.map(cow => (
-              <Box key={cow.id} onClick={() => selectCow(cow)} sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 160px 180px', gap: 2, alignItems: 'center', px: 1.5, py: 1.25, borderRadius: 1, cursor: 'pointer', bgcolor: cow.id === cowId ? '#404249' : 'transparent', '&:hover': { bgcolor: cow.id === cowId ? '#404249' : '#35373c' } }}>
-                <Typography sx={{ fontWeight: 600, fontSize: 15, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{cow.name}</Typography>
-                <Typography sx={{ color: '#dbdee1' }}>{cow.troops}</Typography>
-                <Typography sx={{ color: '#b5bac1', fontSize: 13 }}>{cow.status}</Typography>
-              </Box>
-            ))}
+            {cows.map(cow => {
+              const live = cow.status === 'Analizando' || cow.status === 'Atacando'
+              return (
+                <Box id={`cow-${cow.id}`} key={cow.id} onClick={() => selectCow(cow)} sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 160px 180px', gap: 2, alignItems: 'center', px: 1.5, py: 1.25, borderRadius: 1, cursor: 'pointer', bgcolor: live ? '#3c4280' : cow.id === cowId ? '#404249' : 'transparent', boxShadow: live ? 'inset 3px 0 0 #5865f2' : 'none', '&:hover': { bgcolor: live ? '#3c4280' : cow.id === cowId ? '#404249' : '#35373c' } }}>
+                  <Typography sx={{ fontWeight: 600, fontSize: 15, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{cow.name}</Typography>
+                  <Typography sx={{ color: '#dbdee1' }}>{cow.troops}</Typography>
+                  <Typography sx={{ color: cow.status === 'Atacando' ? '#23a559' : cow.status === 'Analizando' ? '#f0b232' : '#b5bac1', fontSize: 13, fontWeight: live ? 700 : 400 }}>{cow.status}</Typography>
+                </Box>
+              )
+            })}
             {listId > 0 && cows.length === 0 && <Empty title="Lista vacía" text="Agregá una aldea a mano o buscá oasis." />}
             {listId === 0 && <Empty title="Elegí una lista" text="Las aldeas de esa lista se ven acá, con el nombre completo." />}
           </Stack>

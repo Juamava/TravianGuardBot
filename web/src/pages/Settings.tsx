@@ -1,74 +1,85 @@
 import { useEffect, useState } from 'react'
-import { Button, Checkbox, FormControlLabel, MenuItem, Stack, TextField, Typography } from '@mui/material'
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
+import { Button, Checkbox, FormControlLabel, MenuItem, Stack, TextField, Tooltip, Typography } from '@mui/material'
 import { api, put, type Meta } from '../api'
 
 type Field =
-  | { kind: 'range'; label: string; unit: string; min: string; max: string }
-  | { kind: 'bool'; label: string; key: string }
-  | { kind: 'number'; label: string; key: string }
-  | { kind: 'tribe'; label: string }
-  | { kind: 'troop'; label: string; key: string }
+  | { kind: 'range'; label: string; unit: string; min: string; max: string; hint: string }
+  | { kind: 'bool'; label: string; key: string; hint: string }
+  | { kind: 'number'; label: string; key: string; hint: string }
+  | { kind: 'tribe'; label: string; hint: string }
+  | { kind: 'troop'; label: string; key: string; hint: string }
+
+const normal = ' El valor se elige con media normal: cae más seguido cerca del centro del rango.'
 
 const accountFields: { title: string; fields: Field[] }[] = [
   { title: 'Actividad', fields: [
-    { kind: 'range', label: 'Tiempo de trabajo', unit: 'minutos', min: 'WorkTimeMin', max: 'WorkTimeMax' },
-    { kind: 'range', label: 'Tiempo de descanso', unit: 'minutos', min: 'SleepTimeMin', max: 'SleepTimeMax' },
+    { kind: 'range', label: 'Tiempo de trabajo', unit: 'minutos', min: 'WorkTimeMin', max: 'WorkTimeMax', hint: 'Cuánto tiempo sigue la cuenta conectada antes de cerrar Chrome y dormir.' + normal },
+    { kind: 'range', label: 'Tiempo de descanso', unit: 'minutos', min: 'SleepTimeMin', max: 'SleepTimeMax', hint: 'Cuánto tiempo queda cerrado Chrome mientras la cuenta duerme. Después se vuelve a abrir sola.' + normal },
   ]},
   { title: 'Demoras', fields: [
-    { kind: 'range', label: 'Demora del click', unit: 'ms', min: 'ClickDelayMin', max: 'ClickDelayMax' },
-    { kind: 'range', label: 'Demora entre tareas', unit: 'ms', min: 'TaskDelayMin', max: 'TaskDelayMax' },
+    { kind: 'range', label: 'Demora del click', unit: 'ms', min: 'ClickDelayMin', max: 'ClickDelayMax', hint: 'Pausa antes de cada click en el juego. No aplica a la espera entre una aldea y la siguiente.' + normal },
+    { kind: 'range', label: 'Demora entre ataques', unit: 'ms', min: 'TaskDelayMin', max: 'TaskDelayMax', hint: 'Espera antes de atacar cada aldea de la lista de vacas. También es la pausa al terminar una tarea del bot y antes de empezar la siguiente.' + normal },
   ]},
   { title: 'Funciones', fields: [
-    { kind: 'bool', label: 'Cargar los edificios de las aldeas', key: 'EnableAutoLoadVillageBuilding' },
-    { kind: 'bool', label: 'Empezar aventuras', key: 'EnableAutoStartAdventure' },
-    { kind: 'bool', label: 'Reclamar la misión diaria', key: 'EnableAutoClaimDailyQuest' },
-    { kind: 'bool', label: 'Repartir puntos del héroe (1 poder, 3 recursos)', key: 'EnableAutoSetHeroPoint' },
-    { kind: 'tribe', label: 'Tribu' },
+    { kind: 'bool', label: 'Cargar los edificios de las aldeas', key: 'EnableAutoLoadVillageBuilding', hint: 'Al conectar, entra a cada aldea y lee los edificios.' },
+    { kind: 'bool', label: 'Empezar aventuras', key: 'EnableAutoStartAdventure', hint: 'Manda al héroe a las aventuras que aparezcan.' },
+    { kind: 'bool', label: 'Reclamar la misión diaria', key: 'EnableAutoClaimDailyQuest', hint: 'Reclama la recompensa de la misión diaria.' },
+    { kind: 'bool', label: 'Repartir puntos del héroe (1 poder, 3 recursos)', key: 'EnableAutoSetHeroPoint', hint: 'Cuando el héroe sube de nivel, pone 1 punto en poder y 3 en recursos.' },
+    { kind: 'tribe', label: 'Tribu', hint: 'La tribu de la cuenta. Define qué tropas se pueden entrenar.' },
   ]},
   { title: 'Chrome', fields: [
-    { kind: 'bool', label: 'Chrome oculto', key: 'HeadlessChrome' },
+    { kind: 'bool', label: 'Chrome oculto', key: 'HeadlessChrome', hint: 'Abre Chrome sin mostrar la ventana. El juego sigue corriendo igual. Aplica la próxima vez que conectes.' },
   ]},
 ]
 
 const villageFields: { title: string; fields: Field[] }[] = [
   { title: 'Construcción', fields: [
-    { kind: 'tribe', label: 'Tribu' },
-    { kind: 'bool', label: 'Usar recursos del héroe si faltan', key: 'UseHeroResourceForBuilding' },
-    { kind: 'bool', label: 'Lógica de cola romana', key: 'ApplyRomanQueueLogicWhenBuilding' },
-    { kind: 'bool', label: 'Completar al instante', key: 'CompleteImmediately' },
-    { kind: 'number', label: 'Completar si la cola supera (minutos)', key: 'CompleteImmediatelyTime' },
-    { kind: 'bool', label: 'Usar la mejora especial', key: 'UseSpecialUpgrade' },
+    { kind: 'tribe', label: 'Tribu', hint: 'La tribu de esta aldea. Tiene que coincidir con la de la cuenta para entrenar las tropas correctas.' },
+    { kind: 'bool', label: 'Usar recursos del héroe si faltan', key: 'UseHeroResourceForBuilding', hint: 'Si faltan recursos para construir, usa los del inventario del héroe.' },
+    { kind: 'bool', label: 'Lógica de cola romana', key: 'ApplyRomanQueueLogicWhenBuilding', hint: 'En una aldea romana respeta las dos colas de construcción.' },
+    { kind: 'bool', label: 'Completar al instante', key: 'CompleteImmediately', hint: 'Termina la construcción al instante cuando la cola supera el tiempo indicado.' },
+    { kind: 'number', label: 'Completar si la cola supera (minutos)', key: 'CompleteImmediatelyTime', hint: 'Minutos de cola a partir de los cuales se completa la construcción al instante.' },
+    { kind: 'bool', label: 'Usar la mejora especial', key: 'UseSpecialUpgrade', hint: 'Usa la mejora especial del edificio cuando está disponible.' },
   ]},
   { title: 'Refresco', fields: [
-    { kind: 'bool', label: 'Refrescar solo', key: 'AutoRefreshEnable' },
-    { kind: 'range', label: 'Refrescar cada', unit: 'minutos', min: 'AutoRefreshMin', max: 'AutoRefreshMax' },
+    { kind: 'bool', label: 'Refrescar solo', key: 'AutoRefreshEnable', hint: 'Vuelve a entrar a la aldea para actualizar recursos y edificios, aunque no haya nada que construir.' },
+    { kind: 'range', label: 'Refrescar cada', unit: 'minutos', min: 'AutoRefreshMin', max: 'AutoRefreshMax', hint: 'Cada cuánto vuelve a leer la aldea.' + normal },
   ]},
   { title: 'NPC', fields: [
-    { kind: 'bool', label: 'Cambiar cereal con el NPC', key: 'AutoNPCEnable' },
-    { kind: 'bool', label: 'Aunque se pase el almacén', key: 'AutoNPCOverflow' },
-    { kind: 'number', label: 'Granero %', key: 'AutoNPCGranaryPercent' },
-    { kind: 'number', label: 'Madera', key: 'AutoNPCWood' },
-    { kind: 'number', label: 'Barro', key: 'AutoNPCClay' },
-    { kind: 'number', label: 'Hierro', key: 'AutoNPCIron' },
-    { kind: 'number', label: 'Cereal', key: 'AutoNPCCrop' },
+    { kind: 'bool', label: 'Cambiar cereal con el NPC', key: 'AutoNPCEnable', hint: 'Cuando el granero llega al porcentaje indicado, cambia recursos con el NPC.' },
+    { kind: 'bool', label: 'Aunque se pase el almacén', key: 'AutoNPCOverflow', hint: 'Hace el cambio aunque la madera, el barro o el hierro superen el almacén.' },
+    { kind: 'number', label: 'Granero %', key: 'AutoNPCGranaryPercent', hint: 'Porcentaje del granero a partir del cual se usa el NPC.' },
+    { kind: 'number', label: 'Madera', key: 'AutoNPCWood', hint: 'Cuánta madera deja después del cambio con el NPC.' },
+    { kind: 'number', label: 'Barro', key: 'AutoNPCClay', hint: 'Cuánto barro deja después del cambio con el NPC.' },
+    { kind: 'number', label: 'Hierro', key: 'AutoNPCIron', hint: 'Cuánto hierro deja después del cambio con el NPC.' },
+    { kind: 'number', label: 'Cereal', key: 'AutoNPCCrop', hint: 'Cuánto cereal deja después del cambio con el NPC.' },
   ]},
   { title: 'Tropas', fields: [
-    { kind: 'bool', label: 'Entrenar tropas', key: 'TrainTroopEnable' },
-    { kind: 'bool', label: 'Entrenar el máximo si faltan recursos', key: 'TrainWhenLowResource' },
-    { kind: 'range', label: 'Repetir cada', unit: 'minutos', min: 'TrainTroopRepeatTimeMin', max: 'TrainTroopRepeatTimeMax' },
-    { kind: 'troop', label: 'Cuartel', key: 'BarrackTroop' },
-    { kind: 'range', label: 'Cantidad cuartel', unit: 'unidades', min: 'BarrackAmountMin', max: 'BarrackAmountMax' },
-    { kind: 'troop', label: 'Gran cuartel', key: 'GreatBarrackTroop' },
-    { kind: 'range', label: 'Cantidad gran cuartel', unit: 'unidades', min: 'GreatBarrackAmountMin', max: 'GreatBarrackAmountMax' },
-    { kind: 'troop', label: 'Establo', key: 'StableTroop' },
-    { kind: 'range', label: 'Cantidad establo', unit: 'unidades', min: 'StableAmountMin', max: 'StableAmountMax' },
-    { kind: 'troop', label: 'Gran establo', key: 'GreatStableTroop' },
-    { kind: 'range', label: 'Cantidad gran establo', unit: 'unidades', min: 'GreatStableAmountMin', max: 'GreatStableAmountMax' },
-    { kind: 'troop', label: 'Taller', key: 'WorkshopTroop' },
-    { kind: 'range', label: 'Cantidad taller', unit: 'unidades', min: 'WorkshopAmountMin', max: 'WorkshopAmountMax' },
-    { kind: 'bool', label: 'Reclamar misiones de la aldea', key: 'AutoClaimQuestEnable' },
+    { kind: 'bool', label: 'Entrenar tropas', key: 'TrainTroopEnable', hint: 'Entrena en los edificios que tengan una tropa y una cantidad.' },
+    { kind: 'bool', label: 'Entrenar el máximo si faltan recursos', key: 'TrainWhenLowResource', hint: 'Si no alcanzan los recursos para la cantidad elegida, entrena la mayor cantidad posible.' },
+    { kind: 'range', label: 'Repetir cada', unit: 'minutos', min: 'TrainTroopRepeatTimeMin', max: 'TrainTroopRepeatTimeMax', hint: 'Cada cuánto vuelve a intentar entrenar.' + normal },
+    { kind: 'troop', label: 'Cuartel', hint: 'Tropa que entrena en el cuartel.', key: 'BarrackTroop' },
+    { kind: 'range', label: 'Cantidad cuartel', unit: 'unidades', min: 'BarrackAmountMin', max: 'BarrackAmountMax', hint: 'Cuántas unidades entrena en el cuartel.' + normal },
+    { kind: 'troop', label: 'Gran cuartel', hint: 'Tropa que entrena en el gran cuartel.', key: 'GreatBarrackTroop' },
+    { kind: 'range', label: 'Cantidad gran cuartel', unit: 'unidades', min: 'GreatBarrackAmountMin', max: 'GreatBarrackAmountMax', hint: 'Cuántas unidades entrena en el gran cuartel.' + normal },
+    { kind: 'troop', label: 'Establo', hint: 'Tropa que entrena en el establo.', key: 'StableTroop' },
+    { kind: 'range', label: 'Cantidad establo', unit: 'unidades', min: 'StableAmountMin', max: 'StableAmountMax', hint: 'Cuántas unidades entrena en el establo.' + normal },
+    { kind: 'troop', label: 'Gran establo', hint: 'Tropa que entrena en el gran establo.', key: 'GreatStableTroop' },
+    { kind: 'range', label: 'Cantidad gran establo', unit: 'unidades', min: 'GreatStableAmountMin', max: 'GreatStableAmountMax', hint: 'Cuántas unidades entrena en el gran establo.' + normal },
+    { kind: 'troop', label: 'Taller', hint: 'Tropa que entrena en el taller.', key: 'WorkshopTroop' },
+    { kind: 'range', label: 'Cantidad taller', unit: 'unidades', min: 'WorkshopAmountMin', max: 'WorkshopAmountMax', hint: 'Cuántas unidades entrena en el taller.' + normal },
+    { kind: 'bool', label: 'Reclamar misiones de la aldea', key: 'AutoClaimQuestEnable', hint: 'Reclama las misiones que se completan en esta aldea.' },
   ]},
 ]
+
+function Hint({ text }: { text: string }) {
+  return (
+    <Tooltip title={text} placement="top" arrow enterDelay={200} slotProps={{ tooltip: { sx: { maxWidth: 280, fontSize: 13, lineHeight: 1.45 } } }}>
+      <InfoOutlinedIcon sx={{ fontSize: 16, color: '#949ba4', cursor: 'help' }} />
+    </Tooltip>
+  )
+}
 
 type Props = {
   title: string
@@ -132,12 +143,20 @@ export function SettingForm({ title, path, groups, meta, notify }: Props) {
           <Typography variant="h6">{group.title}</Typography>
           {group.fields.map(field => {
             if (field.kind === 'bool') {
-              return <FormControlLabel key={field.key} control={<Checkbox checked={values[field.key] === 1} onChange={event => set(field.key, event.target.checked ? 1 : 0)} />} label={field.label} />
+              return (
+                <Stack key={field.key} direction="row" spacing={0.75} alignItems="center">
+                  <FormControlLabel control={<Checkbox checked={values[field.key] === 1} onChange={event => set(field.key, event.target.checked ? 1 : 0)} />} label={field.label} />
+                  <Hint text={field.hint} />
+                </Stack>
+              )
             }
             if (field.kind === 'range') {
               return (
                 <Stack key={field.min} direction="row" spacing={1} alignItems="center">
-                  <Typography sx={{ minWidth: 180 }}>{field.label}</Typography>
+                  <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 220 }}>
+                    <Typography>{field.label}</Typography>
+                    <Hint text={field.hint} />
+                  </Stack>
                   <TextField size="small" type="number" label="Mín" value={values[field.min] ?? 0} onChange={event => set(field.min, Number(event.target.value))} />
                   <TextField size="small" type="number" label="Máx" value={values[field.max] ?? 0} onChange={event => set(field.max, Number(event.target.value))} />
                   <Typography color="text.secondary">{field.unit}</Typography>
@@ -146,19 +165,30 @@ export function SettingForm({ title, path, groups, meta, notify }: Props) {
             }
             if (field.kind === 'tribe') {
               return (
-                <TextField key="tribe" select label={field.label} value={values.Tribe ?? 0} onChange={event => set('Tribe', Number(event.target.value))}>
-                  {(meta?.tribes ?? []).map(tribe => <MenuItem key={tribe.value} value={tribe.value}>{tribe.name}</MenuItem>)}
-                </TextField>
+                <Stack key="tribe" direction="row" spacing={1} alignItems="center">
+                  <TextField select label={field.label} value={values.Tribe ?? 0} onChange={event => set('Tribe', Number(event.target.value))} sx={{ flex: 1 }}>
+                    {(meta?.tribes ?? []).map(tribe => <MenuItem key={tribe.value} value={tribe.value}>{tribe.name}</MenuItem>)}
+                  </TextField>
+                  <Hint text={field.hint} />
+                </Stack>
               )
             }
             if (field.kind === 'troop') {
               return (
-                <TextField key={field.key} select label={field.label} value={values[field.key] ?? 0} onChange={event => set(field.key, Number(event.target.value))}>
-                  {(meta?.troops ?? []).map(troop => <MenuItem key={troop.value} value={troop.value}>{troop.name}</MenuItem>)}
-                </TextField>
+                <Stack key={field.key} direction="row" spacing={1} alignItems="center">
+                  <TextField select label={field.label} value={values[field.key] ?? 0} onChange={event => set(field.key, Number(event.target.value))} sx={{ flex: 1 }}>
+                    {(meta?.troops ?? []).map(troop => <MenuItem key={troop.value} value={troop.value}>{troop.name}</MenuItem>)}
+                  </TextField>
+                  <Hint text={field.hint} />
+                </Stack>
               )
             }
-            return <TextField key={field.key} type="number" label={field.label} value={values[field.key] ?? 0} onChange={event => set(field.key, Number(event.target.value))} />
+            return (
+              <Stack key={field.key} direction="row" spacing={1} alignItems="center">
+                <TextField type="number" label={field.label} value={values[field.key] ?? 0} onChange={event => set(field.key, Number(event.target.value))} sx={{ flex: 1 }} />
+                <Hint text={field.hint} />
+              </Stack>
+            )
           })}
         </Stack>
       ))}

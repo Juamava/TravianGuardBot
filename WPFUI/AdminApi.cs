@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 using FluentValidation;
@@ -99,7 +100,7 @@ namespace WPFUI
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/villages", (int id, int listId, CowVillageBody body) => AddCowVillage(services, id, listId, body));
             app.MapPut("/api/accounts/{id:int}/farming/villages/{cowId:int}", (int id, int cowId, CowVillageBody body) => UpdateCowVillage(services, id, cowId, body));
             app.MapDelete("/api/accounts/{id:int}/farming/villages/{cowId:int}", (int id, int cowId) => DeleteCowVillage(services, id, cowId));
-            app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/sync", (int id, int listId) => SyncVillageNames(services, id, listId));
+            app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/sync", (int id, int listId, HttpContext http) => SyncVillageNames(services, id, listId, http.RequestAborted));
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/start", (int id, int listId, CowListBody body) => StartCowList(services, id, listId, body));
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/stop", (int id, int listId) => StopCowList(services, id, listId));
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/search", (int id, int listId, SearchBody body) => SearchOasis(services, id, listId, body));
@@ -686,19 +687,26 @@ namespace WPFUI
             return Ok("Aldea guardada.");
         }
 
-        private static async Task<string> ReadVillageName(IServiceProvider services, int accountId, string url)
+        private static async Task<string> ReadVillageName(IServiceProvider services, int accountId, string url, CancellationToken cancellationToken = default)
         {
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var browser = services.GetRequiredService<ChromeManager>().Get(new AccountId(accountId));
                 if (!browser.IsInitialized) return CowOasisParser.MissingName;
                 var name = await browser.InNewTab(async page =>
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     await page.GotoAsync(url, new() { Timeout = 20_000 });
+                    cancellationToken.ThrowIfCancellationRequested();
                     return await CowOasisParser.ReadTitle(page);
                 });
                 if (browser.IsInitialized) await browser.CurrentPage.BringToFrontAsync();
                 return VillageLabel(name);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch
             {
@@ -712,7 +720,7 @@ namespace WPFUI
             return text.Length == 0 ? CowOasisParser.MissingName : text;
         }
 
-        private static async Task<IResult> SyncVillageNames(IServiceProvider services, int accountId, int listId)
+        private static async Task<IResult> SyncVillageNames(IServiceProvider services, int accountId, int listId, CancellationToken cancellationToken)
         {
             List<(int Id, string Url)> villages;
             using (var context = Context(services))
@@ -734,15 +742,25 @@ namespace WPFUI
             if (!browser.IsInitialized) return Fail("La cuenta tiene que estar conectada para abrir el navegador.");
 
             var named = 0;
-            for (var index = 0; index < villages.Count; index++)
+            var visited = 0;
+            try
             {
-                if (index > 0) await Task.Delay(NextNavigationDelay());
-                var (id, url) = villages[index];
-                var name = await ReadVillageName(services, accountId, url);
-                if (name != CowOasisParser.MissingName) named++;
-                using var context = Context(services);
-                context.CowVillages.Where(x => x.Id == id && x.CowList.AccountId == accountId)
-                    .ExecuteUpdate(x => x.SetProperty(village => village.Name, name));
+                for (var index = 0; index < villages.Count; index++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (index > 0) await Task.Delay(NextNavigationDelay(), cancellationToken);
+                    var (id, url) = villages[index];
+                    var name = await ReadVillageName(services, accountId, url, cancellationToken);
+                    visited++;
+                    if (name != CowOasisParser.MissingName) named++;
+                    using var context = Context(services);
+                    context.CowVillages.Where(x => x.Id == id && x.CowList.AccountId == accountId)
+                        .ExecuteUpdate(x => x.SetProperty(village => village.Name, name));
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                return Ok(visited == 0 ? "Sync detenido." : $"Sync detenido. Se actualizaron {visited} aldeas.");
             }
 
             return Ok(named == villages.Count
@@ -802,6 +820,11 @@ namespace WPFUI
             if (running is not null) running.KeepRepeating = false;
             tasks.CancelIfCurrent<RaidCowListTask.Task>(account);
             tasks.Remove<RaidCowListTask.Task>(account);
+            using var context = Context(services);
+            context.CowVillages
+                .Where(x => x.CowListId == listId && x.CowList.AccountId == accountId)
+                .Where(x => x.LastSkipReason == "Analizando" || x.LastSkipReason == "Atacando")
+                .ExecuteUpdate(x => x.SetProperty(village => village.LastSkipReason, ""));
             return Ok("Se detuvo el raid y la repetición.");
         }
 
@@ -1152,6 +1175,7 @@ namespace WPFUI
 
         private static string FormatStatus(DateTime? lastAttackedAt, string skipReason)
         {
+            if (skipReason is "Analizando" or "Atacando") return skipReason;
             if (lastAttackedAt is not null)
             {
                 var minutes = (int)Math.Floor((DateTime.Now - lastAttackedAt.Value).TotalMinutes);
