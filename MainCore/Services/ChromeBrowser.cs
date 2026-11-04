@@ -71,21 +71,6 @@ namespace MainCore.Services
             }
         }
 
-        public async Task OpenAdminTab(string url)
-        {
-            if (_browser is null || string.IsNullOrWhiteSpace(url)) return;
-
-            var page = await _browser.NewPageAsync();
-            try
-            {
-                await page.GotoAsync(url);
-            }
-            catch (Exception ex)
-            {
-                Logger?.Warning(ex, "No se pudo abrir la web de administración");
-            }
-        }
-
         private static string GetPathUserData(ChromeSetting setting)
         {
             var pathUserData = Path.Combine(AppContext.BaseDirectory, "Data", "Cache", setting.ProfilePath);

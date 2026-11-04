@@ -24,11 +24,6 @@ namespace MainCore.Commands.Misc
             };
 
             await browser.Setup(chromeSetting);
-            if (!string.IsNullOrWhiteSpace(AdminPage.Url))
-            {
-                await browser.OpenAdminTab(AdminPage.Url);
-            }
-
             await browser.Navigate($"{server}");
             await browser.CurrentPage.BringToFrontAsync();
 

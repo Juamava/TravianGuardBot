@@ -1,10 +1,9 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-
-using MainCore.Services;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -19,18 +18,20 @@ namespace WPFUI
     public sealed class AdminWebHost(IServiceProvider services) : IHostedService
     {
         private WebApplication _app;
+        private Process _window;
         private int _exit;
 
         public async Task StartAsync(CancellationToken cancellationToken)
         {
             var wwwroot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+            var url = "";
             for (var port = 17891; port < 17910; port++)
             {
                 try
                 {
                     _app = Build(wwwroot, port);
                     await _app.StartAsync(cancellationToken);
-                    AdminPage.Url = $"http://127.0.0.1:{port}";
+                    url = $"http://127.0.0.1:{port}";
                     break;
                 }
                 catch (IOException)
@@ -39,27 +40,61 @@ namespace WPFUI
                 }
             }
 
-            if (string.IsNullOrWhiteSpace(AdminPage.Url))
+            if (string.IsNullOrWhiteSpace(url))
             {
-                ShowDesktop("No pude abrir la web de administración.");
+                ShowDesktop("No pude abrir la administración.");
                 return;
             }
 
             try
             {
-                await AdminBrowser.Open(AdminPage.Url, RequestExit);
+                LaunchWindow(url);
             }
             catch (Exception ex)
             {
-                ShowDesktop("No pude abrir Chrome. " + ex.Message);
+                ShowDesktop("No pude abrir la ventana. " + ex.Message);
             }
         }
 
         public async Task StopAsync(CancellationToken cancellationToken)
         {
             Interlocked.Exchange(ref _exit, 1);
-            await AdminBrowser.Close();
+            try
+            {
+                if (_window != null && !_window.HasExited) _window.Kill(entireProcessTree: true);
+            }
+            catch
+            {
+                // The window may already be closed.
+            }
+
             if (_app != null) await _app.StopAsync(cancellationToken);
+        }
+
+        private void LaunchWindow(string url)
+        {
+            var directory = Path.Combine(AppContext.BaseDirectory, "electron");
+            var executable = Path.Combine(directory, "electron.exe");
+            var script = Path.Combine(directory, "main.cjs");
+            if (!File.Exists(executable) || !File.Exists(script))
+            {
+                throw new FileNotFoundException("No está la ventana de Electron al lado del programa.");
+            }
+
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = executable,
+                    Arguments = $"\"{script}\" \"{url}\"",
+                    WorkingDirectory = directory,
+                    UseShellExecute = false,
+                },
+                EnableRaisingEvents = true,
+            };
+            process.Exited += (_, _) => RequestExit();
+            if (!process.Start()) throw new InvalidOperationException("No se pudo abrir la ventana.");
+            _window = process;
         }
 
         private WebApplication Build(string wwwroot, int port)

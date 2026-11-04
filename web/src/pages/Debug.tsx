@@ -18,7 +18,6 @@ export function Debug({ accountId, notify }: { accountId: number; notify: (messa
     <Stack spacing={2}>
       <Typography variant="h4">Debug</Typography>
       <Stack direction="row" spacing={1}>
-        <Button variant="contained" color="warning" href="https://ko-fi.com/vinaghost" target="_blank">Un café para Vinaghost</Button>
         <Button variant="outlined" onClick={() => post('/api/logs/open').then(result => notify(result.message)).catch((error: Error) => notify(error.message))}>Abrir logs</Button>
         <Button variant="outlined" onClick={() => post(`/api/accounts/${accountId}/debug/front`).then(result => notify(result.message)).catch((error: Error) => notify(error.message))}>Traer el navegador</Button>
       </Stack>
@@ -26,7 +25,7 @@ export function Debug({ accountId, notify }: { accountId: number; notify: (messa
         {data.tasks.map((task, index) => <Typography key={index}>{task.stage} · {task.task} · {task.executeAt}</Typography>)}
         {data.tasks.length === 0 && <Typography color="text.secondary">No hay tareas en cola.</Typography>}
       </Stack>
-      <Typography component="pre" sx={{ whiteSpace: 'pre-wrap', bgcolor: '#3C3C3C', color: '#F7FFF0', p: 2, borderRadius: 3, minHeight: 240 }}>{data.logs || 'Sin mensajes todavía.'}</Typography>
+      <Typography component="pre" sx={{ whiteSpace: 'pre-wrap', bgcolor: '#1e1f22', color: '#dbdee1', p: 2, borderRadius: 2, minHeight: 240, fontFamily: 'Consolas, monospace', fontSize: 13 }}>{data.logs || 'Sin mensajes todavía.'}</Typography>
     </Stack>
   )
 }

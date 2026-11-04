@@ -39,6 +39,21 @@ namespace WPFUI
     {
         public static void Map(WebApplication app, IServiceProvider services)
         {
+            app.Use(async (context, next) =>
+            {
+                if (NeedsConnection(context.Request.Path, out var accountId))
+                {
+                    var blocked = RequireConnected(services, accountId);
+                    if (blocked != null)
+                    {
+                        await blocked.ExecuteAsync(context);
+                        return;
+                    }
+                }
+
+                await next();
+            });
+
             app.MapGet("/api/health", () => Ok("listo"));
             app.MapGet("/api/meta", Meta);
             app.MapGet("/api/overview", () => Overview(services));
@@ -84,6 +99,7 @@ namespace WPFUI
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/villages", (int id, int listId, CowVillageBody body) => AddCowVillage(services, id, listId, body));
             app.MapPut("/api/accounts/{id:int}/farming/villages/{cowId:int}", (int id, int cowId, CowVillageBody body) => UpdateCowVillage(services, id, cowId, body));
             app.MapDelete("/api/accounts/{id:int}/farming/villages/{cowId:int}", (int id, int cowId) => DeleteCowVillage(services, id, cowId));
+            app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/sync", (int id, int listId) => SyncVillageNames(services, id, listId));
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/start", (int id, int listId, CowListBody body) => StartCowList(services, id, listId, body));
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/stop", (int id, int listId) => StopCowList(services, id, listId));
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/search", (int id, int listId, SearchBody body) => SearchOasis(services, id, listId, body));
@@ -240,6 +256,9 @@ namespace WPFUI
             if (tasks.GetStatus(accountId) != StatusEnums.Offline) return Fail("La cuenta tiene que estar desconectada.");
 
             using var context = Context(services);
+            var otherOpen = context.Accounts.AsEnumerable().Any(account => account.Id != id && tasks.GetStatus(new AccountId(account.Id)) != StatusEnums.Offline);
+            if (otherOpen) return Fail("Esta instancia ya tiene una cuenta conectada. Abrí otro bot para administrar la otra.");
+
             var access = await context.GetValidAccess(accountId);
             if (access.IsFailed) return Fail(string.Join(Environment.NewLine, access.Errors.Select(x => x.Message)));
 
@@ -577,12 +596,13 @@ namespace WPFUI
                 .ToList();
             var listIds = lists.Select(x => x.id).ToList();
             var cows = context.CowVillages.Where(x => listIds.Contains(x.CowListId)).OrderBy(x => x.Id)
-                .Select(x => new { x.Id, x.CowListId, x.Url, x.TroopCount, x.TroopPlan, x.LastAttackedAt, x.LastSkipReason })
+                .Select(x => new { x.Id, x.CowListId, x.Name, x.Url, x.TroopCount, x.TroopPlan, x.LastAttackedAt, x.LastSkipReason })
                 .AsEnumerable()
                 .Select(x => new
                 {
                     id = x.Id,
                     listId = x.CowListId,
+                    name = VillageLabel(x.Name),
                     url = x.Url,
                     troops = CowTroopPlan.Describe(x.TroopPlan, x.TroopCount),
                     status = FormatStatus(x.LastAttackedAt, x.LastSkipReason),
@@ -632,27 +652,116 @@ namespace WPFUI
             return Ok("Lista borrada.");
         }
 
-        private static IResult AddCowVillage(IServiceProvider services, int accountId, int listId, CowVillageBody body)
+        private static async Task<IResult> AddCowVillage(IServiceProvider services, int accountId, int listId, CowVillageBody body)
         {
             if (!TryParseCow(body.Url, body.Troops, out var url, out var plan, out var count, out var error)) return Fail(error);
-            using var context = Context(services);
-            if (!context.CowLists.Any(x => x.Id == listId && x.AccountId == accountId)) return Fail("No se encontró la lista.");
-            context.CowVillages.Add(new CowVillage { CowListId = listId, Url = url, TroopPlan = plan, TroopCount = count });
-            context.SaveChanges();
-            return Ok("Aldea agregada.");
+            using (var context = Context(services))
+            {
+                if (!context.CowLists.Any(x => x.Id == listId && x.AccountId == accountId)) return Fail("No se encontró la lista.");
+            }
+
+            var name = await ReadVillageName(services, accountId, url);
+            using (var context = Context(services))
+            {
+                if (!context.CowLists.Any(x => x.Id == listId && x.AccountId == accountId)) return Fail("No se encontró la lista.");
+                context.CowVillages.Add(new CowVillage { CowListId = listId, Name = name, Url = url, TroopPlan = plan, TroopCount = count });
+                context.SaveChanges();
+            }
+
+            return Ok(name == CowOasisParser.MissingName ? "Aldea agregada sin nombre." : $"Aldea agregada: {name}.");
         }
 
         private static IResult UpdateCowVillage(IServiceProvider services, int accountId, int cowId, CowVillageBody body)
         {
             if (!TryParseCow(body.Url, body.Troops, out var url, out var plan, out var count, out var error)) return Fail(error);
+            var name = VillageLabel(body.Name);
             using var context = Context(services);
             var updated = context.CowVillages.Where(x => x.Id == cowId && x.CowList.AccountId == accountId)
                 .ExecuteUpdate(x => x
+                    .SetProperty(village => village.Name, name)
                     .SetProperty(village => village.Url, url)
                     .SetProperty(village => village.TroopPlan, plan)
                     .SetProperty(village => village.TroopCount, count));
             if (updated == 0) return Fail("No se encontró la aldea.");
             return Ok("Aldea guardada.");
+        }
+
+        private static async Task<string> ReadVillageName(IServiceProvider services, int accountId, string url)
+        {
+            try
+            {
+                var browser = services.GetRequiredService<ChromeManager>().Get(new AccountId(accountId));
+                if (!browser.IsInitialized) return CowOasisParser.MissingName;
+                var name = await browser.InNewTab(async page =>
+                {
+                    await page.GotoAsync(url, new() { Timeout = 20_000 });
+                    return await CowOasisParser.ReadTitle(page);
+                });
+                if (browser.IsInitialized) await browser.CurrentPage.BringToFrontAsync();
+                return VillageLabel(name);
+            }
+            catch
+            {
+                return CowOasisParser.MissingName;
+            }
+        }
+
+        private static string VillageLabel(string name)
+        {
+            var text = (name ?? "").Trim();
+            return text.Length == 0 ? CowOasisParser.MissingName : text;
+        }
+
+        private static async Task<IResult> SyncVillageNames(IServiceProvider services, int accountId, int listId)
+        {
+            List<(int Id, string Url)> villages;
+            using (var context = Context(services))
+            {
+                if (!context.CowLists.Any(x => x.Id == listId && x.AccountId == accountId)) return Fail("No se encontró la lista.");
+                villages = context.CowVillages
+                    .Where(x => x.CowListId == listId && x.CowList.AccountId == accountId)
+                    .OrderBy(x => x.Id)
+                    .Select(x => new { x.Id, x.Url })
+                    .AsEnumerable()
+                    .Select(x => (x.Id, x.Url))
+                    .ToList();
+            }
+
+            if (villages.Count == 0) return Fail("La lista no tiene aldeas.");
+            var account = new AccountId(accountId);
+            if (services.GetRequiredService<TaskManager>().IsExist<RaidCowListTask.Task>(account)) return Fail("Detené el raid antes de sincronizar los nombres.");
+            var browser = services.GetRequiredService<ChromeManager>().Get(account);
+            if (!browser.IsInitialized) return Fail("La cuenta tiene que estar conectada para abrir el navegador.");
+
+            var named = 0;
+            for (var index = 0; index < villages.Count; index++)
+            {
+                if (index > 0) await Task.Delay(NextNavigationDelay());
+                var (id, url) = villages[index];
+                var name = await ReadVillageName(services, accountId, url);
+                if (name != CowOasisParser.MissingName) named++;
+                using var context = Context(services);
+                context.CowVillages.Where(x => x.Id == id && x.CowList.AccountId == accountId)
+                    .ExecuteUpdate(x => x.SetProperty(village => village.Name, name));
+            }
+
+            return Ok(named == villages.Count
+                ? $"Se actualizaron los nombres de {villages.Count} aldeas."
+                : $"Se recorrieron {villages.Count} aldeas. {named} tienen nombre y {villages.Count - named} quedaron sin nombre.");
+        }
+
+        private static TimeSpan NextNavigationDelay()
+        {
+            const double minimum = 1.5;
+            const double maximum = 2.5;
+            const double mean = (minimum + maximum) / 2.0;
+            const double stdDev = (maximum - minimum) / 6.0;
+
+            var u1 = 1.0 - Random.Shared.NextDouble();
+            var u2 = 1.0 - Random.Shared.NextDouble();
+            var standardNormal = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Cos(2.0 * Math.PI * u2);
+            var seconds = Math.Clamp(mean + (stdDev * standardNormal), minimum, maximum);
+            return TimeSpan.FromSeconds(seconds);
         }
 
         private static IResult DeleteCowVillage(IServiceProvider services, int accountId, int cowId)
@@ -758,7 +867,7 @@ namespace WPFUI
             {
                 var url = OasisCatalog.BuildOasisUrl(server, hit.X, hit.Y);
                 if (!urls.Add(url)) continue;
-                context.CowVillages.Add(new CowVillage { CowListId = listId, Url = url, TroopPlan = plan, TroopCount = count });
+                context.CowVillages.Add(new CowVillage { CowListId = listId, Name = CowOasisParser.MissingName, Url = url, TroopPlan = plan, TroopCount = count });
                 added++;
             }
 
@@ -981,6 +1090,22 @@ namespace WPFUI
             return settings;
         }
 
+        private static bool NeedsConnection(PathString path, out int accountId)
+        {
+            accountId = 0;
+            var parts = (path.Value ?? "").Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 4 || parts[0] != "api" || parts[1] != "accounts") return false;
+            if (!int.TryParse(parts[2], out accountId)) return false;
+            return parts[3] is "settings" or "villages" or "farming" or "debug";
+        }
+
+        private static IResult RequireConnected(IServiceProvider services, int accountId)
+        {
+            var status = services.GetRequiredService<TaskManager>().GetStatus(new AccountId(accountId));
+            if (status is StatusEnums.Online or StatusEnums.Paused) return null;
+            return Fail("Conectá la cuenta para ver sus aldeas, el farming y el resto.");
+        }
+
         private static bool OwnsVillage(IServiceProvider services, int accountId, int villageId)
         {
             using var context = Context(services);
@@ -1161,6 +1286,7 @@ namespace WPFUI
 
     public sealed class CowVillageBody
     {
+        public string Name { get; set; }
         public string Url { get; set; }
         public string Troops { get; set; }
     }

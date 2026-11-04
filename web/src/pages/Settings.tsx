@@ -128,7 +128,7 @@ export function SettingForm({ title, path, groups, meta, notify }: Props) {
         </Button>
       </Stack>
       {groups.map(group => (
-        <Stack key={group.title} spacing={1.5} sx={{ p: 2, borderRadius: 3, bgcolor: '#fff', border: '2px solid #F0E6D6' }}>
+        <Stack key={group.title} spacing={1.5} sx={{ p: 2, borderRadius: 2, bgcolor: '#2b2d31' }}>
           <Typography variant="h6">{group.title}</Typography>
           {group.fields.map(field => {
             if (field.kind === 'bool') {

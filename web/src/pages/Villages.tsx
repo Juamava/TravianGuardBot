@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Button, MenuItem, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material'
 import { api, del, post, type Meta } from '../api'
+import { Empty, useUi } from '../ui'
 import { VillageSettings } from './Settings'
 
 type Village = { id: number; name: string; x: number; y: number }
@@ -9,6 +10,7 @@ type Build = { buildings: Building[]; queue: { id: number; text: string }[]; job
 type Option = { type: string; name: string; maxLevel: number }
 
 export function Villages({ accountId, meta, notify }: { accountId: number; meta: Meta | null; notify: (message: string) => void }) {
+  const ui = useUi()
   const [villages, setVillages] = useState<Village[]>([])
   const [villageId, setVillageId] = useState(0)
   const [tab, setTab] = useState('build')
@@ -73,15 +75,16 @@ export function Villages({ accountId, meta, notify }: { accountId: number; meta:
         <Button variant="outlined" onClick={() => reload(`/api/accounts/${accountId}/villages/reload-missing`)}>Recargar incompletas</Button>
         <Button variant="outlined" onClick={() => reload(`/api/accounts/${accountId}/villages/reload-all`)}>Recargar todas</Button>
       </Stack>
-      <TextField select label="Aldea" value={villageId || ''} onChange={event => setVillageId(Number(event.target.value))}>
+      {villages.length === 0 && <Empty title="Todavía no hay aldeas" text="Conectá la cuenta. Cuando el juego cargue las aldeas, van a aparecer acá." />}
+      {villages.length > 0 && <TextField select label="Aldea" value={villageId || ''} onChange={event => setVillageId(Number(event.target.value))}>
         {villages.map(village => <MenuItem key={village.id} value={village.id}>{village.name} ({village.x}|{village.y})</MenuItem>)}
-      </TextField>
-      <ToggleButtonGroup exclusive value={tab} onChange={(_, value) => value && setTab(value)}>
+      </TextField>}
+      {villages.length > 0 && <ToggleButtonGroup exclusive value={tab} onChange={(_, value) => value && setTab(value)}>
         <ToggleButton value="build">Construir</ToggleButton>
         <ToggleButton value="settings">Ajustes</ToggleButton>
-      </ToggleButtonGroup>
-      {tab === 'settings' && villageId > 0 && <VillageSettings accountId={accountId} villageId={villageId} meta={meta} notify={notify} />}
-      {tab === 'build' && build && (
+      </ToggleButtonGroup>}
+      {villages.length > 0 && tab === 'settings' && villageId > 0 && <VillageSettings accountId={accountId} villageId={villageId} meta={meta} notify={notify} />}
+      {villages.length > 0 && tab === 'build' && build && (
         <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems="flex-start">
           <Stack spacing={1} sx={{ flex: 1, minWidth: 260 }}>
             <Typography fontWeight={800}>Edificios</Typography>
@@ -113,10 +116,15 @@ export function Villages({ accountId, meta, notify }: { accountId: number; meta:
               <Button component="label" size="small">Importar
                 <input hidden type="file" accept="application/json" onChange={async event => {
                   const file = event.target.files?.[0]
+                  event.target.value = ''
                   if (!file) return
-                  const jobs = JSON.parse(await file.text())
-                  const shuffle = window.confirm('¿Mezclar la ubicación de los edificios?')
-                  await run(() => post(`/api/accounts/${accountId}/villages/${villageId}/jobs/import`, { jobs, shuffle }))
+                  try {
+                    const jobs = JSON.parse(await file.text())
+                    const shuffle = await ui.confirm('¿Mezclar la ubicación de los edificios? Si cancelás, se importan en el orden del archivo.')
+                    await run(() => post(`/api/accounts/${accountId}/villages/${villageId}/jobs/import`, { jobs, shuffle }))
+                  } catch (error) {
+                    notify(error instanceof Error ? error.message : 'El archivo no es un JSON válido')
+                  }
                 }} />
               </Button>
               <Button size="small" onClick={async () => {
@@ -127,7 +135,7 @@ export function Villages({ accountId, meta, notify }: { accountId: number; meta:
                 link.download = 'trabajos.json'
                 link.click()
               }}>Exportar</Button>
-              <Button size="small" color="error" onClick={() => run(() => del(`/api/accounts/${accountId}/villages/${villageId}/jobs`))}>Borrar todos</Button>
+              <Button size="small" color="error" onClick={async () => { if (await ui.confirm('¿Borrar todos los trabajos de esta aldea?')) run(() => del(`/api/accounts/${accountId}/villages/${villageId}/jobs`)) }}>Borrar todos</Button>
             </Stack>
             {build.jobs.map(job => (
               <Stack key={job.id} direction="row" spacing={0.5} alignItems="center">
@@ -135,7 +143,7 @@ export function Villages({ accountId, meta, notify }: { accountId: number; meta:
                 {(['top', 'up', 'down', 'bottom'] as const).map(direction => (
                   <Button key={direction} size="small" onClick={() => run(() => post(`/api/accounts/${accountId}/villages/${villageId}/jobs/${job.id}/move`, { direction }))}>{direction}</Button>
                 ))}
-                <Button size="small" color="error" onClick={() => run(() => del(`/api/accounts/${accountId}/villages/${villageId}/jobs/${job.id}`))}>x</Button>
+                <Button size="small" color="error" onClick={async () => { if (await ui.confirm('¿Borrar este trabajo?')) run(() => del(`/api/accounts/${accountId}/villages/${villageId}/jobs/${job.id}`)) }}>x</Button>
               </Stack>
             ))}
           </Stack>

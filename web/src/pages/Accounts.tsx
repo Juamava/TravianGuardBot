@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Box, Button, Stack, TextField, Typography } from '@mui/material'
 import { api, del, emptyAccess, post, put, type Access, type AccountDetail } from '../api'
+import { useUi } from '../ui'
 
 type Props = { accountId: number | null; notify: (message: string) => void; refresh: () => void }
 
 export function Accounts({ accountId, notify, refresh }: Props) {
+  const ui = useUi()
   const [username, setUsername] = useState('')
   const [server, setServer] = useState('')
   const [accesses, setAccesses] = useState<Access[]>([emptyAccess()])
@@ -58,7 +60,7 @@ export function Accounts({ accountId, notify, refresh }: Props) {
   }
 
   async function remove() {
-    if (!accountId) return
+    if (!accountId || !(await ui.confirm('¿Borrar esta cuenta y sus aldeas?'))) return
     try {
       const result = await del(`/api/accounts/${accountId}`)
       notify(result.message)
@@ -76,7 +78,7 @@ export function Accounts({ accountId, notify, refresh }: Props) {
       <TextField label="Nombre" value={username} onChange={event => setUsername(event.target.value)} />
       <TextField label="Servidor" placeholder="https://ts1.x1.international.travian.com" value={server} onChange={event => setServer(event.target.value)} />
       {accesses.map((access, index) => (
-        <Box key={index} sx={{ p: 2, borderRadius: 3, bgcolor: '#F7FFF0', border: '2px solid #D7F5B8' }}>
+        <Box key={index} sx={{ p: 2, borderRadius: 2, bgcolor: '#2b2d31' }}>
           <Stack spacing={1.5}>
             <Typography fontWeight={800}>Acceso {index + 1}</Typography>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>

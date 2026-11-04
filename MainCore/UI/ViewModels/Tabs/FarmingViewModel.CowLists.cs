@@ -1,5 +1,6 @@
 using System.Globalization;
 
+using MainCore.Parsers;
 using MainCore.UI.Models.Output;
 using MainCore.UI.ViewModels.UserControls;
 
@@ -169,12 +170,12 @@ namespace MainCore.UI.ViewModels.Tabs
                 .Where(x => x.CowListId == cowListId)
                 .Where(x => x.CowList.AccountId == AccountId.Value)
                 .OrderBy(x => x.Id)
-                .Select(x => new { x.Id, x.TroopCount, x.TroopPlan, x.Url, x.LastAttackedAt, x.LastSkipReason })
+                .Select(x => new { x.Id, x.Name, x.TroopCount, x.TroopPlan, x.Url, x.LastAttackedAt, x.LastSkipReason })
                 .AsEnumerable()
                 .Select(x => new ListBoxItem
                 {
                     Id = x.Id,
-                    Content = CowTroopPlan.Describe(x.TroopPlan, x.TroopCount) + "  " + x.Url,
+                    Content = CowTroopPlan.Describe(x.TroopPlan, x.TroopCount) + "  " + (string.IsNullOrWhiteSpace(x.Name) ? CowOasisParser.MissingName : x.Name),
                     Detail = FormatStatus(x.LastAttackedAt, x.LastSkipReason),
                     Color = SplatColor.Black,
                 })
@@ -384,6 +385,7 @@ namespace MainCore.UI.ViewModels.Tabs
             context.CowVillages.Add(new CowVillage
             {
                 CowListId = listId,
+                Name = CowOasisParser.MissingName,
                 Url = url,
                 TroopCount = troopCount,
                 TroopPlan = troopPlan,
@@ -665,6 +667,7 @@ namespace MainCore.UI.ViewModels.Tabs
                 context.CowVillages.Add(new CowVillage
                 {
                     CowListId = listId,
+                    Name = CowOasisParser.MissingName,
                     Url = url,
                     TroopCount = troopCount,
                     TroopPlan = troopPlan,
