@@ -1,0 +1,138 @@
+﻿<v:FarmingTabBase
+    x:Class="WPFUI.Views.Tabs.FarmingTab"
+    xmlns:v="clr-namespace:WPFUI.Views.Tabs"
+    xmlns:uc="clr-namespace:WPFUI.Views.UserControls"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="clr-namespace:WPFUI.Views.Tabs"
+    mc:Ignorable="d"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    d:DesignHeight="450" d:DesignWidth="800">
+    <TabControl Background="#FFE5E5E5">
+        <TabItem Header="Listas de vacas" IsSelected="True">
+            <Grid Margin="5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.1*" />
+                    <ColumnDefinition Width="1.6*" />
+                    <ColumnDefinition Width="1.3*" />
+                </Grid.ColumnDefinitions>
+                <Grid Grid.Column="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <ComboBox x:Name="CowListVillageCombo" Grid.Row="0" Margin="5" ItemTemplate="{DynamicResource ListBoxColorItem}" />
+                    <Border Style="{DynamicResource Box}" Grid.Row="1">
+                        <ListBox x:Name="CowListGrid" SelectionMode="Single" ItemTemplate="{DynamicResource ListBoxColorItem}" ScrollViewer.HorizontalScrollBarVisibility="Auto" PreviewMouseLeftButtonUp="CowListGrid_Click" />
+                    </Border>
+                    <TextBox x:Name="CowListNameTextBox" Grid.Row="2" Margin="5,0,5,5" materialDesign:HintAssist.Hint="Nombre de la lista" Style="{DynamicResource MaterialDesignFloatingHintTextBox}" />
+                    <UniformGrid Grid.Row="3" Columns="3" Margin="5,0,5,5">
+                        <Button x:Name="CreateCowListButton" Content="Crear" Margin="2" />
+                        <Button x:Name="RenameCowListButton" Content="Renombrar" Margin="2" />
+                        <Button x:Name="DeleteCowListButton" Content="Borrar" Margin="2" />
+                    </UniformGrid>
+                </Grid>
+                <Grid Grid.Column="1">
+                    <Border Style="{DynamicResource Box}">
+                        <ListBox x:Name="CowVillageGrid" SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Content}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Detail}" Margin="12,0,0,0" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+                </Grid>
+                <Grid Grid.Column="2">
+                    <Border x:Name="CowListSettingsPanel" Style="{DynamicResource Box}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock TextWrapping="Wrap" Margin="5" Text="Mínimo por aldea: minutos que hay que esperar para volver a atacar la misma. Revisar la lista: cada cuántos minutos se recorre y se ataca solo lo que ya cumplió ese mínimo. 0 la revisa una sola vez." />
+                                <TextBox x:Name="CowListMinMinutesTextBox" Margin="5" materialDesign:HintAssist.Hint="Mínimo por aldea (minutos)" Style="{DynamicResource MaterialDesignFloatingHintTextBox}" />
+                                <TextBox x:Name="CowListRepeatMinutesTextBox" Margin="5" materialDesign:HintAssist.Hint="Revisar la lista cada (minutos)" Style="{DynamicResource MaterialDesignFloatingHintTextBox}" />
+                                <Button x:Name="SaveCowListIntervalButton" Content="Guardar cambios" Margin="5" />
+                                <Button x:Name="SearchOasisButton" Content="Buscar oasis" Margin="5" Visibility="Collapsed" />
+                                <Button x:Name="BeginAddCowVillageButton" Content="Agregar aldea" Margin="5" />
+                                <Button x:Name="StartCowListButton" Content="Iniciar raids" Margin="5,15,5,5" />
+                                <Button x:Name="StopCowListButton" Content="Detener" Margin="5" />
+                                <TextBlock x:Name="NextRaidCountdownText" Margin="5" Foreground="Red" FontWeight="SemiBold" TextWrapping="Wrap" Visibility="Collapsed" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                    <Border x:Name="CowEditorPanel" Style="{DynamicResource Box}" Visibility="Collapsed">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock TextWrapping="Wrap" Margin="5" Text="Tropas de esta vaca. Letras iguales en todas las razas: A D G / B E H / C F. Un número solo usa A. Ejemplo: 2 o A:2 D:1." />
+                                <TextBox x:Name="CowVillageUrlTextBox" Margin="5" materialDesign:HintAssist.Hint="Enlace de la aldea" Style="{DynamicResource MaterialDesignFloatingHintTextBox}" />
+                                <TextBox x:Name="CowTroopCountTextBox" Margin="5" materialDesign:HintAssist.Hint="Tropas (2 o A:2 D:1)" Style="{DynamicResource MaterialDesignFloatingHintTextBox}" />
+                                <Button x:Name="AddCowVillageButton" Content="Agregar" Margin="5" Visibility="Collapsed" />
+                                <Button x:Name="UpdateCowVillageButton" Content="Guardar cambios" Margin="5" />
+                                <Button x:Name="DeleteCowVillageButton" Content="Borrar aldea" Margin="5" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </Grid>
+        </TabItem>
+        <TabItem Header="Farm list">
+    <Grid Background="#FFE5E5E5">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1*" />
+            <ColumnDefinition Width="4*" />
+        </Grid.ColumnDefinitions>
+        <Grid Grid.Column="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Border Style="{DynamicResource Box}" Grid.Row="0">
+                <ListBox x:Name="FarmlistGrid" SelectionMode="Single" ItemTemplate="{DynamicResource ListBoxColorItem}" />
+            </Border>
+            <Button x:Name="Load" Grid.Row="1" Content="Load farmlist" ToolTip="Load farmlist" Margin="5,0,5,5" />
+        </Grid>
+        <Border Style="{DynamicResource Box}" Grid.Column="1">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <StackPanel                     Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center">
+                    <StackPanel Margin="0,20,0,0">
+                        <uc:RangeInputUc x:Name="FarmInterval" Text="Start farm delay" Unit="s" />
+                        <CheckBox x:Name="UseStartAllCheckbox" Content="Use Start all button (ignore active settings)" />
+                    </StackPanel>
+                    <Button x:Name="SaveButton" ToolTip="Save"                              Margin="10">
+                        <materialDesign:PackIcon Width="{DynamicResource IconSize}" Height="{DynamicResource IconSize}" Kind="ContentSave" />
+                    </Button>
+                </StackPanel>
+                <Button x:Name="ActiveButton"   Grid.Row="1" Margin="10" />
+                <Button x:Name="StartButton"    Grid.Row="2" ToolTip="Start" Margin="10">
+                    <materialDesign:PackIcon Width="{DynamicResource IconSize}" Height="{DynamicResource IconSize}" Kind="Play" />
+                </Button>
+                <Button x:Name="StopButton"     Grid.Row="3" ToolTip="Stop"             Margin="10">
+                    <materialDesign:PackIcon Width="{DynamicResource IconSize}" Height="{DynamicResource IconSize}" Kind="Stop" />
+                </Button>
+            </Grid>
+        </Border>
+    </Grid>
+        </TabItem>
+    </TabControl>
+</v:FarmingTabBase>

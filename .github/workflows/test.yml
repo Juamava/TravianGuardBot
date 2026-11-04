@@ -1,0 +1,142 @@
+name: Test
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  Test:
+    if: false
+    runs-on: windows-latest
+    env:
+        DOTNET_INSTALL_DIR: "D:/tools/dotnet"
+        DOTNET_ROOT: "D:/tools/dotnet"
+        NUGET_PACKAGES: "D:/.nuget/packages"
+    steps:
+      - name: Cache dotnet
+        id: cache-dotnet
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.DOTNET_INSTALL_DIR }}
+          key: dotnet-${{ runner.os }}-10.0.400
+          
+      - name: Install dotnet
+        if: ${{ steps.cache-dotnet.outputs.cache-hit != 'true' }}
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Set installed/cached dotnet path [${{ env.DOTNET_INSTALL_DIR }}]
+        run: echo "${{ env.DOTNET_INSTALL_DIR }}" | Out-File -FilePath $ENV:GITHUB_PATH -Encoding utf8 -Append
+                  
+      - name: Checkout
+        uses: actions/checkout@v7      
+      
+      - name: Cache NuGet packages      
+        id: cache-nuget
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json') }}
+          
+      - name: Install dependencies
+        run: dotnet restore --locked-mode
+        
+      - name: Test architecture
+        run: dotnet test -c Debug --filter Mode=Debug
+        
+      - name: Test others
+        run: dotnet test -c Release --filter Mode!=Debug
+        
+  Version:
+    runs-on: ubuntu-latest
+    permissions:
+        contents: write
+    outputs:
+      version: ${{ steps.semvers.outputs.patch }}
+    steps:
+      - name: Checkout 
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 
+      
+      - name: Get Previous tag
+        id: previoustag
+        uses: WyriHaximus/github-action-get-previous-tag@v2
+        with:
+          fallback: 1.0.0
+      
+      - name: Get next version
+        id: semvers
+        uses: WyriHaximus/github-action-next-semvers@v1.2.1
+        with:
+          version: ${{ steps.previoustag.outputs.tag }}
+          
+      - name: Create tag
+        uses: rickstaa/action-create-tag@v1.7.2
+        with:
+          tag: ${{ steps.semvers.outputs.patch }}
+          tag_exists_error: false
+          message: TBS-${{ steps.semvers.outputs.patch }}
+  Build:
+    runs-on: windows-latest
+    needs: Version
+    env:
+        DOTNET_INSTALL_DIR: "D:/tools/dotnet"
+        DOTNET_ROOT: "D:/tools/dotnet"
+        NUGET_PACKAGES: "D:/.nuget/packages"
+    
+    steps:
+      - name: Cache dotnet
+        id: cache-dotnet
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.DOTNET_INSTALL_DIR }}
+          key: dotnet-${{ runner.os }}-10.0.400
+          
+      - name: Install dotnet
+        if: ${{ steps.cache-dotnet.outputs.cache-hit != 'true' }}
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Set installed/cached dotnet path [${{ env.DOTNET_INSTALL_DIR }}]
+        run: echo "${{ env.DOTNET_INSTALL_DIR }}" | Out-File -FilePath $ENV:GITHUB_PATH -Encoding utf8 -Append
+                  
+      - name: Checkout
+        uses: actions/checkout@v7      
+      
+      - name: Cache NuGet packages      
+        id: cache-nuget
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json') }}
+          
+      - name: Install dependencies
+        run: dotnet restore --locked-mode
+      
+      - name: Publish
+        run: dotnet publish WPFUI -c Release --no-restore --self-contained -p:PublishSingleFile=true -p:AssemblyVersion=${{needs.version.outputs.version}} -p:RunAnalyzersDuringBuild=True
+      
+      - name: Upload a Build Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: TBS-${{needs.version.outputs.version}}
+          path: WPFUI\bin\Release\net10.0-windows10.0.19041.0\win-x64\publish\
+          if-no-files-found: error
+          include-hidden-files: true
+
+  Comment:
+    needs: [Build, Version]
+    runs-on: ubuntu-latest
+    permissions:
+        pull-requests: write
+    steps:
+      - name: Comment PR
+        uses: thollander/actions-comment-pull-request@v3
+        with:
+          message: |
+            Version of this build is ${{needs.version.outputs.version}}
+            Check download link [here](https://nightly.link/vinaghost/TravianBotSharp/actions/runs/${{ github.run_id }})

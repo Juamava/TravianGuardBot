@@ -1,0 +1,185 @@
+using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.Text;
+
+using MainCore.UI.Models.Output;
+using MainCore.UI.ViewModels.Abstract;
+
+using Serilog.Events;
+using Serilog.Templates;
+
+namespace MainCore.UI.ViewModels.Tabs
+{
+    using ReactiveUI.Primitives;
+    using ReactiveUI.Primitives.Signals;
+
+    [RegisterSingleton<DebugViewModel>]
+    public partial class DebugViewModel : AccountTabViewModelBase
+    {
+        private readonly LogSink _logSink;
+        private readonly TaskManager _taskManager;
+        private readonly ChromeManager _chromeManager;
+        private readonly DialogService _dialogService;
+        private static readonly ExpressionTemplate _template = new("{@t:HH:mm:ss} [{@l:u3}] {@m}\n{@x}");
+
+        public ObservableCollection<TaskItem> Tasks { get; } = [];
+        private LinkedList<LogEvent> _logEvents = [];
+
+        [Reactive]
+        private string _logs = "";
+
+        [Reactive]
+        private string _endpointAddress = "";
+
+        public DebugViewModel(LogSink logSink, TaskManager taskManager, RxQueue rxQueue, ChromeManager chromeManager, DialogService dialogService)
+        {
+            _logSink = logSink;
+            _taskManager = taskManager;
+            _chromeManager = chromeManager;
+            _dialogService = dialogService;
+
+            LoadTaskCommand.ObserveOn(RxSchedulers.MainThreadScheduler).Subscribe(items =>
+            {
+                Tasks.Clear();
+                foreach (var input in items)
+                {
+                    Tasks.Add(input);
+                }
+            });
+
+            LoadLogCommand.ObserveOn(RxSchedulers.MainThreadScheduler).BindTo(this, vm => vm.Logs);
+            ReloadLogCommand.ObserveOn(RxSchedulers.MainThreadScheduler).BindTo(this, vm => vm.Logs);
+            LoadEndpointAddressCommand.ObserveOn(RxSchedulers.MainThreadScheduler).BindTo(this, vm => vm.EndpointAddress);
+
+            rxQueue.GetObservable<LogEmitted>()
+                .InvokeCommand(LogEmittedCommand);
+
+            rxQueue.GetObservable<TasksModified>()
+                .InvokeCommand(TasksModifiedCommand);
+
+            LogEmittedCommand
+                .Where(x => x)
+                .Select(_ => RxVoid.Default)
+                .Throttle(TimeSpan.FromMilliseconds(100), RxSchedulers.TaskpoolScheduler)
+                .ObserveOn(RxSchedulers.TaskpoolScheduler)
+                .InvokeCommand(ReloadLogCommand);
+
+            TasksModifiedCommand
+                .Where(x => x)
+                .Select(_ => AccountId)
+                .Throttle(TimeSpan.FromMilliseconds(100), RxSchedulers.TaskpoolScheduler)
+                .ObserveOn(RxSchedulers.TaskpoolScheduler)
+                .InvokeCommand(LoadTaskCommand);
+        }
+
+        [ReactiveCommand(RunInBackground = true)]
+        private bool LogEmitted(LogEmitted notification)
+        {
+            if (!IsActive) return false;
+            var (accountId, logEvent) = notification;
+            if (accountId != AccountId) return false;
+
+            _logEvents.AddLast(logEvent);
+            return true;
+        }
+
+        [ReactiveCommand(RunInBackground = true)]
+        private bool TasksModified(TasksModified notification)
+        {
+            if (!IsActive) return false;
+            var accountId = notification.AccountId;
+            if (accountId != AccountId) return false;
+            return true;
+        }
+
+        protected override async Task Load(AccountId accountId)
+        {
+            await LoadTaskCommand.Execute(accountId);
+            await LoadLogCommand.Execute(accountId);
+            await LoadEndpointAddressCommand.Execute(accountId);
+        }
+
+        [ReactiveCommand(RunInBackground = true)]
+        private List<TaskItem> LoadTask(AccountId accountId)
+        {
+            var tasks = _taskManager
+               .GetTaskList(accountId)
+               .OrderBy(x => x.ExecuteAt)
+               .Select(x => new TaskItem(x))
+               .ToList();
+            return tasks;
+        }
+
+        [ReactiveCommand(RunInBackground = true)]
+        private string LoadLog(AccountId accountId)
+        {
+            var logs = _logSink.GetLogs(accountId);
+            _logEvents.Clear();
+            foreach (var log in logs)
+            {
+                _logEvents.AddLast(log);
+            }
+
+            using var sw = new StringWriter(new StringBuilder());
+            for (var node = _logEvents.Last; node != null; node = node.Previous)
+            {
+                _template.Format(node.Value, sw);
+            }
+            return sw.ToString();
+        }
+
+        [ReactiveCommand(RunInBackground = true)]
+        private string ReloadLog()
+        {
+            using var sw = new StringWriter(new StringBuilder());
+            for (var node = _logEvents.Last; node != null; node = node.Previous)
+            {
+                _template.Format(node.Value, sw);
+            }
+            return sw.ToString();
+        }
+
+        [ReactiveCommand(RunInBackground = true)]
+        private async Task BringToFront()
+        {
+            var browser = _chromeManager.Get(AccountId);
+            if (!browser.IsInitialized || browser.CurrentPage.IsClosed)
+            {
+                await _dialogService.SendMessage("Warning", "Account is not login.");
+                return;
+            }
+            if (browser.IsHeadless)
+            {
+                await _dialogService.SendMessage("Warning", "Browser is headless.");
+                return;
+            }
+            await browser.CurrentPage.BringToFrontAsync();
+        }
+
+        [ReactiveCommand(RunInBackground = true)]
+        private string LoadEndpointAddress(AccountId accountId)
+        {
+            return "Address endpoint is disabled";
+        }
+
+        [ReactiveCommand(RunInBackground = true)]
+        private void Left()
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "https://ko-fi.com/vinaghost",
+                UseShellExecute = true
+            });
+        }
+
+        [ReactiveCommand(RunInBackground = true)]
+        private void Right()
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = Path.Combine(AppContext.BaseDirectory, "logs"),
+                UseShellExecute = true
+            });
+        }
+    }
+}

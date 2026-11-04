@@ -1,0 +1,238 @@
+using System.Collections.Concurrent;
+
+using MainCore.Infrasturecture.Extensions;
+
+using Microsoft.Extensions.DependencyInjection;
+
+using Polly;
+using Polly.Retry;
+
+namespace MainCore.Services
+{
+    [RegisterSingleton<TimerManager>]
+    public sealed class TimerManager
+    {
+        private readonly ConcurrentDictionary<AccountId, CancellationTokenSource> _loops = [];
+
+        private volatile bool _isShutdown = false;
+
+        private readonly TaskManager _taskManager;
+        private readonly RxQueue _rxQueue;
+        private readonly CustomServiceScopeFactory _serviceScopeFactory;
+        private readonly IDbContextFactory<AppDbContext> _contextFactory;
+
+        private static readonly ResiliencePropertyKey<ContextData> contextDataKey = new(nameof(ContextData));
+        private readonly ResiliencePipeline<Result> _pipeline;
+
+        public TimerManager(TaskManager taskManager, CustomServiceScopeFactory serviceScopeFactory, RxQueue rxQueue, IDbContextFactory<AppDbContext> contextFactory)
+        {
+            _taskManager = taskManager;
+            _serviceScopeFactory = serviceScopeFactory;
+            _rxQueue = rxQueue;
+            _contextFactory = contextFactory;
+
+            static async ValueTask OnRetry(OnRetryArguments<Result> args)
+            {
+                if (!args.Context.Properties.TryGetValue(contextDataKey, out var contextData)) return;
+
+                var (taskName, browser) = contextData;
+                var error = args.Outcome;
+                if (error.Exception is not null)
+                {
+                    var exception = error.Exception;
+                    browser.Logger.Error(exception, "{Message}", exception.Message);
+                }
+                if (error.Result is not null)
+                {
+                    var message = string.Join(Environment.NewLine, error.Result.Reasons.Select(e => e.Message));
+                    if (!string.IsNullOrEmpty(message))
+                    {
+                        browser.Logger.Warning("Task {TaskName} failed", taskName, message);
+                        browser.Logger.Warning("{Message}", message);
+                    }
+                }
+                await browser.Refresh();
+                browser.Logger.Warning("{TaskName} will retry after {RetryDelay} (#{AttemptNumber} times)", taskName, args.RetryDelay, args.AttemptNumber + 1);
+            }
+
+            var retryOptions = new RetryStrategyOptions<Result>()
+            {
+                MaxRetryAttempts = 3,
+                Delay = TimeSpan.FromSeconds(30),
+                UseJitter = true,
+                BackoffType = DelayBackoffType.Exponential,
+                ShouldHandle = new PredicateBuilder<Result>()
+                   .Handle<Exception>()
+                   .HandleResult(static x => x.HasError<Retry>()),
+                OnRetry = OnRetry
+            };
+
+            _pipeline = new ResiliencePipelineBuilder<Result>()
+                .AddRetry(retryOptions)
+                .Build();
+        }
+
+        public async Task Execute(AccountId accountId)
+        {
+            var taskQueue = _taskManager.GetTaskQueue(accountId);
+
+            var status = taskQueue.Status;
+            if (status != StatusEnums.Online) return;
+            var tasks = taskQueue.Tasks.OrderBy(x => x.ExecuteAt).ToList();
+            if (tasks.Count == 0) return;
+            var task = tasks[0];
+
+            if (task.ExecuteAt > DateTime.Now) return;
+
+            taskQueue.IsExecuting = true;
+            var cts = new CancellationTokenSource();
+            taskQueue.CancellationTokenSource = cts;
+
+            task.Stage = StageEnums.Executing;
+            _rxQueue.Enqueue(new TasksModified(accountId));
+
+            var cacheExecuteTime = task.ExecuteAt;
+
+            using var scope = _serviceScopeFactory.CreateScope(accountId);
+
+            ///===========================================================///
+            var browser = scope.ServiceProvider.GetRequiredService<IChromeBrowser>();
+            var logger = browser.Logger;
+
+            var contextData = new ContextData(task.Description, browser);
+
+            ///===========================================================///
+            var resilienceContext = ResilienceContextPool.Shared.Get(cts.Token);
+
+            resilienceContext.Properties.Set(contextDataKey, contextData);
+
+            var poliResult = await _pipeline.ExecuteOutcomeAsync(
+                async (ctx, state) => Outcome.FromResult(await scope.Execute(state, ctx.CancellationToken)),
+                resilienceContext,
+                task);
+
+            ResilienceContextPool.Shared.Return(resilienceContext);
+            ///===========================================================///
+
+            task.Stage = StageEnums.Waiting;
+            _rxQueue.Enqueue(new TasksModified(accountId));
+
+            taskQueue.IsExecuting = false;
+
+            cts.Dispose();
+            taskQueue.CancellationTokenSource = null;
+
+            if (poliResult.Exception is not null)
+            {
+                var ex = poliResult.Exception;
+
+                if (ex is OperationCanceledException)
+                {
+                    logger.Information("Pause button is pressed");
+                }
+                else
+                {
+                    var filename = await browser.Screenshot();
+                    logger.Information("Screenshot saved as {FileName}", filename);
+                    logger.Warning("There is something wrong. Bot is pausing. Last exception is");
+                    logger.Error(ex, "{Message}", ex.Message);
+                }
+
+                _taskManager.SetStatus(accountId, StatusEnums.Paused);
+            }
+
+            if (poliResult.Result is not null)
+            {
+                var result = poliResult.Result;
+                if (result.IsFailed)
+                {
+                    if (result.HasError<Stop>() || result.HasError<Retry>())
+                    {
+                        var filename = await browser.Screenshot();
+                        logger.Information(messageTemplate: "Screenshot saved as {FileName}", filename);
+                        _taskManager.SetStatus(accountId, StatusEnums.Paused);
+                    }
+                    else if (result.HasError<Skip>())
+                    {
+                        if (task.ExecuteAt == cacheExecuteTime)
+                        {
+                            _taskManager.Remove(accountId, task);
+                        }
+                        else
+                        {
+                            logger.Information("Schedule next run at {Time}", task.ExecuteAt.ToString("yyyy-MM-dd HH:mm:ss"));
+                        }
+                    }
+                    else if (result.HasError<Cancel>())
+                    {
+                        _taskManager.SetStatus(accountId, StatusEnums.Paused);
+                    }
+                }
+                else
+                {
+                    if (task.ExecuteAt == cacheExecuteTime)
+                    {
+                        _taskManager.Remove(accountId, task);
+                    }
+                    else
+                    {
+                        logger.Information("Schedule next run at {Time}", task.ExecuteAt.ToString("yyyy-MM-dd HH:mm:ss"));
+                    }
+                }
+            }
+
+            using var context = _contextFactory.CreateDbContext();
+            var delay = context.ByName(accountId, AccountSettingEnums.TaskDelayMin, AccountSettingEnums.TaskDelayMax);
+            await Task.Delay(delay);
+        }
+
+        public void Shutdown()
+        {
+            _isShutdown = true;
+
+            foreach (var accountId in _loops.Keys)
+            {
+                if (_loops.TryRemove(accountId, out var cancellationTokenSource))
+                {
+                    cancellationTokenSource.Cancel();
+                    cancellationTokenSource.Dispose();
+                }
+            }
+        }
+
+        public void Start(AccountId accountId)
+        {
+            if (_isShutdown) return;
+
+            var cancellationTokenSource = new CancellationTokenSource();
+            if (!_loops.TryAdd(accountId, cancellationTokenSource))
+            {
+                cancellationTokenSource.Dispose();
+                return;
+            }
+
+            _ = Task.Run(async () =>
+            {
+                while (!_isShutdown && !cancellationTokenSource.Token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await Execute(accountId);
+                        await Task.Delay(100, cancellationTokenSource.Token);
+                    }
+                    catch (OperationCanceledException) when (_isShutdown || cancellationTokenSource.Token.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                }
+
+                if (_loops.TryRemove(accountId, out var ownedCancellationTokenSource))
+                {
+                    ownedCancellationTokenSource.Dispose();
+                }
+            }, cancellationTokenSource.Token);
+        }
+
+        public record ContextData(string TaskName, IChromeBrowser Browser);
+    }
+}
