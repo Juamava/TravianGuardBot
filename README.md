@@ -1,0 +1,2 @@
+# TravianGuardBot
+Bot for Travian.
