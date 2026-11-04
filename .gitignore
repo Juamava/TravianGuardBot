@@ -14,6 +14,7 @@
 
 # Tools pulled down during build
 .tools/
+web/node_modules/
 .dotnet/
 .packages/
 

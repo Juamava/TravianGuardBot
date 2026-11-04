@@ -7,6 +7,8 @@ namespace MainCore.Parsers
             public bool CanRaid => IsOasis && IsUnoccupied && HasNoTroops;
         }
 
+        public const string TitleXPath = "/html/body/div[2]/div/div/div/div/form/div[5]/div/h1";
+        public const string MissingName = "Aldea sin nombre";
         public const string TroopCellXPath = "/html/body/div[2]/div/div/div/div/form/div[5]/div/div[2]/table[2]/tbody/tr[1]/td";
         public const string ConfirmButtonXPath = "/html/body/div[4]/div[3]/div[3]/div[2]/div/div[3]/div/form/div[1]/button[3]";
 
@@ -30,6 +32,19 @@ namespace MainCore.Parsers
                 IsOasis: isUnoccupied || isOccupied,
                 IsUnoccupied: isUnoccupied,
                 HasNoTroops: await CellSaysNone(page));
+        }
+
+        public static async Task<string> ReadTitle(IPage page)
+        {
+            try
+            {
+                var text = (await page.Locator($"xpath={TitleXPath}").InnerTextAsync(new() { Timeout = 8_000 })).Trim();
+                return string.IsNullOrWhiteSpace(text) ? MissingName : text;
+            }
+            catch (TimeoutException)
+            {
+                return MissingName;
+            }
         }
 
         public static ILocator GetTroopCell(IPage page)

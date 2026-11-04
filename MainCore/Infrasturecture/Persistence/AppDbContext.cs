@@ -262,6 +262,7 @@ namespace MainCore.Infrasturecture.Persistence
             EnsureColumn("CowVillages", "LastAttackedAt", "TEXT NULL");
             EnsureColumn("CowVillages", "TroopPlan", "TEXT NULL");
             EnsureColumn("CowVillages", "LastSkipReason", "TEXT NULL");
+            EnsureColumn("CowVillages", "Name", "TEXT NOT NULL DEFAULT 'Aldea sin nombre'");
         }
 
         private void EnsureColumn(string table, string name, string definition)
