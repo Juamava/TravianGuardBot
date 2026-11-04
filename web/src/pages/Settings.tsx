@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
-import { Button, Checkbox, FormControlLabel, MenuItem, Stack, TextField, Tooltip, Typography } from '@mui/material'
+import { Box, Button, Checkbox, FormControlLabel, MenuItem, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material'
 import { api, put, type Meta } from '../api'
+import { AccountEditor } from './Accounts'
 
 type Field =
   | { kind: 'range'; label: string; unit: string; min: string; max: string; hint: string }
@@ -81,6 +82,84 @@ function Hint({ text }: { text: string }) {
   )
 }
 
+const tabGroup = {
+  bgcolor: '#2b2d31',
+  p: 0.5,
+  borderRadius: 1,
+  flexWrap: 'wrap',
+  '& .MuiToggleButton-root': {
+    border: 0,
+    borderRadius: 1,
+    px: 2,
+    color: '#b5bac1',
+    textTransform: 'none',
+    fontWeight: 600,
+    '&.Mui-selected': { bgcolor: '#404249', color: '#fff' },
+    '&.Mui-selected:hover': { bgcolor: '#404249' },
+  },
+} as const
+
+function SettingGroups({ groups, values, set, meta }: { groups: { title: string; fields: Field[] }[]; values: Record<string, number>; set: (key: string, value: number) => void; meta: Meta | null }) {
+  return (
+    <>
+      {groups.map(group => (
+        <Stack key={group.title} spacing={1.5} sx={{ p: 2, borderRadius: 2, bgcolor: '#2b2d31' }}>
+          <Typography variant="h6">{group.title}</Typography>
+          {group.fields.map(field => {
+            if (field.kind === 'bool') {
+              return (
+                <Stack key={field.key} direction="row" spacing={0.75} alignItems="center">
+                  <FormControlLabel control={<Checkbox checked={values[field.key] === 1} onChange={event => set(field.key, event.target.checked ? 1 : 0)} />} label={field.label} />
+                  <Hint text={field.hint} />
+                </Stack>
+              )
+            }
+            if (field.kind === 'range') {
+              return (
+                <Stack key={field.min} direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                  <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 220 }}>
+                    <Typography>{field.label}</Typography>
+                    <Hint text={field.hint} />
+                  </Stack>
+                  <TextField size="small" type="number" label="Mín" value={values[field.min] ?? 0} onChange={event => set(field.min, Number(event.target.value))} />
+                  <TextField size="small" type="number" label="Máx" value={values[field.max] ?? 0} onChange={event => set(field.max, Number(event.target.value))} />
+                  <Typography color="text.secondary">{field.unit}</Typography>
+                </Stack>
+              )
+            }
+            if (field.kind === 'tribe') {
+              return (
+                <Stack key="tribe" direction="row" spacing={1} alignItems="center">
+                  <TextField select label={field.label} value={values.Tribe ?? 0} onChange={event => set('Tribe', Number(event.target.value))} sx={{ flex: 1 }}>
+                    {(meta?.tribes ?? []).map(tribe => <MenuItem key={tribe.value} value={tribe.value}>{tribe.name}</MenuItem>)}
+                  </TextField>
+                  <Hint text={field.hint} />
+                </Stack>
+              )
+            }
+            if (field.kind === 'troop') {
+              return (
+                <Stack key={field.key} direction="row" spacing={1} alignItems="center">
+                  <TextField select label={field.label} value={values[field.key] ?? 0} onChange={event => set(field.key, Number(event.target.value))} sx={{ flex: 1 }}>
+                    {(meta?.troops ?? []).map(troop => <MenuItem key={troop.value} value={troop.value}>{troop.name}</MenuItem>)}
+                  </TextField>
+                  <Hint text={field.hint} />
+                </Stack>
+              )
+            }
+            return (
+              <Stack key={field.key} direction="row" spacing={1} alignItems="center">
+                <TextField type="number" label={field.label} value={values[field.key] ?? 0} onChange={event => set(field.key, Number(event.target.value))} sx={{ flex: 1 }} />
+                <Hint text={field.hint} />
+              </Stack>
+            )
+          })}
+        </Stack>
+      ))}
+    </>
+  )
+}
+
 type Props = {
   title: string
   path: string
@@ -138,66 +217,87 @@ export function SettingForm({ title, path, groups, meta, notify }: Props) {
           <input hidden type="file" accept="application/json" onChange={event => { const file = event.target.files?.[0]; if (file) upload(file) }} />
         </Button>
       </Stack>
-      {groups.map(group => (
-        <Stack key={group.title} spacing={1.5} sx={{ p: 2, borderRadius: 2, bgcolor: '#2b2d31' }}>
-          <Typography variant="h6">{group.title}</Typography>
-          {group.fields.map(field => {
-            if (field.kind === 'bool') {
-              return (
-                <Stack key={field.key} direction="row" spacing={0.75} alignItems="center">
-                  <FormControlLabel control={<Checkbox checked={values[field.key] === 1} onChange={event => set(field.key, event.target.checked ? 1 : 0)} />} label={field.label} />
-                  <Hint text={field.hint} />
-                </Stack>
-              )
-            }
-            if (field.kind === 'range') {
-              return (
-                <Stack key={field.min} direction="row" spacing={1} alignItems="center">
-                  <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 220 }}>
-                    <Typography>{field.label}</Typography>
-                    <Hint text={field.hint} />
-                  </Stack>
-                  <TextField size="small" type="number" label="Mín" value={values[field.min] ?? 0} onChange={event => set(field.min, Number(event.target.value))} />
-                  <TextField size="small" type="number" label="Máx" value={values[field.max] ?? 0} onChange={event => set(field.max, Number(event.target.value))} />
-                  <Typography color="text.secondary">{field.unit}</Typography>
-                </Stack>
-              )
-            }
-            if (field.kind === 'tribe') {
-              return (
-                <Stack key="tribe" direction="row" spacing={1} alignItems="center">
-                  <TextField select label={field.label} value={values.Tribe ?? 0} onChange={event => set('Tribe', Number(event.target.value))} sx={{ flex: 1 }}>
-                    {(meta?.tribes ?? []).map(tribe => <MenuItem key={tribe.value} value={tribe.value}>{tribe.name}</MenuItem>)}
-                  </TextField>
-                  <Hint text={field.hint} />
-                </Stack>
-              )
-            }
-            if (field.kind === 'troop') {
-              return (
-                <Stack key={field.key} direction="row" spacing={1} alignItems="center">
-                  <TextField select label={field.label} value={values[field.key] ?? 0} onChange={event => set(field.key, Number(event.target.value))} sx={{ flex: 1 }}>
-                    {(meta?.troops ?? []).map(troop => <MenuItem key={troop.value} value={troop.value}>{troop.name}</MenuItem>)}
-                  </TextField>
-                  <Hint text={field.hint} />
-                </Stack>
-              )
-            }
-            return (
-              <Stack key={field.key} direction="row" spacing={1} alignItems="center">
-                <TextField type="number" label={field.label} value={values[field.key] ?? 0} onChange={event => set(field.key, Number(event.target.value))} sx={{ flex: 1 }} />
-                <Hint text={field.hint} />
-              </Stack>
-            )
-          })}
-        </Stack>
-      ))}
+      <SettingGroups groups={groups} values={values} set={set} meta={meta} />
     </Stack>
   )
 }
 
-export function AccountSettings(props: { accountId: number; meta: Meta | null; notify: (message: string) => void }) {
-  return <SettingForm title="Ajustes de la cuenta" path={`/api/accounts/${props.accountId}/settings`} groups={accountFields} meta={props.meta} notify={props.notify} />
+const accountTabs = [
+  { id: 'cuenta', label: 'Cuenta' },
+  { id: 'actividad', label: 'Actividad' },
+  { id: 'demoras', label: 'Demoras' },
+  { id: 'funciones', label: 'Funciones' },
+] as const
+
+export function AccountSettings(props: { accountId: number; meta: Meta | null; notify: (message: string) => void; refresh: () => void }) {
+  const [tab, setTab] = useState<(typeof accountTabs)[number]['id']>('cuenta')
+  const [values, setValues] = useState<Record<string, number>>({})
+  const path = `/api/accounts/${props.accountId}/settings`
+  const groups = tab === 'actividad'
+    ? accountFields.filter(group => group.title === 'Actividad')
+    : tab === 'demoras'
+      ? accountFields.filter(group => group.title === 'Demoras')
+      : accountFields.filter(group => group.title === 'Funciones' || group.title === 'Chrome')
+
+  useEffect(() => {
+    api<Record<string, number>>(path).then(result => setValues(result.data)).catch((error: Error) => props.notify(error.message))
+  }, [path])
+
+  function set(key: string, value: number) {
+    setValues(current => ({ ...current, [key]: value }))
+  }
+
+  async function save() {
+    try {
+      const result = await put(path, values)
+      props.notify(result.message)
+    } catch (error) {
+      props.notify(error instanceof Error ? error.message : 'No se pudo guardar')
+    }
+  }
+
+  function download() {
+    const blob = new Blob([JSON.stringify(values, null, 2)], { type: 'application/json' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = 'ajustes.json'
+    link.click()
+  }
+
+  async function upload(file: File) {
+    try {
+      const parsed = JSON.parse(await file.text()) as Record<string, number>
+      const result = await put<Record<string, number>>(path, parsed)
+      setValues(parsed)
+      props.notify(result.message)
+    } catch (error) {
+      props.notify(error instanceof Error ? error.message : 'Archivo inválido')
+    }
+  }
+
+  return (
+    <Stack spacing={2} sx={{ flex: 1, minHeight: 0 }}>
+      <Typography variant="h4">Ajustes de la cuenta</Typography>
+      <ToggleButtonGroup exclusive size="small" value={tab} onChange={(_, value) => value && setTab(value)} sx={tabGroup}>
+        {accountTabs.map(item => <ToggleButton key={item.id} value={item.id}>{item.label}</ToggleButton>)}
+      </ToggleButtonGroup>
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        {tab === 'cuenta' && <AccountEditor key={props.accountId} accountId={props.accountId} notify={props.notify} refresh={props.refresh} />}
+        {tab !== 'cuenta' && (
+          <Stack spacing={2}>
+            <Stack direction="row" spacing={1}>
+              <Button variant="contained" onClick={save}>Guardar</Button>
+              <Button variant="outlined" onClick={download}>Exportar</Button>
+              <Button variant="outlined" component="label">Importar
+                <input hidden type="file" accept="application/json" onChange={event => { const file = event.target.files?.[0]; if (file) upload(file) }} />
+              </Button>
+            </Stack>
+            <SettingGroups groups={groups} values={values} set={set} meta={props.meta} />
+          </Stack>
+        )}
+      </Box>
+    </Stack>
+  )
 }
 
 export function VillageSettings(props: { accountId: number; villageId: number; meta: Meta | null; notify: (message: string) => void }) {

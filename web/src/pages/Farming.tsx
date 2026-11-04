@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Box, Button, MenuItem, Stack, TextField, Typography } from '@mui/material'
+import { Box, Button, MenuItem, Stack, TextField, Tooltip, Typography } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import SearchIcon from '@mui/icons-material/Search'
 import StopIcon from '@mui/icons-material/Stop'
@@ -32,6 +33,14 @@ const tile = {
   '&.Mui-disabled': { color: '#6d6f78' },
   '&.Mui-disabled .MuiSvgIcon-root': { color: '#6d6f78' },
 } as const
+
+function Hint({ text }: { text: string }) {
+  return (
+    <Tooltip title={text} placement="top" arrow enterDelay={200} slotProps={{ tooltip: { sx: { maxWidth: 280, fontSize: 13, lineHeight: 1.45 } } }}>
+      <InfoOutlinedIcon sx={{ fontSize: 16, color: '#949ba4', cursor: 'help' }} />
+    </Tooltip>
+  )
+}
 
 function Tile({ icon, label, color, disabled, onClick }: { icon: ReactNode; label: string; color: string; disabled?: boolean; onClick: () => void }) {
   return (
@@ -163,6 +172,7 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
     document.getElementById(`cow-${activeId}`)?.scrollIntoView({ block: 'nearest' })
   }, [activeId])
   const countdown = data?.countdown ?? ''
+  const timesReady = minMinutes >= 1 && repeatMinutes >= 1
   const selectedList = data?.lists.find(list => list.id === listId)
   if (data && data.villages.length === 0) {
     return <Empty title="Esta cuenta no tiene aldeas" text="Conectá la cuenta para que cargue las aldeas. Después vas a poder armar las listas acá." />
@@ -195,15 +205,25 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
               <Tile color="#5865f2" icon={<SyncIcon />} label={syncing ? 'Sync...' : 'Sync'} disabled={!listId || cows.length === 0 || saving || syncing} onClick={syncNames} />
               <Tile color="#23a559" icon={<AddIcon />} label="Agregar" disabled={!listId || saving || syncing} onClick={() => { setAdding(true); setCowId(0); setCowName(''); setUrl(''); setTroops('') }} />
               <Tile color="#f0b232" icon={<SearchIcon />} label="Oasis" disabled={!listId || saving || syncing} onClick={search} />
-              <Tile color="#23a559" icon={<PlayArrowIcon />} label="Iniciar" disabled={!listId || saving || syncing} onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/start`, { minMinutes, repeatMinutes }))} />
+              <Tooltip title={timesReady ? '' : 'Completá el mínimo por aldea y cada cuánto se revisa la lista. Los dos tienen que ser de 1 minuto o más.'}>
+                <Box sx={{ minWidth: 0, display: 'flex', '& > .MuiButton-root': { flex: 1 } }}>
+                  <Tile color="#23a559" icon={<PlayArrowIcon />} label="Iniciar" disabled={!listId || saving || syncing || !timesReady} onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/start`, { minMinutes, repeatMinutes }))} />
+                </Box>
+              </Tooltip>
               <Tile color="#ed4245" icon={<StopIcon />} label="Detener" disabled={!listId || (saving && !syncing)} onClick={stopAll} />
             </Box>
             {countdown && <Typography color="error" fontWeight={800} sx={{ mt: 1.5 }}>{countdown}</Typography>}
           </Box>
 
           <Box sx={{ ...panel, display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 1, alignItems: 'center' }}>
-            <TextField type="number" label="Mínimo por aldea (minutos)" value={minMinutes} onChange={event => setMinMinutes(Number(event.target.value))} />
-            <TextField type="number" label="Revisar la lista cada (minutos)" value={repeatMinutes} onChange={event => setRepeatMinutes(Number(event.target.value))} />
+            <Stack direction="row" spacing={0.75} alignItems="center">
+              <TextField fullWidth required type="number" label="Mínimo por aldea" value={minMinutes || ''} error={listId > 0 && minMinutes < 1} onChange={event => setMinMinutes(Number(event.target.value))} slotProps={{ input: { endAdornment: <Typography color="text.secondary" sx={{ ml: 1 }}>min</Typography> } }} />
+              <Hint text="Minutos que tienen que pasar para volver a atacar la misma aldea. Si todavía no se cumplieron, esa aldea se saltea." />
+            </Stack>
+            <Stack direction="row" spacing={0.75} alignItems="center">
+              <TextField fullWidth required type="number" label="Revisar la lista cada" value={repeatMinutes || ''} error={listId > 0 && repeatMinutes < 1} onChange={event => setRepeatMinutes(Number(event.target.value))} slotProps={{ input: { endAdornment: <Typography color="text.secondary" sx={{ ml: 1 }}>min</Typography> } }} />
+              <Hint text="Minutos que espera el bot después de recorrer la lista para empezar otra vez y atacar las aldeas que ya cumplieron el mínimo." />
+            </Stack>
             <Button variant="contained" disabled={!listId || saving} onClick={() => run(() => put(`/api/accounts/${accountId}/farming/lists/${listId}`, { name, minMinutes, repeatMinutes }))} sx={{ height: 40 }}>Guardar</Button>
           </Box>
 
