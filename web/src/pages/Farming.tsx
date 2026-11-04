@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Box, Button, MenuItem, Stack, TextField, Typography } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
@@ -57,6 +57,7 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
   const [adding, setAdding] = useState(false)
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const syncAbort = useRef<AbortController | null>(null)
 
   async function load(nextVillage = villageId) {
     const result = await api<FarmingData>(`/api/accounts/${accountId}/farming?villageId=${nextVillage}`)
@@ -102,6 +103,35 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
       return false
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function syncNames() {
+    const controller = new AbortController()
+    syncAbort.current = controller
+    setSyncing(true)
+    try {
+      const result = await api(`/api/accounts/${accountId}/farming/lists/${listId}/sync`, { method: 'POST', signal: controller.signal })
+      notify(result.message)
+      await load()
+    } catch (error) {
+      if (controller.signal.aborted) return
+      notify(error instanceof Error ? error.message : 'No se pudo sincronizar')
+    } finally {
+      if (syncAbort.current === controller) syncAbort.current = null
+      setSyncing(false)
+    }
+  }
+
+  async function stopAll() {
+    const wasSyncing = syncAbort.current !== null
+    syncAbort.current?.abort()
+    try {
+      const result = await post(`/api/accounts/${accountId}/farming/lists/${listId}/stop`)
+      notify(wasSyncing ? 'Sync detenido.' : result.message)
+      await load()
+    } catch (error) {
+      notify(wasSyncing ? 'Sync detenido.' : error instanceof Error ? error.message : 'No se pudo detener')
     }
   }
 
@@ -155,11 +185,11 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
           <Box sx={{ ...panel }}>
             <Typography fontWeight={700} sx={{ mb: 1.5 }}>{selectedList ? selectedList.name : 'Elegí una lista'}</Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 1 }}>
-              <Tile color="#5865f2" icon={<SyncIcon />} label={syncing ? 'Sync...' : 'Sync'} disabled={!listId || cows.length === 0 || saving} onClick={async () => { setSyncing(true); await run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/sync`)); setSyncing(false) }} />
-              <Tile color="#23a559" icon={<AddIcon />} label="Agregar" disabled={!listId || saving} onClick={() => { setAdding(true); setCowId(0); setCowName(''); setUrl(''); setTroops('') }} />
-              <Tile color="#f0b232" icon={<SearchIcon />} label="Oasis" disabled={!listId || saving} onClick={search} />
-              <Tile color="#23a559" icon={<PlayArrowIcon />} label="Iniciar" disabled={!listId || saving} onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/start`, { minMinutes, repeatMinutes }))} />
-              <Tile color="#ed4245" icon={<StopIcon />} label="Detener" disabled={!listId || saving} onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/stop`))} />
+              <Tile color="#5865f2" icon={<SyncIcon />} label={syncing ? 'Sync...' : 'Sync'} disabled={!listId || cows.length === 0 || saving || syncing} onClick={syncNames} />
+              <Tile color="#23a559" icon={<AddIcon />} label="Agregar" disabled={!listId || saving || syncing} onClick={() => { setAdding(true); setCowId(0); setCowName(''); setUrl(''); setTroops('') }} />
+              <Tile color="#f0b232" icon={<SearchIcon />} label="Oasis" disabled={!listId || saving || syncing} onClick={search} />
+              <Tile color="#23a559" icon={<PlayArrowIcon />} label="Iniciar" disabled={!listId || saving || syncing} onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/start`, { minMinutes, repeatMinutes }))} />
+              <Tile color="#ed4245" icon={<StopIcon />} label="Detener" disabled={!listId || (saving && !syncing)} onClick={stopAll} />
             </Box>
             {countdown && <Typography color="error" fontWeight={800} sx={{ mt: 1.5 }}>{countdown}</Typography>}
           </Box>

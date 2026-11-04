@@ -18,7 +18,7 @@ namespace MainCore.Tasks
             protected override string TaskName => $"Raid cow list #{CowListId}";
         }
 
-        private readonly record struct CowTarget(int Id, string Url, string? TroopPlan, int TroopCount, DateTime? LastAttackedAt, int MinAttackMinutes);
+        private readonly record struct CowTarget(int Id, string Url, string Name, string? TroopPlan, int TroopCount, DateTime? LastAttackedAt, int MinAttackMinutes);
 
         private async ValueTask<Result> HandleAsync(Task task, CancellationToken cancellationToken)
         {
@@ -91,6 +91,8 @@ namespace MainCore.Tasks
                 MarkSkipped(target.Id, "Error");
                 return Retry.Error.WithError($"Tile page did not load for {target.Url}");
             }
+
+            await CaptureMissingName(target);
 
             var tile = await CowOasisParser.ReadTile(browser.CurrentPage);
             if (!tile.IsOasis)
@@ -238,6 +240,23 @@ namespace MainCore.Tasks
             task.ExecuteAt = DateTime.Now.AddMinutes(repeat);
         }
 
+        private async System.Threading.Tasks.Task CaptureMissingName(CowTarget target)
+        {
+            if (!string.IsNullOrWhiteSpace(target.Name) && target.Name.Trim() != CowOasisParser.MissingName) return;
+
+            var name = await CowOasisParser.ReadTitle(browser.CurrentPage);
+            if (string.IsNullOrWhiteSpace(name) || name == CowOasisParser.MissingName) return;
+
+            using var context = contextFactory.CreateDbContext();
+            var updated = context.CowVillages
+                .Where(x => x.Id == target.Id)
+                .Where(x => x.Name == null || x.Name == "" || x.Name == CowOasisParser.MissingName)
+                .ExecuteUpdate(x => x.SetProperty(village => village.Name, name));
+            if (updated == 0 || browser.AccountId == AccountId.Empty) return;
+
+            rxQueue.Enqueue(new CowVillagesModified(browser.AccountId));
+        }
+
         private void MarkAttacked(int cowVillageId)
         {
             using var context = contextFactory.CreateDbContext();
@@ -270,9 +289,9 @@ namespace MainCore.Tasks
                 .Where(x => x.CowListId == task.CowListId)
                 .Where(x => x.CowList.AccountId == task.AccountId.Value)
                 .OrderBy(x => x.Id)
-                .Select(x => new { x.Id, x.Url, x.TroopPlan, x.TroopCount, x.LastAttackedAt, x.CowList.MinAttackMinutes })
+                .Select(x => new { x.Id, x.Url, x.Name, x.TroopPlan, x.TroopCount, x.LastAttackedAt, x.CowList.MinAttackMinutes })
                 .AsEnumerable()
-                .Select(x => new CowTarget(x.Id, x.Url, x.TroopPlan, x.TroopCount, x.LastAttackedAt, x.MinAttackMinutes))
+                .Select(x => new CowTarget(x.Id, x.Url, x.Name, x.TroopPlan, x.TroopCount, x.LastAttackedAt, x.MinAttackMinutes))
                 .ToList();
         }
     }
