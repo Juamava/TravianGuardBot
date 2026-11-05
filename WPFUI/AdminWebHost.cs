@@ -46,6 +46,24 @@ namespace WPFUI
                 return;
             }
 
+            if (!Debugger.IsAttached)
+            {
+                try
+                {
+                    var info = await AppUpdate.Check();
+                    if (info.Available)
+                    {
+                        ShowDesktop("Hay una versión " + info.Latest + ". Se instala ahora y el programa se vuelve a abrir solo.");
+                        await AppUpdate.Apply(services);
+                        return;
+                    }
+                }
+                catch
+                {
+                    // If GitHub does not answer, the current version still opens.
+                }
+            }
+
             try
             {
                 LaunchWindow(url);

@@ -58,6 +58,8 @@ namespace WPFUI
             app.MapGet("/api/health", () => Ok("listo"));
             app.MapGet("/api/meta", Meta);
             app.MapGet("/api/overview", () => Overview(services));
+            app.MapGet("/api/update", () => CheckUpdate());
+            app.MapPost("/api/update", () => ApplyUpdate(services));
             app.MapPost("/api/shutdown", () =>
             {
                 System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => System.Windows.Application.Current.Shutdown());
@@ -117,6 +119,24 @@ namespace WPFUI
             app.MapPost("/api/templates/{kind}", (string kind, TemplateBody body) => SetTemplate(services, kind, body.Path));
             app.MapDelete("/api/templates/{kind}", (string kind) => ClearTemplate(services, kind));
             app.MapPost("/api/templates/{kind}/upload", async (string kind, HttpRequest request) => await UploadTemplate(services, kind, request));
+        }
+
+        private static async Task<IResult> CheckUpdate()
+        {
+            var info = await AppUpdate.Check();
+            return Ok(info.Detail ?? "", new { current = info.Current, latest = info.Latest, available = info.Available, mandatory = info.Mandatory, publishedAt = info.PublishedAt, detail = info.Detail });
+        }
+
+        private static async Task<IResult> ApplyUpdate(IServiceProvider services)
+        {
+            try
+            {
+                return Ok(await AppUpdate.Apply(services));
+            }
+            catch (Exception ex)
+            {
+                return Fail(ex.Message);
+            }
         }
 
         private static IResult Meta()
@@ -598,7 +618,7 @@ namespace WPFUI
             var villages = context.Villages.Where(x => x.AccountId == accountId).OrderBy(x => x.Name)
                 .Select(x => new { id = x.Id, name = x.Name, x = x.X, y = x.Y }).ToList();
             var lists = context.CowLists.Where(x => x.AccountId == accountId && x.VillageId == villageId).OrderBy(x => x.Name)
-                .Select(x => new { id = x.Id, name = x.Name, minMinutes = x.MinAttackMinutes, repeatMinutes = x.RepeatMinutes })
+                .Select(x => new { id = x.Id, name = x.Name, minMinutes = x.MinAttackMinutes, repeatMinutes = x.RepeatMinutes, autoStart = x.AutoStart })
                 .ToList();
             var listIds = lists.Select(x => x.id).ToList();
             var cows = context.CowVillages.Where(x => listIds.Contains(x.CowListId)).OrderBy(x => x.Id)
@@ -636,17 +656,33 @@ namespace WPFUI
             var name = (body.Name ?? "").Trim();
             if (name.Length == 0) return Fail("Escribí un nombre para la lista.");
             if (body.MinMinutes < 0 || body.RepeatMinutes < 0) return Fail("Los minutos tienen que ser 0 o más.");
+            if (body.AutoStart && (body.MinMinutes < 1 || body.RepeatMinutes < 1))
+                return Fail("Para el inicio automático, el mínimo por aldea y la revisión tienen que ser de 1 minuto o más.");
             using var context = Context(services);
             var villageId = context.CowLists.Where(x => x.Id == listId && x.AccountId == accountId).Select(x => x.VillageId).FirstOrDefault();
             if (villageId == 0) return Fail("No se encontró la lista.");
             if (context.CowLists.Any(x => x.AccountId == accountId && x.VillageId == villageId && x.Id != listId && x.Name == name))
                 return Fail("Ya existe una lista con ese nombre en esta aldea.");
+            if (body.AutoStart && !context.CowVillages.Any(x => x.CowListId == listId))
+                return Fail("La lista no tiene aldeas.");
+
+            var turnedOff = 0;
+            if (body.AutoStart)
+            {
+                turnedOff = context.CowLists
+                    .Where(x => x.AccountId == accountId && x.Id != listId && x.AutoStart)
+                    .ExecuteUpdate(x => x.SetProperty(list => list.AutoStart, false));
+            }
 
             context.CowLists.Where(x => x.Id == listId).ExecuteUpdate(x => x
                 .SetProperty(list => list.Name, name)
                 .SetProperty(list => list.MinAttackMinutes, body.MinMinutes)
-                .SetProperty(list => list.RepeatMinutes, body.RepeatMinutes));
-            return Ok("Lista guardada.");
+                .SetProperty(list => list.RepeatMinutes, body.RepeatMinutes)
+                .SetProperty(list => list.AutoStart, body.AutoStart));
+            if (!body.AutoStart) return Ok("Lista guardada.");
+            return Ok(turnedOff > 0
+                ? "Inicio automático activado. Se apagó en las otras listas."
+                : "Lista guardada. Arranca sola al conectar la cuenta.");
         }
 
         private static IResult DeleteCowList(IServiceProvider services, int accountId, int listId)
@@ -1519,6 +1555,7 @@ namespace WPFUI
         public string Name { get; set; }
         public int MinMinutes { get; set; }
         public int RepeatMinutes { get; set; }
+        public bool AutoStart { get; set; }
     }
 
     public sealed class CowVillageBody
