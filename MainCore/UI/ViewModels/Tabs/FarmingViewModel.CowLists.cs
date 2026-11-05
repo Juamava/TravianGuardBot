@@ -616,11 +616,25 @@ namespace MainCore.UI.ViewModels.Tabs
             var troopPlan = CowTroopPlan.Format(slots);
             var troopCount = slots.Sum(slot => slot.Amount);
 
+            var minText = await _dialogService.RequestInput("Buscar oasis", $"Distancia mínima en casillas desde {villageName} ({originX}|{originY}). Escribí 0 para incluir las cercanas:");
+            if (string.IsNullOrWhiteSpace(minText)) return;
+            if (!TryParseDistance(minText, out var minDistance, allowZero: true))
+            {
+                await _dialogService.SendMessage("Warning", "La distancia mínima tiene que ser un número de 0 o más.");
+                return;
+            }
+
             var distanceText = await _dialogService.RequestInput("Buscar oasis", $"Distancia máxima en casillas desde {villageName} ({originX}|{originY}):");
             if (string.IsNullOrWhiteSpace(distanceText)) return;
             if (!TryParseDistance(distanceText, out var maxDistance))
             {
-                await _dialogService.SendMessage("Warning", "La distancia tiene que ser un número mayor que 0.");
+                await _dialogService.SendMessage("Warning", "La distancia máxima tiene que ser un número mayor que 0.");
+                return;
+            }
+
+            if (minDistance > maxDistance)
+            {
+                await _dialogService.SendMessage("Warning", "La distancia mínima no puede ser mayor que la máxima.");
                 return;
             }
 
@@ -628,7 +642,7 @@ namespace MainCore.UI.ViewModels.Tabs
             try
             {
                 var catalogUrl = OasisCatalog.BuildCatalogUrl(server, originX, originY);
-                found = await browser.InNewTab(page => OasisCatalog.Collect(page, catalogUrl, originX, originY, maxDistance));
+                found = await browser.InNewTab(page => OasisCatalog.Collect(page, catalogUrl, originX, originY, minDistance, maxDistance));
             }
             catch (Exception ex)
             {
@@ -771,11 +785,11 @@ namespace MainCore.UI.ViewModels.Tabs
             return "sin atacar";
         }
 
-        private static bool TryParseDistance(string input, out double distance)
+        private static bool TryParseDistance(string input, out double distance, bool allowZero = false)
         {
             var text = input.Trim();
-            if (double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out distance) && distance > 0) return true;
-            if (double.TryParse(text.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out distance) && distance > 0) return true;
+            if (double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out distance) && distance >= 0 && (allowZero || distance > 0)) return true;
+            if (double.TryParse(text.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out distance) && distance >= 0 && (allowZero || distance > 0)) return true;
             distance = 0;
             return false;
         }
