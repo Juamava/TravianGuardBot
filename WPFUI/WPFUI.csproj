@@ -22,6 +22,9 @@
 
   <ItemGroup>
     <Resource Include="Resources\**" />
+    <Resource Include="..\logo.png">
+      <Link>logo.png</Link>
+    </Resource>
   </ItemGroup>
 
   <ItemGroup>

@@ -58,12 +58,20 @@ namespace WPFUI
             return info;
         }
 
-        public static async Task<string> Apply(IServiceProvider services)
+        public static void MarkReady()
+        {
+            var path = ReadyPath();
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllText(path, CurrentVersion());
+        }
+
+        public static async Task<string> Apply(IServiceProvider services, Action<string, int> progress = null)
         {
             if (System.Threading.Interlocked.Exchange(ref _applying, 1) == 1)
                 throw new InvalidOperationException("La actualización ya está en curso.");
             try
             {
+                UpdateSplash.Show(CurrentVersion());
                 if (AccountIsOpen(services))
                     throw new InvalidOperationException("Desconectá la cuenta antes de actualizar.");
 
@@ -71,6 +79,7 @@ namespace WPFUI
                 if (!info.Available)
                     throw new InvalidOperationException(string.IsNullOrWhiteSpace(info.Detail) ? "Ya está al día." : info.Detail);
 
+                Report(progress, "Descargando " + info.Latest + "...", 10);
                 var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TravianGuardBot", "update");
                 Directory.CreateDirectory(root);
                 var zipPath = Path.Combine(root, AssetName);
@@ -78,11 +87,13 @@ namespace WPFUI
                 if (Directory.Exists(staging)) Directory.Delete(staging, true);
                 Directory.CreateDirectory(staging);
 
-                await Download(info.AssetUrl, zipPath);
+                await Download(info.AssetUrl, zipPath, progress, info.Latest);
+                Report(progress, "Preparando los archivos...", 88);
                 Extract(zipPath, staging);
                 if (!File.Exists(Path.Combine(staging, "TravianBotSharp.exe")))
                     throw new InvalidOperationException("El paquete no trae el programa.");
 
+                Report(progress, "Se instala " + info.Latest + ". Si algo falla, vuelve sola a la versión " + info.Current + ".", 96);
                 var install = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
                 var script = Path.Combine(root, "apply.ps1");
                 File.WriteAllText(script, ApplyScript(), new UTF8Encoding(true));
@@ -176,7 +187,7 @@ namespace WPFUI
             return Http.SendAsync(request);
         }
 
-        private static async Task Download(string assetUrl, string zipPath)
+        private static async Task Download(string assetUrl, string zipPath, Action<string, int> progress, string latest)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, assetUrl);
             request.Headers.UserAgent.ParseAdd("TravianGuardBot");
@@ -191,7 +202,32 @@ namespace WPFUI
             response.EnsureSuccessStatusCode();
             await using var source = await response.Content.ReadAsStreamAsync();
             await using var destination = File.Create(zipPath);
-            await source.CopyToAsync(destination);
+            var total = response.Content.Headers.ContentLength.GetValueOrDefault();
+            var buffer = new byte[81920];
+            var read = 0L;
+            var last = 10;
+            while (true)
+            {
+                var count = await source.ReadAsync(buffer, 0, buffer.Length);
+                if (count == 0) break;
+                await destination.WriteAsync(buffer, 0, count);
+                read += count;
+                if (total <= 0) continue;
+                var percent = 10 + (int)(read * 70 / total);
+                if (percent == last) continue;
+                last = percent;
+                Report(progress, "Descargando " + latest + "...", percent);
+            }
+        }
+
+        private static void Report(Action<string, int> progress, string status, int percent)
+        {
+            if (progress != null) progress(status, percent);
+        }
+
+        private static string ReadyPath()
+        {
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TravianGuardBot", "update", "ready");
         }
 
         private static void Extract(string zipPath, string staging)
@@ -275,20 +311,64 @@ namespace WPFUI
                   [string]$Staging,
                   [int]$TargetPid
                 )
-                $log = Join-Path $env:LOCALAPPDATA 'TravianGuardBot\update\apply.log'
+                $root = Join-Path $env:LOCALAPPDATA 'TravianGuardBot\update'
+                $log = Join-Path $root 'apply.log'
+                $backup = Join-Path $root 'backup'
+                $ready = Join-Path $root 'ready'
+                $exe = Join-Path $Install 'TravianBotSharp.exe'
                 function Write-Log($text) { Add-Content -Path $log -Value ((Get-Date -Format o) + ' ' + $text) }
+                function Copy-Tree($from, $to) {
+                  New-Item -ItemType Directory -Force -Path $to | Out-Null
+                  & robocopy $from $to /E /NFL /NDL /NJH /NJS /XD Data Screenshots Logs /XF *.pdb > $null
+                  $code = $LASTEXITCODE
+                  Write-Log ("robocopy " + $code + " " + $from)
+                  return $code
+                }
+                function Start-Current {
+                  Start-Process -FilePath $exe -WorkingDirectory $Install
+                }
+                function Restore-Previous {
+                  if (-not (Test-Path (Join-Path $backup 'TravianBotSharp.exe'))) { return }
+                  Copy-Tree $backup $Install | Out-Null
+                  Start-Current
+                }
                 try {
                   Write-Log ("waiting " + $TargetPid)
                   Wait-Process -Id $TargetPid -ErrorAction SilentlyContinue
                   Start-Sleep -Seconds 2
-                  & robocopy $Staging $Install /E /NFL /NDL /NJH /NJS /XD Data Screenshots Logs /XF *.pdb
-                  $code = $LASTEXITCODE
-                  Write-Log ("robocopy " + $code)
-                  if ($code -ge 8) { exit $code }
-                  Start-Process -FilePath (Join-Path $Install 'TravianBotSharp.exe') -WorkingDirectory $Install
-                  Write-Log 'started'
+                  if (Test-Path $backup) { Remove-Item $backup -Recurse -Force }
+                  $saved = Copy-Tree $Install $backup
+                  if ($saved -ge 8) {
+                    Write-Log 'backup failed, current version stays'
+                    Start-Current
+                    exit 1
+                  }
+                  $applied = Copy-Tree $Staging $Install
+                  if ($applied -ge 8) {
+                    Write-Log 'install failed, restoring'
+                    Restore-Previous
+                    exit $applied
+                  }
+                  if (Test-Path $ready) { Remove-Item $ready -Force }
+                  $proc = Start-Process -FilePath $exe -WorkingDirectory $Install -ArgumentList '--updated' -PassThru
+                  $deadline = (Get-Date).AddSeconds(90)
+                  $healthy = $false
+                  while ((Get-Date) -lt $deadline) {
+                    if (Test-Path $ready) { $healthy = $true; break }
+                    if ($proc.HasExited) { break }
+                    Start-Sleep -Milliseconds 500
+                  }
+                  if ($healthy) {
+                    Write-Log 'ready'
+                    exit 0
+                  }
+                  Write-Log 'new version did not stay open, restoring'
+                  if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+                  Restore-Previous
+                  exit 1
                 } catch {
                   Write-Log $_.Exception.Message
+                  Restore-Previous
                   exit 1
                 }
                 """;

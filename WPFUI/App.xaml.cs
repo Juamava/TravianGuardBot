@@ -34,6 +34,7 @@ namespace WPFUI
         protected override async void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
+            UpdateSplash.Show(AppUpdate.CurrentVersion());
             var hostBuilder = AppMixins.GetHostBuilder()
                 .ConfigureServices(services => services.AddHostedService<AdminWebHost>())
                 .ConfigureSplatForMicrosoftDependencyResolver()
