@@ -195,25 +195,31 @@ The calling code checks them with `result.IsFailed` and `result.HasError<Storage
 
 The task reschedules itself while `KeepRepeating` is on. `OasisCatalog` builds links to `oasis.travibot.com` to find oases near the village. The UI is in `FarmingViewModel.CowLists.cs`.
 
-## Hero leveling ("Poner a levear")
+### "Levear héroe" (hero hunting inside the cow list)
 
-`HeroLevelingTask` (`MainCore/Tasks/HeroLevelingTask.cs`) levels the hero up without letting him die. The on/off flag, the state and the last message live in the `HeroLevelings` table (one row per account, created with raw SQL in `EnsureHeroLevelingTable`). The Hero page of the web admin uses `GET /api/accounts/{id}/hero` and `POST /api/accounts/{id}/hero/leveling/start|stop`. `RxQueue.AccountInitHandler` queues the task again when it is enabled.
+Each list has a `LevelHero` flag (`CowLists.LevelHero`, added with `EnsureColumn`), shown as the "Levear héroe" checkbox on the Farming page and saved through `PUT /api/accounts/{id}/farming/lists/{listId}` (`levelHero`). When the flag is off, nothing changes: an oasis with animals is skipped as "Hay tropas".
 
-Each run does this:
+When it is on, an oasis with animals goes through `HuntAnimalOasisCommand` (`MainCore/Commands/Features/HeroHunt/`) instead of being skipped. Empty oases are still raided with troops exactly as before. The hero state of one pass over the list lives in `RaidCowListTask.Task.Hero` (`HeroRunState`) and resets together with `NextIndex`. `HeroLevelingRules.DecideAnimalOasis` decides what to do:
 
-1. If the hero is not home (`HeroParser.IsHeroHome`, the top bar `i.heroHome` icon), it waits until the estimated return or 5 minutes.
-2. It reads HP, XP, level, speed and the hero points on `/hero/attributes` (`HeroParser.ReadStats`). If the HP cannot be read, it does nothing and waits 10 minutes.
-3. HP >= 50% and an adventure is available: it starts the adventure with the existing adventure commands.
-4. HP < 50%: it collects task rewards one at a time and reads the HP again after each one. Leveling up restores full HP, so it stops as soon as the HP is back to 50% or more. The rest of the tasks are kept as an XP reserve. If the HP is still low, it waits 30–60 minutes.
-5. HP >= 50% and no adventure: it hunts in the cow list named **Oasis**. If the list is missing or empty, the task disables itself and shows a message. Oases are checked from the closest to the farthest from the hero's village, at most 20 per run. The search position is saved in `HeroLevelings.NextOasisId`, so the next run continues after the oases that were already too strong or empty. After a hunt it continues with the next oasis. It starts again from the closest when the hero levels up, has 10% more HP than when the position was saved, finishes a full lap without a safe oasis, or leveling is turned on again. For each oasis it does this:
-   - It reads the tile and skips the oasis if it is occupied or has no animals.
-   - It opens the combat simulator with `newdid` set to the hero's village. It clears the village troops that the simulator prefills, keeps only the hero, loads the real HP, strength points and off-bonus points, checks that the defenders match the animals on the tile, and simulates.
+1. **The hero was already sent in this pass:** the normal "Hay tropas" skip. The hero goes out at most once per pass, always alone and never mixed with the troop plan.
+2. **The hero is not home** (top bar `i.heroHome`): "Héroe fuera".
+3. **The hero's village** (the `newdid` in the top bar hero link) is not the list's village: "Héroe en otra aldea".
+4. **HP is not known yet:** `ReadHeroStatsCommand` reads `/hero/attributes` once per pass. Unreadable HP gives "Héroe sin datos".
+5. **HP < 50%:** `CollectHeroTasksCommand` collects Task overview rewards one at a time, once per pass, and reads the HP again after each one. Leveling up restores full HP, so it stops as soon as the HP is back to 50% or more, and the rest stay as an XP reserve. If the HP is still low: "Héroe con poca vida".
+6. **Otherwise:** `SimulateHeroRaidCommand` opens the combat simulator with `newdid` set to the hero's village. It clears the prefilled village troops, keeps only the hero, loads his real HP and points, checks that the defenders match the animals on the tile, and simulates.
    - `HeroLevelingRules.Evaluate` allows the send only if the hero is the only attacker, his loss cell is 0 (`−1` means he dies), at least one animal dies, the health line is readable, and at least 25% HP is left.
-   - It then opens the rally point raid form, checks the target coordinates, checks that the hero is available (1), makes sure the hero is the only troop and that raid is selected, and checks the confirmation screen before it confirms.
+   - If it allows the send, `SendHeroRaidCommand` fills the rally point with the hero alone, checks the form and then the confirmation screen (raid, target, hero = 1, everything else 0), and confirms. The status becomes "Héroe enviado".
+   - If not, the status is "Muy fuerte" (the hero dies, would keep too little HP, or kills nothing), "Sin simular" (something could not be read or did not match) or "Héroe no enviado" (a rally point check failed).
 
-The automatic `StartAdventureTask` (account setting "Auto start adventure") uses the same rule: it reads HP on `/hero/attributes` first and only starts an adventure with 50% HP or more. With less, or when the HP cannot be read, it waits 30 minutes.
+A hero send does not set `LastAttackedAt`, so the troop cooldown of that oasis stays as it was. While the hero can still go out, a list with "Levear héroe" also opens oases whose troops are short or have no plan ("Sin tropas" / "Sin plan"), in case they have animals. If they have none, the troop reason is recorded as before. Hero problems never stop the list: they only become the status of that oasis.
 
-Everything that is unknown or unreadable means the hero is not sent. The pure rules are in `MainCore/Parsers/HeroLevelingRules.cs` and are tested in `MainCore.Test`.
+## Hero status page
+
+The `HeroLevelings` table (one row per account, created with raw SQL in `EnsureHeroLevelingTable`) only stores status for the Hero page: the last level, HP and XP read, and the last hero action with its time. `GET /api/accounts/{id}/hero` returns it together with the lists that have "Levear héroe" enabled. The page has no buttons.
+
+The automatic `StartAdventureTask` (account setting "Auto start adventure") uses the same HP rule: it reads HP on `/hero/attributes` first and only starts an adventure with 50% HP or more. With less, or when the HP cannot be read, it waits 30 minutes.
+
+Everything that is unknown or unreadable means the hero is not sent. The pure rules are in `MainCore/Parsers/HeroLevelingRules.cs`. They are tested in `MainCore.Test`, and the parsers are tested against trimmed copies of the live pages in `Examples HTML`.
 
 ## CI/CD (`.github/workflows`)
 
