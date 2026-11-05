@@ -247,6 +247,7 @@ namespace MainCore.Infrasturecture.Persistence
             EnsureColumn("CowLists", "VillageId", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("CowLists", "MinAttackMinutes", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("CowLists", "RepeatMinutes", "INTEGER NOT NULL DEFAULT 0");
+            EnsureColumn("CowLists", "LevelHero", "INTEGER NOT NULL DEFAULT 0");
 
             Database.ExecuteSqlRaw(
                 """
@@ -272,21 +273,18 @@ namespace MainCore.Infrasturecture.Persistence
                 """
                 CREATE TABLE IF NOT EXISTS "HeroLevelings" (
                     "AccountId" INTEGER NOT NULL CONSTRAINT "PK_HeroLevelings" PRIMARY KEY,
-                    "Enabled" INTEGER NOT NULL DEFAULT 0,
                     "State" TEXT NULL,
                     "Message" TEXT NULL,
                     "Level" INTEGER NULL,
                     "HpPercent" INTEGER NULL,
                     "Experience" INTEGER NULL,
                     "UpdatedAt" TEXT NULL,
-                    "NextCheckAt" TEXT NULL,
+                    "StatsAt" TEXT NULL,
                     CONSTRAINT "FK_HeroLevelings_Accounts_AccountId" FOREIGN KEY ("AccountId") REFERENCES "Accounts" ("Id") ON DELETE CASCADE
                 );
                 """);
 
-            EnsureColumn("HeroLevelings", "NextOasisId", "INTEGER NULL");
-            EnsureColumn("HeroLevelings", "SearchLevel", "INTEGER NULL");
-            EnsureColumn("HeroLevelings", "SearchHp", "INTEGER NULL");
+            EnsureColumn("HeroLevelings", "StatsAt", "TEXT NULL");
         }
 
         private void EnsureColumn(string table, string name, string definition)

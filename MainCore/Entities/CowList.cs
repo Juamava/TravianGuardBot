@@ -15,6 +15,9 @@ namespace MainCore.Entities
         public int MinAttackMinutes { get; set; }
         public int RepeatMinutes { get; set; }
 
+        /// <summary>"Levear héroe": oases with animals go through the hero hunt instead of being skipped.</summary>
+        public bool LevelHero { get; set; }
+
         public ICollection<CowVillage> Villages { get; set; }
     }
 }

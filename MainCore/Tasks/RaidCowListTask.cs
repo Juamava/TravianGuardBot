@@ -1,3 +1,4 @@
+using MainCore.Commands.Features.HeroHunt;
 using MainCore.Infrasturecture.Extensions;
 using MainCore.Tasks.Base;
 
@@ -8,7 +9,8 @@ namespace MainCore.Tasks
         IDbContextFactory<AppDbContext> contextFactory,
         IChromeBrowser browser,
         RxQueue rxQueue,
-        ILogger logger)
+        ILogger logger,
+        HuntAnimalOasisCommand.Handler huntAnimalOasisCommand)
     {
         public sealed class Task(AccountId accountId, int cowListId) : AccountTask(accountId)
         {
@@ -16,8 +18,14 @@ namespace MainCore.Tasks
             public int NextIndex { get; set; }
             public bool KeepRepeating { get; set; } = true;
             public Dictionary<int, int> KnownTroops { get; } = [];
+
+            /// <summary>Hero state for this pass over the list ("Levear héroe"). Reset with NextIndex.</summary>
+            public HeroRunState Hero { get; } = new();
             protected override string TaskName => $"Raid cow list #{CowListId}";
         }
+
+        /// <summary>List options that only matter for "Levear héroe".</summary>
+        private readonly record struct HeroOptions(bool LevelHero, int ListVillageId, string Server);
 
         private readonly record struct CowTarget(int Id, string Url, string Name, string? TroopPlan, int TroopCount, DateTime? LastAttackedAt, int MinAttackMinutes);
 
@@ -25,6 +33,7 @@ namespace MainCore.Tasks
         {
             var targets = GetTargets(task);
             if (targets.Count == 0) return Skip.Error.WithError("Cow list has no villages");
+            var hero = GetHeroOptions(task);
 
             try
             {
@@ -40,29 +49,41 @@ namespace MainCore.Tasks
                         continue;
                     }
 
+                    // Troops cannot go, but with "Levear héroe" the tile is still opened in case it has animals for the hero.
+                    string? heroOnlyReason = null;
                     var slots = CowTroopPlan.Resolve(target.TroopPlan, target.TroopCount);
                     if (slots.Count == 0)
                     {
                         logger.Information("Skipping {Url}: no troops configured", target.Url);
-                        MarkSkipped(target.Id, "Sin plan");
-                        continue;
+                        if (!HeroLevelingRules.HeroMightGo(hero.LevelHero, task.Hero))
+                        {
+                            MarkSkipped(target.Id, "Sin plan");
+                            continue;
+                        }
+                        heroOnlyReason = "Sin plan";
                     }
-
-                    if (CowTroopPlan.TryBlocked(task.KnownTroops, slots, out var shortage))
+                    else if (CowTroopPlan.TryBlocked(task.KnownTroops, slots, out var shortage))
                     {
                         logger.Information("Skipping {Url}: {Shortage}", target.Url, shortage);
-                        MarkSkipped(target.Id, "Sin tropas");
-                        continue;
+                        if (!HeroLevelingRules.HeroMightGo(hero.LevelHero, task.Hero))
+                        {
+                            MarkSkipped(target.Id, "Sin tropas");
+                            continue;
+                        }
+                        heroOnlyReason = "Sin tropas";
                     }
 
-                    logger.Information("Raiding {Url} with {Troops} ({Index}/{Total})", target.Url, CowTroopPlan.Format(slots), index + 1, targets.Count);
+                    if (heroOnlyReason is null)
+                        logger.Information("Raiding {Url} with {Troops} ({Index}/{Total})", target.Url, CowTroopPlan.Format(slots), index + 1, targets.Count);
+                    else
+                        logger.Information("Checking {Url} for the hero only ({Index}/{Total})", target.Url, index + 1, targets.Count);
                     MarkPhase(target.Id, "Analizando");
                     await System.Threading.Tasks.Task.Delay(NextAttackDelay(task.AccountId), cancellationToken);
 
                     Result result;
                     try
                     {
-                        result = await RaidTarget(task, target, slots);
+                        result = await RaidTarget(task, target, slots, hero, heroOnlyReason, cancellationToken);
                     }
                     catch (OperationCanceledException)
                     {
@@ -95,7 +116,7 @@ namespace MainCore.Tasks
             return Result.Ok();
         }
 
-        private async Task<Result> RaidTarget(Task task, CowTarget target, IReadOnlyList<CowTroopSlot> slots)
+        private async Task<Result> RaidTarget(Task task, CowTarget target, IReadOnlyList<CowTroopSlot> slots, HeroOptions hero, string? heroOnlyReason, CancellationToken cancellationToken)
         {
             var result = await browser.Navigate(target.Url);
             if (result.IsFailed)
@@ -136,8 +157,17 @@ namespace MainCore.Tasks
 
             if (!tile.HasNoTroops)
             {
+                if (hero.LevelHero) return await HuntWithHero(task, target, hero, cancellationToken);
+
                 logger.Information("Skipping {Url}: oasis troop cell does not say none", target.Url);
                 MarkSkipped(target.Id, "Hay tropas");
+                return Result.Ok();
+            }
+
+            if (heroOnlyReason is not null)
+            {
+                // Opened only for the hero and there are no animals: the troop skip reason stands.
+                MarkSkipped(target.Id, heroOnlyReason);
                 return Result.Ok();
             }
 
@@ -219,6 +249,46 @@ namespace MainCore.Tasks
             return Result.Ok();
         }
 
+        /// <summary>
+        /// Oasis with animals on a list with "Levear héroe": the hero hunt decides (simulate, send alone
+        /// only when safe). Hero problems never stop the list: they become the oasis status.
+        /// LastAttackedAt is not touched, so the troop cooldown stays as it was.
+        /// </summary>
+        private async Task<Result> HuntWithHero(Task task, CowTarget target, HeroOptions hero, CancellationToken cancellationToken)
+        {
+            var animals = await CowOasisParser.ReadAnimalCount(browser.CurrentPage);
+            if (animals is null or <= 0)
+            {
+                logger.Information("Skipping {Url}: oasis has troops but the animals could not be counted", target.Url);
+                MarkSkipped(target.Id, HeroLevelingRules.StatusTroops);
+                return Result.Ok();
+            }
+
+            var status = await huntAnimalOasisCommand.HandleAsync(new(hero.Server, hero.ListVillageId, target.Url, animals.Value, task.Hero), cancellationToken);
+            if (status.IsFailed)
+            {
+                if (status.HasError<Cancel>()) throw new OperationCanceledException();
+                MarkSkipped(target.Id, "Error");
+                return Result.Ok();
+            }
+
+            logger.Information("Hero at {Url}: {Status}", target.Url, status.Value);
+            MarkSkipped(target.Id, status.Value);
+            return Result.Ok();
+        }
+
+        private HeroOptions GetHeroOptions(Task task)
+        {
+            using var context = contextFactory.CreateDbContext();
+            var list = context.CowLists
+                .Where(x => x.Id == task.CowListId && x.AccountId == task.AccountId.Value)
+                .Select(x => new { x.LevelHero, x.VillageId })
+                .FirstOrDefault();
+            var server = context.Accounts.Where(x => x.Id == task.AccountId.Value).Select(x => x.Server).FirstOrDefault();
+            if (list is null || string.IsNullOrWhiteSpace(server)) return new HeroOptions(false, 0, "");
+            return new HeroOptions(list.LevelHero, list.VillageId, server);
+        }
+
         private TimeSpan NextAttackDelay(AccountId accountId)
         {
             using var context = contextFactory.CreateDbContext();
@@ -258,6 +328,7 @@ namespace MainCore.Tasks
 
             task.NextIndex = 0;
             task.KnownTroops.Clear();
+            task.Hero.Reset();
             task.ExecuteAt = DateTime.Now.AddMinutes(repeat);
         }
 

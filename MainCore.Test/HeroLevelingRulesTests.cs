@@ -28,24 +28,6 @@ namespace MainCore.Test
         }
 
         [Theory]
-        [InlineData(false, 100, true, true, HeroLevelingAction.WaitForReturn)]
-        [InlineData(true, 50, true, true, HeroLevelingAction.Adventure)]
-        [InlineData(true, 96, false, true, HeroLevelingAction.HuntOasis)]
-        [InlineData(true, 49, true, true, HeroLevelingAction.CollectTasks)]
-        [InlineData(true, 49, true, false, HeroLevelingAction.WaitForHealing)]
-        [InlineData(true, 10, false, false, HeroLevelingAction.WaitForHealing)]
-        public void Decide_follows_hp_threshold(bool home, int hp, bool adventure, bool tasks, HeroLevelingAction expected)
-        {
-            HeroLevelingRules.Decide(home, hp, adventure, tasks).ShouldBe(expected);
-        }
-
-        [Fact]
-        public void Decide_with_unknown_hp_does_nothing()
-        {
-            HeroLevelingRules.Decide(true, null, true, true).ShouldBe(HeroLevelingAction.UnknownHealth);
-        }
-
-        [Theory]
         [InlineData(49, false)]
         [InlineData(50, true)]
         [InlineData(null, false)]
@@ -60,12 +42,16 @@ namespace MainCore.Test
         {
             var verdict = HeroLevelingRules.Evaluate(Numbers());
             verdict.Send.ShouldBeTrue(verdict.Reason);
+            verdict.Outcome.ShouldBe(SimulationOutcome.Safe);
         }
 
         [Fact]
         public void Evaluate_refuses_when_hero_dies()
         {
-            HeroLevelingRules.Evaluate(Numbers(heroLoss: -1, healthAfter: 0)).Send.ShouldBeFalse();
+            var verdict = HeroLevelingRules.Evaluate(Numbers(heroLoss: -1, healthAfter: 0));
+            verdict.Send.ShouldBeFalse();
+            verdict.Outcome.ShouldBe(SimulationOutcome.TooStrong);
+            HeroLevelingRules.StatusFor(verdict).ShouldBe("Muy fuerte");
         }
 
         [Fact]
@@ -116,6 +102,8 @@ namespace MainCore.Test
         public void Evaluate_refuses_null_or_unreadable_result()
         {
             HeroLevelingRules.Evaluate(null).Send.ShouldBeFalse();
+            HeroLevelingRules.Evaluate(null).Outcome.ShouldBe(SimulationOutcome.Unreadable);
+            HeroLevelingRules.StatusFor(HeroLevelingRules.Evaluate(null)).ShouldBe("Sin simular");
 
             var broken = Numbers() with { AttackerLoss = [.. Enumerable.Repeat<int?>(0, 10), null] };
             HeroLevelingRules.Evaluate(broken).Send.ShouldBeFalse();
@@ -154,40 +142,6 @@ namespace MainCore.Test
             HeroLevelingRules.ParseHealthLine("from 50 to 60").ShouldBe(((int?)null, (int?)null));
         }
 
-        [Theory]
-        [InlineData("Oasis", true)]
-        [InlineData("  oasis ", true)]
-        [InlineData("OASIS", true)]
-        [InlineData("Oasis 2", false)]
-        [InlineData(null, false)]
-        public void IsOasisList_is_case_insensitive_and_trimmed(string? name, bool expected)
-        {
-            HeroLevelingRules.IsOasisList(name).ShouldBe(expected);
-        }
-
-        [Fact]
-        public void OrderCandidates_sorts_by_distance_and_skips_bad_urls()
-        {
-            var ordered = HeroLevelingRules.OrderCandidates(
-            [
-                (1, "https://ts.example/karte.php?x=-76&y=28"),
-                (2, "https://ts.example/karte.php?x=-66&y=25"),
-                (3, "not a url"),
-                (4, "https://ts.example/karte.php?x=-69&y=21"),
-            ], -69, 25);
-
-            ordered.Select(x => x.Id).ShouldBe([2, 4, 1]);
-            ordered[0].Distance.ShouldBe(3);
-        }
-
-        [Fact]
-        public void RoundTrip_uses_speed()
-        {
-            HeroLevelingRules.RoundTrip(14, 28).ShouldBe(TimeSpan.FromHours(1));
-            HeroLevelingRules.RoundTrip(14, null).ShouldBeNull();
-            HeroLevelingRules.RoundTrip(14, 0).ShouldBeNull();
-        }
-
         [Fact]
         public void ToNumbers_requires_exactly_one_health_line()
         {
@@ -211,51 +165,119 @@ namespace MainCore.Test
             HeroParser.ParseNewdid(null).ShouldBeNull();
         }
 
-        private static List<OasisCandidate> Lap() =>
-        [
-            new(10, "u", 0, 1, 1),
-            new(20, "u", 0, 2, 2),
-            new(30, "u", 0, 3, 3),
-        ];
-
-        [Fact]
-        public void StartFrom_continues_at_saved_oasis_and_wraps()
+        private static HeroRunState Run(bool sent = false, bool statsRead = true, int? hp = 80, bool collected = false, bool seenAway = false)
         {
-            HeroLevelingRules.StartFrom(Lap(), 20).Select(x => x.Id).ShouldBe([20, 30, 10]);
+            return new HeroRunState { Sent = sent, StatsRead = statsRead, HpPercent = hp, TasksCollected = collected, SeenAway = seenAway };
         }
 
         [Fact]
-        public void StartFrom_unknown_or_missing_start_uses_closest()
+        public void Animal_oasis_with_checkbox_off_is_the_normal_skip()
         {
-            HeroLevelingRules.StartFrom(Lap(), null).Select(x => x.Id).ShouldBe([10, 20, 30]);
-            HeroLevelingRules.StartFrom(Lap(), 99).Select(x => x.Id).ShouldBe([10, 20, 30]);
+            var action = HeroLevelingRules.DecideAnimalOasis(false, Run(), heroHome: true, heroVillageId: 10, listVillageId: 10);
+            action.ShouldBe(AnimalOasisAction.SkipTroops);
+            HeroLevelingRules.StatusFor(action).ShouldBe("Hay tropas");
         }
 
         [Fact]
-        public void NextAfter_moves_to_next_and_wraps_to_closest()
+        public void Animal_oasis_with_hero_home_and_enough_hp_tries_the_hero()
         {
-            HeroLevelingRules.NextAfter(Lap(), 10).ShouldBe(20);
-            HeroLevelingRules.NextAfter(Lap(), 30).ShouldBe(10);
-            HeroLevelingRules.NextAfter(Lap(), 99).ShouldBeNull();
+            HeroLevelingRules.DecideAnimalOasis(true, Run(hp: 50), true, 10, 10).ShouldBe(AnimalOasisAction.TryHero);
+        }
+
+        [Fact]
+        public void Animal_oasis_with_hero_away_is_skipped()
+        {
+            var action = HeroLevelingRules.DecideAnimalOasis(true, Run(), heroHome: false, heroVillageId: 10, listVillageId: 10);
+            action.ShouldBe(AnimalOasisAction.HeroAway);
+            HeroLevelingRules.StatusFor(action).ShouldBe("Héroe fuera");
+        }
+
+        [Fact]
+        public void Animal_oasis_after_hero_was_sent_is_the_normal_skip()
+        {
+            var action = HeroLevelingRules.DecideAnimalOasis(true, Run(sent: true), heroHome: true, heroVillageId: 10, listVillageId: 10);
+            action.ShouldBe(AnimalOasisAction.HeroAlreadySent);
+            HeroLevelingRules.StatusFor(action).ShouldBe("Hay tropas");
+        }
+
+        [Fact]
+        public void Animal_oasis_reads_hp_first()
+        {
+            HeroLevelingRules.DecideAnimalOasis(true, Run(statsRead: false, hp: null), true, 10, 10).ShouldBe(AnimalOasisAction.NeedHeroStats);
+        }
+
+        [Fact]
+        public void Animal_oasis_with_low_hp_collects_tasks_once_then_skips()
+        {
+            HeroLevelingRules.DecideAnimalOasis(true, Run(hp: 49, collected: false), true, 10, 10).ShouldBe(AnimalOasisAction.CollectTasks);
+
+            var action = HeroLevelingRules.DecideAnimalOasis(true, Run(hp: 49, collected: true), true, 10, 10);
+            action.ShouldBe(AnimalOasisAction.HeroLowHp);
+            HeroLevelingRules.StatusFor(action).ShouldBe("Héroe con poca vida");
+        }
+
+        [Fact]
+        public void Animal_oasis_after_tasks_restored_hp_tries_the_hero()
+        {
+            HeroLevelingRules.DecideAnimalOasis(true, Run(hp: 100, collected: true), true, 10, 10).ShouldBe(AnimalOasisAction.TryHero);
+        }
+
+        [Fact]
+        public void Animal_oasis_with_unreadable_hp_never_sends()
+        {
+            var action = HeroLevelingRules.DecideAnimalOasis(true, Run(statsRead: true, hp: null), true, 10, 10);
+            action.ShouldBe(AnimalOasisAction.HeroUnknownHp);
+            HeroLevelingRules.StatusFor(action).ShouldBe("Héroe sin datos");
         }
 
         [Theory]
-        [InlineData(5, 60, 5, 60, false)]  // same hero: keep going
-        [InlineData(5, 60, 5, 40, false)]  // weaker after a fight: keep going
-        [InlineData(5, 60, 5, 69, false)]  // a bit more HP: keep going
-        [InlineData(5, 60, 5, 70, true)]   // clearly more HP: closer oases may be safe now
-        [InlineData(5, 60, 6, 40, true)]   // level up: restart
-        public void ShouldRestartSearch_when_hero_is_stronger(int savedLevel, int savedHp, int level, int hp, bool expected)
+        [InlineData(11, 10)]
+        [InlineData(null, 10)]
+        [InlineData(null, 0)]
+        public void Animal_oasis_with_hero_in_another_village_is_skipped(int? heroVillageId, int listVillageId)
         {
-            HeroLevelingRules.ShouldRestartSearch(savedLevel, savedHp, level, hp).ShouldBe(expected);
+            var action = HeroLevelingRules.DecideAnimalOasis(true, Run(), true, heroVillageId, listVillageId);
+            action.ShouldBe(AnimalOasisAction.HeroOtherVillage);
+            HeroLevelingRules.StatusFor(action).ShouldBe("Héroe en otra aldea");
         }
 
         [Fact]
-        public void ShouldRestartSearch_when_anything_is_unknown()
+        public void Animal_oasis_without_list_village_only_needs_the_hero_home()
         {
-            HeroLevelingRules.ShouldRestartSearch(null, 60, 5, 60).ShouldBeTrue();
-            HeroLevelingRules.ShouldRestartSearch(5, 60, null, 60).ShouldBeTrue();
-            HeroLevelingRules.ShouldRestartSearch(5, 60, 5, null).ShouldBeTrue();
+            HeroLevelingRules.DecideAnimalOasis(true, Run(), true, 10, 0).ShouldBe(AnimalOasisAction.TryHero);
+        }
+
+        [Fact]
+        public void HeroMightGo_only_while_the_hero_can_still_leave()
+        {
+            HeroLevelingRules.HeroMightGo(false, Run()).ShouldBeFalse();
+            HeroLevelingRules.HeroMightGo(true, Run(statsRead: false, hp: null)).ShouldBeTrue();
+            HeroLevelingRules.HeroMightGo(true, Run()).ShouldBeTrue();
+            HeroLevelingRules.HeroMightGo(true, Run(hp: 30, collected: false)).ShouldBeTrue();
+            HeroLevelingRules.HeroMightGo(true, Run(hp: 30, collected: true)).ShouldBeFalse();
+            HeroLevelingRules.HeroMightGo(true, Run(sent: true)).ShouldBeFalse();
+            HeroLevelingRules.HeroMightGo(true, Run(seenAway: true)).ShouldBeFalse();
+            HeroLevelingRules.HeroMightGo(true, Run(statsRead: true, hp: null)).ShouldBeFalse();
+        }
+
+        [Fact]
+        public void HeroRunState_reset_clears_the_run()
+        {
+            var run = Run(sent: true, hp: 30, collected: true, seenAway: true);
+            run.Reset();
+            run.Sent.ShouldBeFalse();
+            run.StatsRead.ShouldBeFalse();
+            run.HpPercent.ShouldBeNull();
+            run.TasksCollected.ShouldBeFalse();
+            run.SeenAway.ShouldBeFalse();
+        }
+
+        [Fact]
+        public void Hero_statuses_are_known_for_the_farming_status_column()
+        {
+            HeroLevelingRules.HeroStatuses.ShouldContain("Héroe enviado");
+            HeroLevelingRules.HeroStatuses.ShouldContain("Muy fuerte");
+            HeroLevelingRules.HeroStatuses.ShouldNotContain("Hay tropas");
         }
     }
 }

@@ -5,7 +5,9 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MainCore.Entities
 {
-    // One row per account. Created with raw SQL in AppDbContext.EnsureHeroLevelingTable (no migrations).
+    // One row per account: hero status for the Hero page (last stats read and last hero action of the cow lists).
+    // Created with raw SQL in AppDbContext.EnsureHeroLevelingTable (no migrations). Older databases also have
+    // Enabled/NextCheckAt/NextOasisId/SearchLevel/SearchHp columns that are no longer used.
     [Table("HeroLevelings")]
     public class HeroLeveling
     {
@@ -13,19 +15,16 @@ namespace MainCore.Entities
         [DatabaseGenerated(DatabaseGeneratedOption.None)]
         public int AccountId { get; set; }
 
-        public bool Enabled { get; set; }
         public string State { get; set; }
         public string Message { get; set; }
         public int? Level { get; set; }
         public int? HpPercent { get; set; }
         public int? Experience { get; set; }
-        public DateTime? UpdatedAt { get; set; }
-        public DateTime? NextCheckAt { get; set; }
 
-        // Where the oasis search continues (CowVillages.Id), and the hero level and HP when it was saved.
-        // A higher level or clearly more HP restarts the search from the closest oasis.
-        public int? NextOasisId { get; set; }
-        public int? SearchLevel { get; set; }
-        public int? SearchHp { get; set; }
+        /// <summary>When State/Message changed.</summary>
+        public DateTime? UpdatedAt { get; set; }
+
+        /// <summary>When Level/HpPercent/Experience were read.</summary>
+        public DateTime? StatsAt { get; set; }
     }
 }

@@ -108,8 +108,6 @@ namespace WPFUI
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/search/apply", (int id, int listId, ApplySearchBody body) => ApplyOasis(services, id, listId, body));
 
             app.MapGet("/api/accounts/{id:int}/hero", (int id) => GetHero(services, id));
-            app.MapPost("/api/accounts/{id:int}/hero/leveling/start", (int id) => StartHeroLeveling(services, id));
-            app.MapPost("/api/accounts/{id:int}/hero/leveling/stop", (int id) => StopHeroLeveling(services, id));
 
             app.MapGet("/api/accounts/{id:int}/debug", (int id) => GetDebug(services, id));
             app.MapPost("/api/accounts/{id:int}/debug/front", (int id) => BringToFront(services, id));
@@ -598,7 +596,7 @@ namespace WPFUI
             var villages = context.Villages.Where(x => x.AccountId == accountId).OrderBy(x => x.Name)
                 .Select(x => new { id = x.Id, name = x.Name, x = x.X, y = x.Y }).ToList();
             var lists = context.CowLists.Where(x => x.AccountId == accountId && x.VillageId == villageId).OrderBy(x => x.Name)
-                .Select(x => new { id = x.Id, name = x.Name, minMinutes = x.MinAttackMinutes, repeatMinutes = x.RepeatMinutes })
+                .Select(x => new { id = x.Id, name = x.Name, minMinutes = x.MinAttackMinutes, repeatMinutes = x.RepeatMinutes, levelHero = x.LevelHero })
                 .ToList();
             var listIds = lists.Select(x => x.id).ToList();
             var cows = context.CowVillages.Where(x => listIds.Contains(x.CowListId)).OrderBy(x => x.Id)
@@ -646,6 +644,9 @@ namespace WPFUI
                 .SetProperty(list => list.Name, name)
                 .SetProperty(list => list.MinAttackMinutes, body.MinMinutes)
                 .SetProperty(list => list.RepeatMinutes, body.RepeatMinutes));
+            // Only when the client sends it, so older calls (rename) keep the current value.
+            if (body.LevelHero is bool levelHero)
+                context.CowLists.Where(x => x.Id == listId).ExecuteUpdate(x => x.SetProperty(list => list.LevelHero, levelHero));
             return Ok("Lista guardada.");
         }
 
@@ -884,78 +885,26 @@ namespace WPFUI
             return Ok("Se detuvo el raid y la repetición.");
         }
 
-        private static int CountOasisTargets(AppDbContext context, int accountId)
-        {
-            var listIds = context.CowLists
-                .Where(x => x.AccountId == accountId)
-                .Select(x => new { x.Id, x.Name })
-                .AsEnumerable()
-                .Where(x => HeroLevelingRules.IsOasisList(x.Name))
-                .Select(x => x.Id)
-                .ToList();
-            if (listIds.Count == 0) return -1;
-            return context.CowVillages.Count(x => listIds.Contains(x.CowListId));
-        }
-
         private static IResult GetHero(IServiceProvider services, int accountId)
         {
             var account = new AccountId(accountId);
             using var context = Context(services);
             var row = HeroLevelingStore.Get(context, account);
-            var oasisCount = CountOasisTargets(context, accountId);
-            var queued = services.GetRequiredService<TaskManager>().GetTaskList(account).OfType<HeroLevelingTask.Task>().FirstOrDefault();
+            var heroLists = context.CowLists.Where(x => x.AccountId == accountId && x.LevelHero).OrderBy(x => x.Name).Select(x => x.Name).ToList();
 
             return Ok("", new
             {
-                enabled = row?.Enabled ?? false,
-                state = row?.State ?? "Detenido",
+                state = row?.State ?? "",
                 message = row?.Message ?? "",
                 level = row?.Level,
                 hpPercent = row?.HpPercent,
                 experience = row?.Experience,
                 updatedAt = row?.UpdatedAt?.ToString("yyyy-MM-dd HH:mm"),
-                nextCheckAt = (queued?.ExecuteAt ?? row?.NextCheckAt)?.ToString("HH:mm"),
-                queued = queued is not null,
-                oasisCount,
+                statsAt = row?.StatsAt?.ToString("yyyy-MM-dd HH:mm"),
+                heroLists,
                 minHpPercent = HeroLevelingRules.MinHpPercent,
                 minHealthLeft = HeroLevelingRules.MinHealthLeftAfterFight,
             });
-        }
-
-        private static IResult StartHeroLeveling(IServiceProvider services, int accountId)
-        {
-            var account = new AccountId(accountId);
-            using var context = Context(services);
-            if (CountOasisTargets(context, accountId) <= 0)
-            {
-                HeroLevelingStore.SetEnabled(context, account, false, HeroLevelingStore.MissingListMessage);
-                return Fail(HeroLevelingStore.MissingListMessage);
-            }
-
-            HeroLevelingStore.SetEnabled(context, account, true, "Arranca en unos segundos.");
-
-            var tasks = services.GetRequiredService<TaskManager>();
-            if (tasks.GetStatus(account) != StatusEnums.Offline && !tasks.IsExist<HeroLevelingTask.Task>(account))
-            {
-                tasks.Add(new HeroLevelingTask.Task(account));
-                return Ok("El héroe se pone a levear.");
-            }
-
-            return Ok("Listo. El héroe se pone a levear cuando la cuenta esté conectada.");
-        }
-
-        private static IResult StopHeroLeveling(IServiceProvider services, int accountId)
-        {
-            var account = new AccountId(accountId);
-            using (var context = Context(services))
-            {
-                HeroLevelingStore.SetEnabled(context, account, false, "Detenido por el usuario.");
-            }
-
-            var tasks = services.GetRequiredService<TaskManager>();
-            tasks.CancelIfCurrent<HeroLevelingTask.Task>(account);
-            tasks.Remove<HeroLevelingTask.Task>(account);
-            return Ok("El héroe dejó de levear. Si ya estaba en camino, vuelve solo.");
         }
 
         private static async Task<IResult> SearchOasis(IServiceProvider services, int accountId, int listId, SearchBody body)
@@ -1389,6 +1338,8 @@ namespace WPFUI
         private static string FormatStatus(DateTime? lastAttackedAt, string skipReason)
         {
             if (skipReason is "Analizando" or "Atacando") return skipReason;
+            // Hero statuses do not touch LastAttackedAt, so show them even after an earlier troop raid.
+            if (!string.IsNullOrEmpty(skipReason) && HeroLevelingRules.HeroStatuses.Contains(skipReason)) return skipReason;
             if (lastAttackedAt is not null)
             {
                 var minutes = (int)Math.Floor((DateTime.Now - lastAttackedAt.Value).TotalMinutes);
@@ -1519,6 +1470,7 @@ namespace WPFUI
         public string Name { get; set; }
         public int MinMinutes { get; set; }
         public int RepeatMinutes { get; set; }
+        public bool? LevelHero { get; set; }
     }
 
     public sealed class CowVillageBody
