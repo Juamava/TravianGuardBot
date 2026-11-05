@@ -87,7 +87,7 @@ This document explains how the code is organized and how the bot does its work. 
 3. The host starts and opens `MainWindow`.
 4. `MainViewModel.Load` runs three steps:
    - It checks that Chrome is installed and newer than 114.
-   - It creates the database with `EnsureCreated()` and `EnsureCowListTables()`.
+   - It creates the database with `EnsureCreated()`, `EnsureCowListTables()` and `EnsureHeroLevelingTable()`.
    - It fills any missing default settings.
 
 > **There are no EF migrations.** `EnsureCreated()` only creates a database that does not exist yet. Columns added later must be added by hand with raw SQL, the way `AppDbContext.EnsureCowListTables()` does it.
@@ -172,7 +172,7 @@ The calling code checks them with `result.IsFailed` and `result.HasError<Storage
 ## Database
 
 - File: `TBS.db` (SQLite), next to the executable.
-- `AppDbContext` has these tables: `Accounts`, `AccountsInfo`, `Accesses` (login and proxy), `AccountsSetting`, `HeroItems`, `Villages`, `Buildings`, `QueueBuildings`, `Jobs` (build queue), `Storages`, `VillagesSetting`, `FarmLists`, `CowLists`, `CowVillages`.
+- `AppDbContext` has these tables: `Accounts`, `AccountsInfo`, `Accesses` (login and proxy), `AccountsSetting`, `HeroItems`, `Villages`, `Buildings`, `QueueBuildings`, `Jobs` (build queue), `Storages`, `VillagesSetting`, `FarmLists`, `CowLists`, `CowVillages`, `HeroLevelings`.
 - Settings are stored as rows (key and value). `FillAccountSettings` and `FillVillageSettings` add the missing defaults at startup. To read a setting, use the extension methods in `Infrasturecture/Extensions`, for example `context.ByName(accountId, AccountSettingEnums.TaskDelayMin)`.
 - Code asks `IDbContextFactory<AppDbContext>` for a short-lived context: `using var context = contextFactory.CreateDbContext();`.
 
@@ -194,6 +194,26 @@ The calling code checks them with `result.IsFailed` and `result.HasError<Storage
 4. It records the reason for each skipped target. Some reasons are in Spanish, for example "Ocupado" and "Sin tropas".
 
 The task reschedules itself while `KeepRepeating` is on. `OasisCatalog` builds links to `oasis.travibot.com` to find oases near the village. The UI is in `FarmingViewModel.CowLists.cs`.
+
+## Hero leveling ("Poner a levear")
+
+`HeroLevelingTask` (`MainCore/Tasks/HeroLevelingTask.cs`) levels the hero up without letting him die. The on/off flag, the state and the last message live in the `HeroLevelings` table (one row per account, created with raw SQL in `EnsureHeroLevelingTable`). The Hero page of the web admin uses `GET /api/accounts/{id}/hero` and `POST /api/accounts/{id}/hero/leveling/start|stop`. `RxQueue.AccountInitHandler` queues the task again when it is enabled.
+
+Each run does this:
+
+1. If the hero is not home (`HeroParser.IsHeroHome`, the top bar `i.heroHome` icon), it waits until the estimated return or 5 minutes.
+2. It reads HP, XP, level, speed and the hero points on `/hero/attributes` (`HeroParser.ReadStats`). If the HP cannot be read, it does nothing and waits 10 minutes.
+3. HP >= 50% and an adventure is available: it starts the adventure with the existing adventure commands.
+4. HP < 50%: it collects task rewards one at a time and reads the HP again after each one. Leveling up restores full HP, so it stops as soon as the HP is back to 50% or more. The rest of the tasks are kept as an XP reserve. If the HP is still low, it waits 30–60 minutes.
+5. HP >= 50% and no adventure: it hunts in the cow list named **Oasis**. If the list is missing or empty, the task disables itself and shows a message. Oases are checked from the closest to the farthest from the hero's village. For each one it does this:
+   - It reads the tile and skips the oasis if it is occupied or has no animals.
+   - It opens the combat simulator with `newdid` set to the hero's village. It clears the village troops that the simulator prefills, keeps only the hero, loads the real HP, strength points and off-bonus points, checks that the defenders match the animals on the tile, and simulates.
+   - `HeroLevelingRules.Evaluate` allows the send only if the hero is the only attacker, his loss cell is 0 (`−1` means he dies), at least one animal dies, the health line is readable, and at least 25% HP is left.
+   - It then opens the rally point raid form, checks the target coordinates, checks that the hero is available (1), makes sure the hero is the only troop and that raid is selected, and checks the confirmation screen before it confirms.
+
+The automatic `StartAdventureTask` (account setting "Auto start adventure") uses the same rule: it reads HP on `/hero/attributes` first and only starts an adventure with 50% HP or more. With less, or when the HP cannot be read, it waits 30 minutes.
+
+Everything that is unknown or unreadable means the hero is not sent. The pure rules are in `MainCore/Parsers/HeroLevelingRules.cs` and are tested in `MainCore.Test`.
 
 ## CI/CD (`.github/workflows`)
 

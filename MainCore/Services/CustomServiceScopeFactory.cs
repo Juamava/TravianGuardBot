@@ -118,6 +118,10 @@ namespace MainCore.Services
                     var setHeroPointTaskHandler = scope.GetHandler<SetHeroPointTask.Task>();
                     return await setHeroPointTaskHandler.HandleAsync(setHeroPointTask, cancellationToken);
 
+                case HeroLevelingTask.Task heroLevelingTask:
+                    var heroLevelingTaskHandler = scope.GetHandler<HeroLevelingTask.Task>();
+                    return await heroLevelingTaskHandler.HandleAsync(heroLevelingTask, cancellationToken);
+
                 default:
                     throw new NotImplementedException($"Task {task.GetType().Name} is not implemented");
             }

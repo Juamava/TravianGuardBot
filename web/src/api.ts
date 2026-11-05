@@ -65,3 +65,18 @@ export type AccountDetail = {
 export function emptyAccess(): Access {
   return { id: 0, username: '', password: '', proxyHost: '', proxyPort: 0, proxyUsername: '', proxyPassword: '', useragent: '' }
 }
+
+export type HeroStatus = {
+  enabled: boolean
+  state: string
+  message: string
+  level: number | null
+  hpPercent: number | null
+  experience: number | null
+  updatedAt: string | null
+  nextCheckAt: string | null
+  queued: boolean
+  oasisCount: number
+  minHpPercent: number
+  minHealthLeft: number
+}
