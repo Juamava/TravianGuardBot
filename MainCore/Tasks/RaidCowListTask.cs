@@ -59,7 +59,22 @@ namespace MainCore.Tasks
                     MarkPhase(target.Id, "Analizando");
                     await System.Threading.Tasks.Task.Delay(NextAttackDelay(task.AccountId), cancellationToken);
 
-                    var result = await RaidTarget(task, target, slots);
+                    Result result;
+                    try
+                    {
+                        result = await RaidTarget(task, target, slots);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.Warning(ex, "Skipping {Url}: {Message}", target.Url, ex.Message);
+                        MarkSkipped(target.Id, "Error");
+                        continue;
+                    }
+
                     if (result.IsFailed)
                     {
                         task.NextIndex = index;
@@ -85,8 +100,15 @@ namespace MainCore.Tasks
             var result = await browser.Navigate(target.Url);
             if (result.IsFailed)
             {
+                logger.Warning("Page did not open for {Url}. Retrying once. {Error}", target.Url, string.Join(" ", result.Reasons.Select(reason => reason.Message)));
+                result = await browser.Navigate(target.Url);
+            }
+
+            if (result.IsFailed)
+            {
+                logger.Warning("Skipping {Url}: page did not open. {Error}", target.Url, string.Join(" ", result.Reasons.Select(reason => reason.Message)));
                 MarkSkipped(target.Id, "Error");
-                return result;
+                return Result.Ok();
             }
 
             if (await LoginParser.IsLoginPage(browser.CurrentPage) || !await LoginParser.IsIngamePage(browser.CurrentPage))

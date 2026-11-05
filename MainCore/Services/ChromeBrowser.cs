@@ -123,8 +123,20 @@ namespace MainCore.Services
         public async Task<Result> Refresh()
         {
             if (_mainPage is null) return Stop.DriverNotReady;
-            await _mainPage.ReloadAsync();
-            return Result.Ok();
+            try
+            {
+                await Bound(_mainPage.ReloadAsync(new()
+                {
+                    Timeout = StepTimeoutMs,
+                    WaitUntil = WaitUntilState.DOMContentLoaded,
+                }));
+                return Result.Ok();
+            }
+            catch (Exception ex) when (IsBrowserFault(ex))
+            {
+                Logger.Warning("Reload failed: {Message}", ex.Message);
+                return Result.Ok();
+            }
         }
 
         public async Task<T> InNewTab<T>(Func<IPage, Task<T>> action)
@@ -151,12 +163,16 @@ namespace MainCore.Services
             if (_mainPage is null) return Stop.DriverNotReady;
             try
             {
-                await _mainPage.GotoAsync(url);
+                await Bound(_mainPage.GotoAsync(url, new()
+                {
+                    Timeout = StepTimeoutMs,
+                    WaitUntil = WaitUntilState.DOMContentLoaded,
+                }));
                 return Result.Ok();
             }
-            catch (TimeoutException ex)
+            catch (Exception ex) when (IsBrowserFault(ex))
             {
-                return Retry.Error.WithError($"Navigating to URL [{url}] timed out. Details: {ex.Message}");
+                return Retry.Error.WithError($"Navigating to URL [{url}] failed. Details: {ex.Message}");
             }
         }
 
@@ -165,13 +181,13 @@ namespace MainCore.Services
             if (_mainPage is null) return Stop.DriverNotReady;
             try
             {
-                await locator.ClickAsync();
+                await Bound(locator.ClickAsync(new() { Timeout = StepTimeoutMs }));
                 await DelayClick();
                 return Result.Ok();
             }
-            catch (TimeoutException ex)
+            catch (Exception ex) when (IsBrowserFault(ex))
             {
-                return Retry.Error.WithError($"Clicking locator [{expression}] timed out. Details: {ex.Message}");
+                return Retry.Error.WithError($"Clicking locator [{expression}] failed. Details: {ex.Message}");
             }
         }
 
@@ -180,13 +196,13 @@ namespace MainCore.Services
             if (_mainPage is null) return Stop.DriverNotReady;
             try
             {
-                await locator.FillAsync(content);
+                await Bound(locator.FillAsync(content, new() { Timeout = StepTimeoutMs }));
                 await DelayClick();
                 return Result.Ok();
             }
-            catch (TimeoutException ex)
+            catch (Exception ex) when (IsBrowserFault(ex))
             {
-                return Retry.Error.WithError($"Inputting into locator [{expression}] timed out. Details: {ex.Message}");
+                return Retry.Error.WithError($"Inputting into locator [{expression}] failed. Details: {ex.Message}");
             }
         }
 
@@ -203,12 +219,12 @@ namespace MainCore.Services
             if (_mainPage is null) return Stop.DriverNotReady;
             try
             {
-                await locator.WaitForAsync();
+                await Bound(locator.WaitForAsync(new() { Timeout = StepTimeoutMs }));
                 return Result.Ok();
             }
-            catch (TimeoutException ex)
+            catch (Exception ex) when (IsBrowserFault(ex))
             {
-                return Retry.Error.WithError($"Waiting for locator [{expression}] timed out. Details: {ex.Message}");
+                return Retry.Error.WithError($"Waiting for locator [{expression}] failed. Details: {ex.Message}");
             }
         }
 
@@ -217,12 +233,12 @@ namespace MainCore.Services
             if (_mainPage is null) return Stop.DriverNotReady;
             try
             {
-                await locator.WaitForFunctionAsync(condition);
+                await Bound(locator.WaitForFunctionAsync(condition, null, new() { Timeout = StepTimeoutMs }));
                 return Result.Ok();
             }
-            catch (TimeoutException ex)
+            catch (Exception ex) when (IsBrowserFault(ex))
             {
-                return Retry.Error.WithError($"Waiting for locator [{expression}] timed out. Details: {ex.Message}");
+                return Retry.Error.WithError($"Waiting for locator [{expression}] failed. Details: {ex.Message}");
             }
         }
 
@@ -238,11 +254,17 @@ namespace MainCore.Services
                 await LoginParser.GetServerTime(_mainPage).WaitForAsync(new() { Timeout = timeout });
                 return Result.Ok();
             }
-            catch (TimeoutException ex)
+            catch (Exception ex) when (IsBrowserFault(ex))
             {
                 string actualUrl = _mainPage.Url;
                 return Retry.Error.WithError($"Navigation or page load failed. Expected URL: [{url}]. Current URL: [{actualUrl}]. Details: {ex.Message}");
             }
         }
+
+        private const int StepTimeoutMs = 30_000;
+
+        private static Task Bound(Task operation) => operation.WaitAsync(TimeSpan.FromMilliseconds(StepTimeoutMs + 5_000));
+
+        private static bool IsBrowserFault(Exception ex) => ex is TimeoutException or PlaywrightException;
     }
 }
