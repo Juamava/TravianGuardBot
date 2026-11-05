@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Box, Button, MenuItem, Stack, TextField, Tooltip, Typography } from '@mui/material'
+import { Box, Button, MenuItem, Stack, Switch, TextField, Tooltip, Typography } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
@@ -10,7 +10,7 @@ import { api, del, post, put } from '../api'
 import { Empty, panel, useUi } from '../ui'
 
 type Village = { id: number; name: string; x: number; y: number }
-type CowList = { id: number; name: string; minMinutes: number; repeatMinutes: number }
+type CowList = { id: number; name: string; minMinutes: number; repeatMinutes: number; autoStart: boolean }
 type Cow = { id: number; listId: number; name: string; url: string; troops: string; status: string }
 type FarmingData = { villages: Village[]; lists: CowList[]; cows: Cow[]; countdown: string }
 type SearchResult = { count: number; villageName: string; originX: number; originY: number; troopPlan: string; hits: { x: number; y: number; distance: number }[] }
@@ -164,6 +164,19 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
     }
   }
 
+  async function setAutoStart(enabled: boolean) {
+    if (!listId) return
+    if (enabled && (minMinutes < 1 || repeatMinutes < 1)) {
+      notify('Para el inicio automático, el mínimo por aldea y la revisión tienen que ser de 1 minuto o más.')
+      return
+    }
+    if (enabled && cows.length === 0) {
+      notify('La lista no tiene aldeas.')
+      return
+    }
+    await run(() => put(`/api/accounts/${accountId}/farming/lists/${listId}`, { name, minMinutes, repeatMinutes, autoStart: enabled }))
+  }
+
   async function search() {
     const troopText = await ui.prompt('Tropas para cada oasis. Ejemplo: 2 o A:2 D:1', '2')
     if (!troopText) return
@@ -210,12 +223,12 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
       <Box sx={{ display: 'grid', gridTemplateColumns: '260px minmax(0, 1fr)', gap: 2, alignItems: 'start' }}>
         <Stack spacing={1} sx={{ minWidth: 0 }}>
           {(data?.lists ?? []).map(list => (
-            <Button key={list.id} variant={list.id === listId ? 'contained' : 'outlined'} onClick={() => selectList(list)} sx={{ justifyContent: 'flex-start', minHeight: 40, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{list.name}</Button>
+            <Button key={list.id} variant={list.id === listId ? 'contained' : 'outlined'} onClick={() => selectList(list)} sx={{ justifyContent: 'flex-start', minHeight: 40, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{list.autoStart ? `${list.name} · auto` : list.name}</Button>
           ))}
           {(data?.lists.length ?? 0) === 0 && <Typography color="text.secondary">Todavía no hay listas en esta aldea.</Typography>}
           <TextField label="Nombre de la lista" value={name} onChange={event => setName(event.target.value)} />
           <Button variant="contained" onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists`, { villageId, name }))}>Crear</Button>
-          <Button disabled={!listId || saving} onClick={() => run(() => put(`/api/accounts/${accountId}/farming/lists/${listId}`, { name, minMinutes, repeatMinutes }))}>Renombrar</Button>
+          <Button disabled={!listId || saving} onClick={() => run(() => put(`/api/accounts/${accountId}/farming/lists/${listId}`, { name, minMinutes, repeatMinutes, autoStart: selectedList?.autoStart ?? false }))}>Renombrar</Button>
           <Button color="error" disabled={!listId || saving} onClick={async () => { if (await ui.confirm('¿Borrar esta lista y todas sus aldeas?')) run(() => del(`/api/accounts/${accountId}/farming/lists/${listId}`)) }}>Borrar</Button>
         </Stack>
 
@@ -253,8 +266,14 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
               <TextField fullWidth required type="number" label="Revisar la lista cada" value={repeatMinutes || ''} error={listId > 0 && repeatMinutes < 1} onChange={event => setRepeatMinutes(Number(event.target.value))} slotProps={{ input: { endAdornment: <Typography color="text.secondary" sx={{ ml: 1 }}>min</Typography> } }} />
               <Hint text="Minutos que espera el bot después de recorrer la lista para empezar otra vez y atacar las aldeas que ya cumplieron el mínimo." />
             </Stack>
-            <Button variant="contained" disabled={!listId || saving} onClick={() => run(() => put(`/api/accounts/${accountId}/farming/lists/${listId}`, { name, minMinutes, repeatMinutes }))} sx={{ height: 40 }}>Guardar</Button>
+            <Button variant="contained" disabled={!listId || saving} onClick={() => run(() => put(`/api/accounts/${accountId}/farming/lists/${listId}`, { name, minMinutes, repeatMinutes, autoStart: selectedList?.autoStart ?? false }))} sx={{ height: 40 }}>Guardar</Button>
           </Box>
+
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ ...panel, py: 1 }}>
+            <Switch checked={!!selectedList?.autoStart} disabled={!listId || saving || syncing} onChange={event => setAutoStart(event.target.checked)} />
+            <Typography fontWeight={600}>Inicio automático</Typography>
+            <Hint text="Al conectar la cuenta, esta lista se encola sola. Necesita el mínimo, la revisión y al menos una aldea. Si lo activás en otra lista, este se apaga." />
+          </Stack>
 
           {(cowId > 0 || adding) && (
             <Stack spacing={1.5} sx={{ ...panel }}>

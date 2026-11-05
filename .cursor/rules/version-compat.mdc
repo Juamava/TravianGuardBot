@@ -1,0 +1,19 @@
+---
+description: Sube la versión en cada cambio y no rompe datos ni ajustes ya guardados
+alwaysApply: true
+---
+
+# Versión y compatibilidad
+
+`VERSION` en la raíz del repo es la única versión. El formato es `mayor.menor.parche`.
+
+En el mismo cambio que toque comportamiento, esquema, API o la interfaz, subí el parche (`1.0.0` → `1.0.1`) antes de terminar. No la subas por un comentario, un formato o esta regla.
+
+La base, los ajustes y los perfiles de Chrome que ya existen tienen que seguir abriendo.
+
+- En SQLite solo se agregan columnas con `EnsureColumn` y un default. No se borran, renombran ni cambian de tipo. No se toca `Data/TBS.db`.
+- Los números ya guardados de ajustes y enumeraciones no se reasignan. Lo nuevo se agrega al final.
+- No se renombra ni se quita un campo JSON que la interfaz ya lee. Agregar campos está bien.
+- El actualizador no borra ni pisa `Data`, `Screenshots` ni `Logs`. El zip de release se llama `TravianGuardBot-win-x64.zip`.
+- No hace falta otro servidor. La versión se publica sola en GitHub Releases cuando `VERSION` llega a `main`.
+- Con la app abierta, la versión nueva es opcional durante las primeras 24 horas. Después se vuelve obligatoria. Al volver a abrir el programa, se instala sola.

@@ -92,6 +92,8 @@ function Shell() {
   const [meta, setMeta] = useState<Meta | null>(null)
   const [accountId, setAccountId] = useState<number | null>(null)
   const [page, setPage] = useState<Page>('farming')
+  const [update, setUpdate] = useState<{ current: string; latest: string; available: boolean; mandatory: boolean; publishedAt: string; detail: string } | null>(null)
+  const [updateDue, setUpdateDue] = useState(false)
 
   async function refresh() {
     const result = await api<Overview>('/api/overview')
@@ -102,6 +104,7 @@ function Shell() {
   useEffect(() => {
     refresh().catch((error: Error) => ui.notify(error.message))
     api<Meta>('/api/meta').then(result => setMeta(result.data)).catch(() => undefined)
+    api<{ current: string; latest: string; available: boolean; mandatory: boolean; publishedAt: string; detail: string }>('/api/update').then(result => setUpdate(result.data)).catch(() => undefined)
     const timer = window.setInterval(() => refresh().catch(() => undefined), 2000)
     return () => window.clearInterval(timer)
   }, [])
@@ -110,6 +113,29 @@ function Shell() {
   const holder = overview?.accounts.find(item => item.status !== 'Offline') ?? null
   const connected = account != null && isConnected(account.status)
   const heldByOther = holder != null && holder.id !== account?.id
+  useEffect(() => {
+    if (!update?.available || !update.publishedAt) return
+    const published = Date.parse(update.publishedAt)
+    if (!Number.isFinite(published)) return
+    const remaining = published + 24 * 60 * 60 * 1000 - Date.now()
+    if (remaining <= 0) {
+      setUpdateDue(true)
+      return
+    }
+    const timer = window.setTimeout(() => setUpdateDue(true), remaining)
+    return () => window.clearTimeout(timer)
+  }, [update?.available, update?.publishedAt])
+  const mandatory = !!update?.available && (update.mandatory || updateDue)
+
+  async function install(forced: boolean) {
+    if (!forced && !await ui.confirm(`Se cierra el bot, se instala la versión ${update?.latest ?? ''} y se vuelve a abrir. Las cuentas y el navegador no se tocan. Si hay una cuenta conectada, desconectala antes.`)) return
+    try {
+      if (forced && holder && holder.status !== 'Offline') await post(`/api/accounts/${holder.id}/logout`)
+      ui.notify((await post('/api/update')).message)
+    } catch (error) {
+      ui.notify(error instanceof Error ? error.message : 'No se pudo actualizar')
+    }
+  }
 
   async function act(path: string) {
     if (!accountId) return
@@ -162,7 +188,10 @@ function Shell() {
       <Stack sx={{ bgcolor: '#2b2d31', minHeight: 0 }}>
         <Box sx={{ px: 2, py: 1.5, boxShadow: '0 1px 0 rgba(0,0,0,.2)' }}>
           <Typography sx={{ fontWeight: 700, color: '#f2f3f5', textTransform: 'none' }} noWrap>{account?.username ?? 'Travian Guard'}</Typography>
-          <Typography variant="caption" color="text.secondary">{account ? `${account.host} · ${account.status}` : `Versión ${overview?.version ?? ''}`}</Typography>
+          <Typography variant="caption" color="text.secondary">{account ? `${account.host} · ${account.status} · ${overview?.version ?? ''}` : `Versión ${overview?.version ?? ''}`}</Typography>
+          {update?.available && !mandatory && (
+            <Button size="small" sx={{ mt: 0.75, color: '#fff', bgcolor: '#5865f2', '&:hover': { bgcolor: '#4752c4' } }} onClick={() => install(false)}>Actualizar a {update.latest}</Button>
+          )}
         </Box>
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.75, px: 1.5, py: 1.25 }}>
           <Button onClick={() => act('login')} disabled={!account || account.status !== 'Offline' || heldByOther} sx={actionButton}>
@@ -219,6 +248,15 @@ function Shell() {
           />
         )}
       </Box>
+      {mandatory && update && (
+        <Box sx={{ position: 'fixed', inset: 0, zIndex: 30, bgcolor: 'rgba(0,0,0,.72)', display: 'grid', placeItems: 'center', p: 3 }}>
+          <Stack spacing={2} sx={{ width: 420, maxWidth: '100%', bgcolor: '#2b2d31', borderRadius: 2, p: 3 }}>
+            <Typography variant="h5">Hay que instalar la versión {update.latest}</Typography>
+            <Typography color="text.secondary">Ya pasó un día desde que salió. Esta versión no sigue en uso. Las cuentas y el navegador no se tocan.</Typography>
+            <Button variant="contained" onClick={() => install(true)}>Actualizar ahora</Button>
+          </Stack>
+        </Box>
+      )}
     </Box>
   )
 }

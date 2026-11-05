@@ -14,6 +14,7 @@ namespace MainCore.Entities
         public string Name { get; set; }
         public int MinAttackMinutes { get; set; }
         public int RepeatMinutes { get; set; }
+        public bool AutoStart { get; set; }
 
         public ICollection<CowVillage> Villages { get; set; }
     }
