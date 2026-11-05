@@ -285,7 +285,37 @@ namespace MainCore.Infrasturecture.Persistence
                 );
                 """);
 
+            // Older builds created this table with more columns. "Enabled" may be NOT NULL without a
+            // default (when EnsureCreated made it), which breaks every insert now that it is unmapped.
+            foreach (var legacy in new[] { "Enabled", "NextCheckAt", "NextOasisId", "SearchLevel", "SearchHp" })
+            {
+                DropColumn("HeroLevelings", legacy);
+            }
+
             EnsureColumn("HeroLevelings", "StatsAt", "TEXT NULL");
+        }
+
+        private void DropColumn(string table, string name)
+        {
+            var connection = Database.GetDbConnection();
+            var openedHere = connection.State != System.Data.ConnectionState.Open;
+            if (openedHere) connection.Open();
+
+            try
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{name}'";
+                var count = Convert.ToInt32(command.ExecuteScalar());
+                if (count == 0) return;
+
+                using var alter = connection.CreateCommand();
+                alter.CommandText = $"ALTER TABLE \"{table}\" DROP COLUMN \"{name}\"";
+                alter.ExecuteNonQuery();
+            }
+            finally
+            {
+                if (openedHere) connection.Close();
+            }
         }
 
         private void EnsureColumn(string table, string name, string definition)

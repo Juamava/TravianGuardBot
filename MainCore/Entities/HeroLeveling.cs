@@ -6,8 +6,8 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace MainCore.Entities
 {
     // One row per account: hero status for the Hero page (last stats read and last hero action of the cow lists).
-    // Created with raw SQL in AppDbContext.EnsureHeroLevelingTable (no migrations). Older databases also have
-    // Enabled/NextCheckAt/NextOasisId/SearchLevel/SearchHp columns that are no longer used.
+    // Created with raw SQL in AppDbContext.EnsureHeroLevelingTable (no migrations). Older databases had
+    // Enabled/NextCheckAt/NextOasisId/SearchLevel/SearchHp columns; EnsureHeroLevelingTable drops them.
     [Table("HeroLevelings")]
     public class HeroLeveling
     {
