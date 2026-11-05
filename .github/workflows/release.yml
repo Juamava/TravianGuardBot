@@ -26,14 +26,16 @@ jobs:
 
       - name: Already published
         id: existing
-        shell: pwsh
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $PSNativeCommandUseErrorActionPreference = $false
-          gh release view "v${{ steps.version.outputs.value }}" *> $null
-          if ($LASTEXITCODE -eq 0) { "skip=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append }
-          else { "skip=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append }
+          if gh release view "v${{ steps.version.outputs.value }}" > /dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Todavía no hay Release. Se publica ahora."
+          fi
 
       - uses: actions/setup-dotnet@v4
         if: steps.existing.outputs.skip != 'true'
