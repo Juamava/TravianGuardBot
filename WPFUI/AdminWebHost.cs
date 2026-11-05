@@ -50,27 +50,42 @@ namespace WPFUI
             {
                 try
                 {
+                    UpdateSplash.Report("Comprobando la versión...", -1, "");
                     var info = await AppUpdate.Check();
                     if (info.Available)
                     {
-                        ShowDesktop("Hay una versión " + info.Latest + ". Se instala ahora y el programa se vuelve a abrir solo.");
-                        await AppUpdate.Apply(services);
+                        UpdateSplash.Report("Hay una versión " + info.Latest + ".", 5, info.Latest);
+                        await AppUpdate.Apply(services, (status, percent) => UpdateSplash.Report(status, percent, info.Latest));
                         return;
                     }
+
+                    UpdateSplash.Report("Versión al día.", 100, "");
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // If GitHub does not answer, the current version still opens.
+                    UpdateSplash.Report("No se pudo actualizar. Se abre esta versión. " + ex.Message, 100, "");
                 }
+            }
+            else
+            {
+                UpdateSplash.Report("Listo.", 100, "");
             }
 
             try
             {
                 LaunchWindow(url);
+                AppUpdate.MarkReady();
+                await Task.Delay(700);
+                UpdateSplash.Close();
             }
             catch (Exception ex)
             {
                 ShowDesktop("No pude abrir la ventana. " + ex.Message);
+                if (StartedAfterUpdate())
+                {
+                    UpdateSplash.Report("No se pudo abrir. Se vuelve a la versión anterior.", 0, "");
+                    Environment.Exit(1);
+                }
             }
         }
 
@@ -87,6 +102,17 @@ namespace WPFUI
             }
 
             if (_app != null) await _app.StopAsync(cancellationToken);
+        }
+
+        private static bool StartedAfterUpdate()
+        {
+            var args = Environment.GetCommandLineArgs();
+            for (var i = 0; i < args.Length; i++)
+            {
+                if (args[i] == "--updated") return true;
+            }
+
+            return false;
         }
 
         private void LaunchWindow(string url)
