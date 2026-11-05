@@ -25,7 +25,7 @@ namespace MainCore.Services
             return $"{origin.Scheme}://{origin.Host}/karte.php?x={x}&y={y}";
         }
 
-        public static async Task<List<OasisHit>> Collect(IPage page, string catalogUrl, int originX, int originY, double maxDistance)
+        public static async Task<List<OasisHit>> Collect(IPage page, string catalogUrl, int originX, int originY, double minDistance, double maxDistance)
         {
             await page.GotoAsync(catalogUrl, new() { WaitUntil = WaitUntilState.DOMContentLoaded });
 
@@ -43,6 +43,7 @@ namespace MainCore.Services
                 foreach (var coordinate in coordinates)
                 {
                     var distance = Distance(originX, originY, coordinate.X, coordinate.Y);
+                    if (distance + 0.001 < minDistance) continue;
                     if (distance > maxDistance + 0.001)
                     {
                         reachedBeyond = true;
