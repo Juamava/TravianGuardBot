@@ -211,7 +211,7 @@ When it is on, an oasis with animals goes through `HuntAnimalOasisCommand` (`Mai
    - If it allows the send, `SendHeroRaidCommand` fills the rally point with the hero alone, checks the form and then the confirmation screen (raid, target, hero = 1, everything else 0), and confirms. The status becomes "Héroe enviado".
    - If not, the status is "Muy fuerte" (the hero dies, would keep too little HP, or kills nothing), "Sin simular" (something could not be read or did not match) or "Héroe no enviado" (a rally point check failed).
 
-A hero send does not set `LastAttackedAt`, so the troop cooldown of that oasis stays as it was. While the hero can still go out, a list with "Levear héroe" also opens oases whose troops are short or have no plan ("Sin tropas" / "Sin plan"), in case they have animals. If they have none, the troop reason is recorded as before. Hero problems never stop the list: they only become the status of that oasis.
+A hero send does not set `LastAttackedAt`, so the troop cooldown of that oasis stays as it was. The hero only hunts on oases the normal troop raid opens. An oasis skipped for "Sin tropas" or "Sin plan" is not opened, so once the troops run out the list does not keep looping for the hero alone. Hero problems never stop the list: they only become the status of that oasis.
 
 ## Hero status page
 

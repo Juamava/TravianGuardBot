@@ -49,41 +49,31 @@ namespace MainCore.Tasks
                         continue;
                     }
 
-                    // Troops cannot go, but with "Levear héroe" the tile is still opened in case it has animals for the hero.
-                    string? heroOnlyReason = null;
+                    // When troops cannot go the tile is not opened, not even for the hero:
+                    // the hero only hunts animals found on oases the normal raid opens.
                     var slots = CowTroopPlan.Resolve(target.TroopPlan, target.TroopCount);
                     if (slots.Count == 0)
                     {
                         logger.Information("Skipping {Url}: no troops configured", target.Url);
-                        if (!HeroLevelingRules.HeroMightGo(hero.LevelHero, task.Hero))
-                        {
-                            MarkSkipped(target.Id, "Sin plan");
-                            continue;
-                        }
-                        heroOnlyReason = "Sin plan";
-                    }
-                    else if (CowTroopPlan.TryBlocked(task.KnownTroops, slots, out var shortage))
-                    {
-                        logger.Information("Skipping {Url}: {Shortage}", target.Url, shortage);
-                        if (!HeroLevelingRules.HeroMightGo(hero.LevelHero, task.Hero))
-                        {
-                            MarkSkipped(target.Id, "Sin tropas");
-                            continue;
-                        }
-                        heroOnlyReason = "Sin tropas";
+                        MarkSkipped(target.Id, "Sin plan");
+                        continue;
                     }
 
-                    if (heroOnlyReason is null)
-                        logger.Information("Raiding {Url} with {Troops} ({Index}/{Total})", target.Url, CowTroopPlan.Format(slots), index + 1, targets.Count);
-                    else
-                        logger.Information("Checking {Url} for the hero only ({Index}/{Total})", target.Url, index + 1, targets.Count);
+                    if (CowTroopPlan.TryBlocked(task.KnownTroops, slots, out var shortage))
+                    {
+                        logger.Information("Skipping {Url}: {Shortage}", target.Url, shortage);
+                        MarkSkipped(target.Id, "Sin tropas");
+                        continue;
+                    }
+
+                    logger.Information("Raiding {Url} with {Troops} ({Index}/{Total})", target.Url, CowTroopPlan.Format(slots), index + 1, targets.Count);
                     MarkPhase(target.Id, "Analizando");
                     await System.Threading.Tasks.Task.Delay(NextAttackDelay(task.AccountId), cancellationToken);
 
                     Result result;
                     try
                     {
-                        result = await RaidTarget(task, target, slots, hero, heroOnlyReason, cancellationToken);
+                        result = await RaidTarget(task, target, slots, hero, cancellationToken);
                     }
                     catch (OperationCanceledException)
                     {
@@ -116,7 +106,7 @@ namespace MainCore.Tasks
             return Result.Ok();
         }
 
-        private async Task<Result> RaidTarget(Task task, CowTarget target, IReadOnlyList<CowTroopSlot> slots, HeroOptions hero, string? heroOnlyReason, CancellationToken cancellationToken)
+        private async Task<Result> RaidTarget(Task task, CowTarget target, IReadOnlyList<CowTroopSlot> slots, HeroOptions hero, CancellationToken cancellationToken)
         {
             var result = await browser.Navigate(target.Url);
             if (result.IsFailed)
@@ -161,13 +151,6 @@ namespace MainCore.Tasks
 
                 logger.Information("Skipping {Url}: oasis troop cell does not say none", target.Url);
                 MarkSkipped(target.Id, "Hay tropas");
-                return Result.Ok();
-            }
-
-            if (heroOnlyReason is not null)
-            {
-                // Opened only for the hero and there are no animals: the troop skip reason stands.
-                MarkSkipped(target.Id, heroOnlyReason);
                 return Result.Ok();
             }
 

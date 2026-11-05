@@ -2,6 +2,8 @@ namespace MainCore.Infrasturecture.Extensions
 {
     /// <summary>
     /// Reads and writes the HeroLevelings row of an account: the hero status shown on the Hero page.
+    /// The status is only informative: a failed save must never stop the cow list, so errors are swallowed
+    /// and the row is detached (otherwise the next SaveChanges of the same context would fail too).
     /// </summary>
     public static class HeroLevelingStore
     {
@@ -12,21 +14,38 @@ namespace MainCore.Infrasturecture.Extensions
 
         public static void SaveAction(AppDbContext context, AccountId accountId, string state, string message)
         {
-            var row = GetOrAdd(context, accountId);
-            row.State = state;
-            row.Message = message;
-            row.UpdatedAt = DateTime.Now;
-            context.SaveChanges();
+            Save(context, accountId, row =>
+            {
+                row.State = state;
+                row.Message = message;
+                row.UpdatedAt = DateTime.Now;
+            });
         }
 
         public static void SaveStats(AppDbContext context, AccountId accountId, HeroStats stats)
         {
-            var row = GetOrAdd(context, accountId);
-            row.Level = stats.Level ?? row.Level;
-            row.HpPercent = stats.HpPercent;
-            row.Experience = stats.Experience ?? row.Experience;
-            row.StatsAt = DateTime.Now;
-            context.SaveChanges();
+            Save(context, accountId, row =>
+            {
+                row.Level = stats.Level ?? row.Level;
+                row.HpPercent = stats.HpPercent;
+                row.Experience = stats.Experience ?? row.Experience;
+                row.StatsAt = DateTime.Now;
+            });
+        }
+
+        private static void Save(AppDbContext context, AccountId accountId, Action<HeroLeveling> change)
+        {
+            HeroLeveling? row = null;
+            try
+            {
+                row = GetOrAdd(context, accountId);
+                change(row);
+                context.SaveChanges();
+            }
+            catch (Exception)
+            {
+                if (row is not null) context.Entry(row).State = EntityState.Detached;
+            }
         }
 
         private static HeroLeveling GetOrAdd(AppDbContext context, AccountId accountId)
