@@ -98,6 +98,7 @@ namespace WPFUI
             app.MapPut("/api/accounts/{id:int}/farming/lists/{listId:int}", (int id, int listId, CowListBody body) => UpdateCowList(services, id, listId, body));
             app.MapDelete("/api/accounts/{id:int}/farming/lists/{listId:int}", (int id, int listId) => DeleteCowList(services, id, listId));
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/villages", (int id, int listId, CowVillageBody body) => AddCowVillage(services, id, listId, body));
+            app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/bulk", (int id, int listId, BulkBody body) => BulkEditCowList(services, id, listId, body.Text));
             app.MapPut("/api/accounts/{id:int}/farming/villages/{cowId:int}", (int id, int cowId, CowVillageBody body) => UpdateCowVillage(services, id, cowId, body));
             app.MapDelete("/api/accounts/{id:int}/farming/villages/{cowId:int}", (int id, int cowId) => DeleteCowVillage(services, id, cowId));
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/sync", (int id, int listId, HttpContext http) => SyncVillageNames(services, id, listId, http.RequestAborted));
@@ -672,6 +673,59 @@ namespace WPFUI
             return Ok(name == CowOasisParser.MissingName ? "Aldea agregada sin nombre." : $"Aldea agregada: {name}.");
         }
 
+        private static IResult BulkEditCowList(IServiceProvider services, int accountId, int listId, string text)
+        {
+            if (!TryParseCowLines(text, out var lines, out var error)) return Fail(error);
+
+            using var context = Context(services);
+            if (!context.CowLists.Any(x => x.Id == listId && x.AccountId == accountId)) return Fail("No se encontró la lista.");
+
+            var existing = context.CowVillages.Where(x => x.CowListId == listId).ToList();
+            var byUrl = new Dictionary<string, CowVillage>(StringComparer.OrdinalIgnoreCase);
+            foreach (var village in existing)
+                byUrl[village.Url] = village;
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var updated = 0;
+            var added = 0;
+            foreach (var line in lines)
+            {
+                seen.Add(line.Url);
+                if (!byUrl.TryGetValue(line.Url, out var village))
+                {
+                    context.CowVillages.Add(new CowVillage
+                    {
+                        CowListId = listId,
+                        Name = line.HasName ? line.Name : CowOasisParser.MissingName,
+                        Url = line.Url,
+                        TroopPlan = line.Plan,
+                        TroopCount = line.Count,
+                    });
+                    added++;
+                    continue;
+                }
+
+                var name = line.HasName ? line.Name : village.Name;
+                if (village.Name == name && village.TroopPlan == line.Plan && village.TroopCount == line.Count) continue;
+                village.Name = name;
+                village.TroopPlan = line.Plan;
+                village.TroopCount = line.Count;
+                updated++;
+            }
+
+            var removed = 0;
+            foreach (var village in existing)
+            {
+                if (seen.Contains(village.Url)) continue;
+                context.CowVillages.Remove(village);
+                removed++;
+            }
+
+            context.SaveChanges();
+            if (updated == 0 && added == 0 && removed == 0) return Ok("La lista ya estaba así.");
+            return Ok($"Se actualizó la lista. Modificadas: {updated}. Nuevas: {added}. Borradas: {removed}.");
+        }
+
         private static IResult UpdateCowVillage(IServiceProvider services, int accountId, int cowId, CowVillageBody body)
         {
             if (!TryParseCow(body.Url, body.Troops, out var url, out var plan, out var count, out var error)) return Fail(error);
@@ -1159,6 +1213,89 @@ namespace WPFUI
             if (!CowTroopPlan.TryParse(troopInput ?? "", out var slots, out error)) return false;
             plan = CowTroopPlan.Format(slots);
             count = slots.Sum(slot => slot.Amount);
+            return true;
+        }
+
+        private readonly record struct CowBulkLine(bool HasName, string Name, string Url, string Plan, int Count);
+
+        private static bool TryParseCowLines(string text, out List<CowBulkLine> lines, out string error)
+        {
+            lines = [];
+            error = "";
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var number = 0;
+            foreach (var rawLine in (text ?? "").Replace("\r", "").Split('\n'))
+            {
+                var line = rawLine.Trim();
+                if (line.Length == 0) continue;
+                number++;
+                if (!TryParseCowLine(line, out var parsed, out var parseError))
+                {
+                    error = $"Línea {number}: {parseError}";
+                    return false;
+                }
+
+                if (!seen.Add(parsed.Url))
+                {
+                    error = $"Línea {number}: el enlace está repetido.";
+                    return false;
+                }
+
+                lines.Add(parsed);
+            }
+
+            if (lines.Count == 0)
+            {
+                error = "No hay aldeas. Cada línea es: enlace | tropas.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool TryParseCowLine(string line, out CowBulkLine parsed, out string error)
+        {
+            parsed = default;
+            var hasName = false;
+            var name = "";
+            string urlInput;
+            string troops;
+            if (line.Contains('|'))
+            {
+                var parts = line.Split('|');
+                if (parts.Length == 2)
+                {
+                    urlInput = parts[0].Trim();
+                    troops = parts[1].Trim();
+                }
+                else if (parts.Length == 3)
+                {
+                    hasName = parts[0].Trim().Length > 0;
+                    name = VillageLabel(parts[0]);
+                    urlInput = parts[1].Trim();
+                    troops = parts[2].Trim();
+                }
+                else
+                {
+                    error = "usá enlace | tropas, o nombre | enlace | tropas.";
+                    return false;
+                }
+            }
+            else
+            {
+                var space = line.IndexOf(' ');
+                if (space <= 0)
+                {
+                    error = "usá enlace | tropas. Ejemplo: https://... | 2";
+                    return false;
+                }
+
+                urlInput = line[..space].Trim();
+                troops = line[(space + 1)..].Trim();
+            }
+
+            if (!TryParseCow(urlInput, troops, out var url, out var plan, out var count, out error)) return false;
+            parsed = new CowBulkLine(hasName, name, url, plan, count);
             return true;
         }
 
