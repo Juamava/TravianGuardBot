@@ -21,6 +21,7 @@ namespace MainCore.Infrasturecture.Extensions
         {
             var row = GetOrAdd(context, accountId);
             row.Enabled = enabled;
+            if (enabled) row.NextOasisId = null; // a fresh start searches from the closest oasis
             row.State = enabled ? "Activo" : "Detenido";
             row.Message = message;
             row.UpdatedAt = DateTime.Now;
@@ -46,6 +47,15 @@ namespace MainCore.Infrasturecture.Extensions
             row.HpPercent = stats.HpPercent;
             row.Experience = stats.Experience ?? row.Experience;
             row.UpdatedAt = DateTime.Now;
+            context.SaveChanges();
+        }
+
+        public static void SaveSearch(AppDbContext context, AccountId accountId, int? nextOasisId, int? level, int? hp)
+        {
+            var row = GetOrAdd(context, accountId);
+            row.NextOasisId = nextOasisId;
+            row.SearchLevel = nextOasisId is null ? null : level;
+            row.SearchHp = nextOasisId is null ? null : hp;
             context.SaveChanges();
         }
 

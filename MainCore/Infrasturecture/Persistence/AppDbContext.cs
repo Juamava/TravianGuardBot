@@ -283,6 +283,10 @@ namespace MainCore.Infrasturecture.Persistence
                     CONSTRAINT "FK_HeroLevelings_Accounts_AccountId" FOREIGN KEY ("AccountId") REFERENCES "Accounts" ("Id") ON DELETE CASCADE
                 );
                 """);
+
+            EnsureColumn("HeroLevelings", "NextOasisId", "INTEGER NULL");
+            EnsureColumn("HeroLevelings", "SearchLevel", "INTEGER NULL");
+            EnsureColumn("HeroLevelings", "SearchHp", "INTEGER NULL");
         }
 
         private void EnsureColumn(string table, string name, string definition)

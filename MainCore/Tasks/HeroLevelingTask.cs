@@ -232,12 +232,30 @@ namespace MainCore.Tasks
                 return Result.Ok();
             }
 
-            var candidates = HeroLevelingRules.OrderCandidates(targets.Select(x => (x.Id, x.Url)), origin.Value.X, origin.Value.Y);
+            var ordered = HeroLevelingRules.OrderCandidates(targets.Select(x => (x.Id, x.Url)), origin.Value.X, origin.Value.Y);
+            // Continue where the last search stopped: the closer oases were already found too strong
+            // (or empty) for a hero of this level and HP. A stronger hero starts again from the closest.
+            var startId = GetSearchStart(task.AccountId, stats);
+            var candidates = HeroLevelingRules.StartFrom(ordered, startId);
+            if (startId is int start && candidates.Count > 0 && candidates[0].Id == start)
+                logger.Information("Hero leveling continues the search at ({X}|{Y})", candidates[0].X, candidates[0].Y);
+
             var checkedCount = 0;
             foreach (var candidate in candidates)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (checkedCount++ >= MaxOasisChecks) break;
+                if (checkedCount >= MaxOasisChecks)
+                {
+                    // Too many checks for one run: the next run continues with this oasis.
+                    SaveSearch(task.AccountId, candidate.Id, stats);
+                    var later = DateTime.Now.Add(UnknownRetry);
+                    Reschedule(task, later, "Buscando", $"Revisé {MaxOasisChecks} oasis sin encontrar uno seguro. Sigo desde ({candidate.X}|{candidate.Y}) a las {later:HH:mm}.");
+                    return Result.Ok();
+                }
+                checkedCount++;
+
+                // Save the position first, so an error in the middle resumes at this oasis.
+                SaveSearch(task.AccountId, candidate.Id, stats);
 
                 var check = await CheckOasis(server, heroVillageId.Value, candidate, stats);
                 if (check.IsFailed) return Result.Fail(check.Errors);
@@ -259,6 +277,9 @@ namespace MainCore.Tasks
                     continue;
                 }
 
+                // This oasis is being cleared: next time start with the one after it.
+                SaveSearch(task.AccountId, HeroLevelingRules.NextAfter(ordered, candidate.Id), stats);
+
                 var roundTrip = HeroLevelingRules.RoundTrip(candidate.Distance, stats.SpeedFieldsPerHour);
                 var back = roundTrip is TimeSpan trip ? DateTime.Now.Add(trip).AddMinutes(1) : DateTime.Now.Add(NotHomeRetry);
                 task.ExpectedReturnAt = back;
@@ -266,6 +287,8 @@ namespace MainCore.Tasks
                 return Result.Ok();
             }
 
+            // A full lap without a safe oasis: animals respawn and the hero heals, so start from the closest again.
+            SaveSearch(task.AccountId, null, stats);
             var at = DateTime.Now.Add(NoSafeOasisRetry);
             Reschedule(task, at, "Esperando", $"Ningún oasis de la lista es seguro ahora (o no tienen animales). Reviso a las {at:HH:mm}.");
             return Result.Ok();
@@ -501,6 +524,25 @@ namespace MainCore.Tasks
         {
             using var context = contextFactory.CreateDbContext();
             HeroLevelingStore.SaveStats(context, accountId, stats);
+        }
+
+        private int? GetSearchStart(AccountId accountId, HeroStats stats)
+        {
+            using var context = contextFactory.CreateDbContext();
+            var row = HeroLevelingStore.Get(context, accountId);
+            if (row?.NextOasisId is null) return null;
+            if (HeroLevelingRules.ShouldRestartSearch(row.SearchLevel, row.SearchHp, stats.Level, stats.HpPercent))
+            {
+                logger.Information("Hero leveling: hero is stronger than when the search stopped, starting again from the closest oasis");
+                return null;
+            }
+            return row.NextOasisId;
+        }
+
+        private void SaveSearch(AccountId accountId, int? nextOasisId, HeroStats stats)
+        {
+            using var context = contextFactory.CreateDbContext();
+            HeroLevelingStore.SaveSearch(context, accountId, nextOasisId, stats.Level, stats.HpPercent);
         }
 
         private void Reschedule(Task task, DateTime at, string state, string message)

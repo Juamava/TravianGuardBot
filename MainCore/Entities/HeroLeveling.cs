@@ -21,5 +21,11 @@ namespace MainCore.Entities
         public int? Experience { get; set; }
         public DateTime? UpdatedAt { get; set; }
         public DateTime? NextCheckAt { get; set; }
+
+        // Where the oasis search continues (CowVillages.Id), and the hero level and HP when it was saved.
+        // A higher level or clearly more HP restarts the search from the closest oasis.
+        public int? NextOasisId { get; set; }
+        public int? SearchLevel { get; set; }
+        public int? SearchHp { get; set; }
     }
 }

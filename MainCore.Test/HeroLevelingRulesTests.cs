@@ -210,5 +210,52 @@ namespace MainCore.Test
             HeroParser.ParseNewdid("/build.php?newdid=28876&id=39&&tt=2").ShouldBe(28876);
             HeroParser.ParseNewdid(null).ShouldBeNull();
         }
+
+        private static List<OasisCandidate> Lap() =>
+        [
+            new(10, "u", 0, 1, 1),
+            new(20, "u", 0, 2, 2),
+            new(30, "u", 0, 3, 3),
+        ];
+
+        [Fact]
+        public void StartFrom_continues_at_saved_oasis_and_wraps()
+        {
+            HeroLevelingRules.StartFrom(Lap(), 20).Select(x => x.Id).ShouldBe([20, 30, 10]);
+        }
+
+        [Fact]
+        public void StartFrom_unknown_or_missing_start_uses_closest()
+        {
+            HeroLevelingRules.StartFrom(Lap(), null).Select(x => x.Id).ShouldBe([10, 20, 30]);
+            HeroLevelingRules.StartFrom(Lap(), 99).Select(x => x.Id).ShouldBe([10, 20, 30]);
+        }
+
+        [Fact]
+        public void NextAfter_moves_to_next_and_wraps_to_closest()
+        {
+            HeroLevelingRules.NextAfter(Lap(), 10).ShouldBe(20);
+            HeroLevelingRules.NextAfter(Lap(), 30).ShouldBe(10);
+            HeroLevelingRules.NextAfter(Lap(), 99).ShouldBeNull();
+        }
+
+        [Theory]
+        [InlineData(5, 60, 5, 60, false)]  // same hero: keep going
+        [InlineData(5, 60, 5, 40, false)]  // weaker after a fight: keep going
+        [InlineData(5, 60, 5, 69, false)]  // a bit more HP: keep going
+        [InlineData(5, 60, 5, 70, true)]   // clearly more HP: closer oases may be safe now
+        [InlineData(5, 60, 6, 40, true)]   // level up: restart
+        public void ShouldRestartSearch_when_hero_is_stronger(int savedLevel, int savedHp, int level, int hp, bool expected)
+        {
+            HeroLevelingRules.ShouldRestartSearch(savedLevel, savedHp, level, hp).ShouldBe(expected);
+        }
+
+        [Fact]
+        public void ShouldRestartSearch_when_anything_is_unknown()
+        {
+            HeroLevelingRules.ShouldRestartSearch(null, 60, 5, 60).ShouldBeTrue();
+            HeroLevelingRules.ShouldRestartSearch(5, 60, null, 60).ShouldBeTrue();
+            HeroLevelingRules.ShouldRestartSearch(5, 60, 5, null).ShouldBeTrue();
+        }
     }
 }

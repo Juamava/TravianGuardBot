@@ -192,6 +192,40 @@ namespace MainCore.Parsers
             return [.. list.OrderBy(x => x.Distance).ThenBy(x => x.Id)];
         }
 
+        /// <summary>HP points above the saved search HP that count as "clearly stronger".</summary>
+        public const int SearchRestartHpGain = 10;
+
+        /// <summary>
+        /// The saved search position is only valid while the hero is not stronger than when it
+        /// was saved: a level up, or clearly more HP, can make a closer oasis safe again.
+        /// </summary>
+        public static bool ShouldRestartSearch(int? savedLevel, int? savedHp, int? level, int? hp)
+        {
+            if (savedLevel is null || savedHp is null || level is null || hp is null) return true;
+            if (level.Value > savedLevel.Value) return true;
+            return hp.Value >= savedHp.Value + SearchRestartHpGain;
+        }
+
+        /// <summary>
+        /// Candidates starting at <paramref name="startId"/> and wrapping around, so each one appears once.
+        /// An unknown or missing start (the oasis was removed from the list) starts from the closest.
+        /// </summary>
+        public static List<OasisCandidate> StartFrom(IReadOnlyList<OasisCandidate> ordered, int? startId)
+        {
+            var index = startId is int id ? ordered.ToList().FindIndex(x => x.Id == id) : -1;
+            if (index <= 0) return [.. ordered];
+            return [.. ordered.Skip(index), .. ordered.Take(index)];
+        }
+
+        /// <summary>The oasis after <paramref name="id"/> in the closest-first order, wrapping to the closest.</summary>
+        public static int? NextAfter(IReadOnlyList<OasisCandidate> ordered, int id)
+        {
+            if (ordered.Count == 0) return null;
+            var index = ordered.ToList().FindIndex(x => x.Id == id);
+            if (index < 0) return null;
+            return ordered[(index + 1) % ordered.Count].Id;
+        }
+
         /// <summary>
         /// Round trip estimate for the hero alone. Falls back to null when the speed is unknown.
         /// </summary>
