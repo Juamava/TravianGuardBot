@@ -248,6 +248,7 @@ namespace MainCore.Infrasturecture.Persistence
             EnsureColumn("CowLists", "MinAttackMinutes", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("CowLists", "RepeatMinutes", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("CowLists", "LevelHero", "INTEGER NOT NULL DEFAULT 0");
+            EnsureColumn("CowLists", "AutoStart", "INTEGER NOT NULL DEFAULT 0");
 
             Database.ExecuteSqlRaw(
                 """

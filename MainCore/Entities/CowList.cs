@@ -14,6 +14,7 @@ namespace MainCore.Entities
         public string Name { get; set; }
         public int MinAttackMinutes { get; set; }
         public int RepeatMinutes { get; set; }
+        public bool AutoStart { get; set; }
 
         /// <summary>"Levear héroe": oases with animals go through the hero hunt instead of being skipped.</summary>
         public bool LevelHero { get; set; }

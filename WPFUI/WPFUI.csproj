@@ -22,6 +22,9 @@
 
   <ItemGroup>
     <Resource Include="Resources\**" />
+    <Resource Include="..\logo.png">
+      <Link>logo.png</Link>
+    </Resource>
   </ItemGroup>
 
   <ItemGroup>
@@ -48,14 +51,26 @@
 
   <Target Name="CopyElectronRuntime" AfterTargets="Build">
     <PropertyGroup>
-      <ElectronDist>$(MSBuildProjectDirectory)\..\web\node_modules\electron\dist</ElectronDist>
-      <ElectronOut>$(OutputPath)electron\</ElectronOut>
+      <_ElectronDist>$(MSBuildProjectDirectory)\..\web\node_modules\electron\dist</_ElectronDist>
+      <_ElectronOut>$(OutputPath)electron\</_ElectronOut>
     </PropertyGroup>
     <ItemGroup>
-      <ElectronFiles Include="$(ElectronDist)\**\*" Condition="Exists('$(ElectronDist)\electron.exe')" />
+      <_ElectronFiles Include="$(_ElectronDist)\**\*" Condition="Exists('$(_ElectronDist)\electron.exe')" />
     </ItemGroup>
-    <Copy SourceFiles="@(ElectronFiles)" DestinationFiles="@(ElectronFiles->'$(ElectronOut)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="Exists('$(ElectronDist)\electron.exe')" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\web\electron\main.cjs" DestinationFiles="$(ElectronOut)main.cjs" SkipUnchangedFiles="true" Condition="Exists('$(MSBuildProjectDirectory)\..\web\electron\main.cjs')" />
+    <Copy SourceFiles="@(_ElectronFiles)" DestinationFiles="@(_ElectronFiles->'$(_ElectronOut)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="Exists('$(_ElectronDist)\electron.exe')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\web\electron\main.cjs" DestinationFiles="$(_ElectronOut)main.cjs" SkipUnchangedFiles="true" Condition="Exists('$(MSBuildProjectDirectory)\..\web\electron\main.cjs')" />
+  </Target>
+
+  <Target Name="CopyElectronRuntimeToPublish" AfterTargets="Publish">
+    <PropertyGroup>
+      <_ElectronDist>$(MSBuildProjectDirectory)\..\web\node_modules\electron\dist</_ElectronDist>
+      <_ElectronOut>$(PublishDir)electron\</_ElectronOut>
+    </PropertyGroup>
+    <ItemGroup>
+      <_ElectronPublishFiles Include="$(_ElectronDist)\**\*" Condition="Exists('$(_ElectronDist)\electron.exe')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_ElectronPublishFiles)" DestinationFiles="@(_ElectronPublishFiles->'$(_ElectronOut)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != '' and Exists('$(_ElectronDist)\electron.exe')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\web\electron\main.cjs" DestinationFiles="$(_ElectronOut)main.cjs" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != '' and Exists('$(MSBuildProjectDirectory)\..\web\electron\main.cjs')" />
   </Target>
   
   <ItemGroup>

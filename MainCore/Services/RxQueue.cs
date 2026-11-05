@@ -85,6 +85,18 @@ namespace MainCore.Services
                     taskManager.Add(upgradeBuildingTask);
                 }
             }
+
+            if (taskManager.IsExist<RaidCowListTask.Task>(accountId)) return;
+
+            var autoListId = context.CowLists
+                .Where(x => x.AccountId == accountId.Value && x.AutoStart && x.MinAttackMinutes >= 1 && x.RepeatMinutes >= 1)
+                .Where(x => context.CowVillages.Any(village => village.CowListId == x.Id))
+                .OrderBy(x => x.Id)
+                .Select(x => (int?)x.Id)
+                .FirstOrDefault();
+            if (autoListId is null) return;
+
+            taskManager.Add(new RaidCowListTask.Task(accountId, autoListId.Value));
         }
 
         private static readonly List<JobTypeEnums> _jobTypes = new() {
