@@ -30,6 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $PSNativeCommandUseErrorActionPreference = $false
           gh release view "v${{ steps.version.outputs.value }}" *> $null
           if ($LASTEXITCODE -eq 0) { "skip=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append }
           else { "skip=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append }
