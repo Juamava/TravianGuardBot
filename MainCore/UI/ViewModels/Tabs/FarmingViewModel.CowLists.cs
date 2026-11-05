@@ -480,6 +480,12 @@ namespace MainCore.UI.ViewModels.Tabs
                 return;
             }
 
+            if (minMinutes < 1 || repeatMinutes < 1)
+            {
+                await _dialogService.SendMessage("Warning", "Para iniciar, el mínimo por aldea y la revisión de la lista tienen que ser de 1 minuto o más.");
+                return;
+            }
+
             var listId = CowLists.SelectedItem.Id;
             if (!SaveListSettings(listId, minMinutes, repeatMinutes))
             {
@@ -753,6 +759,7 @@ namespace MainCore.UI.ViewModels.Tabs
 
         private static string FormatStatus(DateTime? lastAttackedAt, string? skipReason)
         {
+            if (skipReason is "Analizando" or "Atacando") return skipReason;
             if (lastAttackedAt is not null)
             {
                 var minutes = (int)Math.Floor((DateTime.Now - lastAttackedAt.Value).TotalMinutes);

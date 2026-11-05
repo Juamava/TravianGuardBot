@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 using FluentValidation;
@@ -97,9 +98,10 @@ namespace WPFUI
             app.MapPut("/api/accounts/{id:int}/farming/lists/{listId:int}", (int id, int listId, CowListBody body) => UpdateCowList(services, id, listId, body));
             app.MapDelete("/api/accounts/{id:int}/farming/lists/{listId:int}", (int id, int listId) => DeleteCowList(services, id, listId));
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/villages", (int id, int listId, CowVillageBody body) => AddCowVillage(services, id, listId, body));
+            app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/bulk", (int id, int listId, BulkBody body) => BulkEditCowList(services, id, listId, body.Text));
             app.MapPut("/api/accounts/{id:int}/farming/villages/{cowId:int}", (int id, int cowId, CowVillageBody body) => UpdateCowVillage(services, id, cowId, body));
             app.MapDelete("/api/accounts/{id:int}/farming/villages/{cowId:int}", (int id, int cowId) => DeleteCowVillage(services, id, cowId));
-            app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/sync", (int id, int listId) => SyncVillageNames(services, id, listId));
+            app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/sync", (int id, int listId, HttpContext http) => SyncVillageNames(services, id, listId, http.RequestAborted));
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/start", (int id, int listId, CowListBody body) => StartCowList(services, id, listId, body));
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/stop", (int id, int listId) => StopCowList(services, id, listId));
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/search", (int id, int listId, SearchBody body) => SearchOasis(services, id, listId, body));
@@ -675,6 +677,59 @@ namespace WPFUI
             return Ok(name == CowOasisParser.MissingName ? "Aldea agregada sin nombre." : $"Aldea agregada: {name}.");
         }
 
+        private static IResult BulkEditCowList(IServiceProvider services, int accountId, int listId, string text)
+        {
+            if (!TryParseCowLines(text, out var lines, out var error)) return Fail(error);
+
+            using var context = Context(services);
+            if (!context.CowLists.Any(x => x.Id == listId && x.AccountId == accountId)) return Fail("No se encontró la lista.");
+
+            var existing = context.CowVillages.Where(x => x.CowListId == listId).ToList();
+            var byUrl = new Dictionary<string, CowVillage>(StringComparer.OrdinalIgnoreCase);
+            foreach (var village in existing)
+                byUrl[village.Url] = village;
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var updated = 0;
+            var added = 0;
+            foreach (var line in lines)
+            {
+                seen.Add(line.Url);
+                if (!byUrl.TryGetValue(line.Url, out var village))
+                {
+                    context.CowVillages.Add(new CowVillage
+                    {
+                        CowListId = listId,
+                        Name = line.HasName ? line.Name : CowOasisParser.MissingName,
+                        Url = line.Url,
+                        TroopPlan = line.Plan,
+                        TroopCount = line.Count,
+                    });
+                    added++;
+                    continue;
+                }
+
+                var name = line.HasName ? line.Name : village.Name;
+                if (village.Name == name && village.TroopPlan == line.Plan && village.TroopCount == line.Count) continue;
+                village.Name = name;
+                village.TroopPlan = line.Plan;
+                village.TroopCount = line.Count;
+                updated++;
+            }
+
+            var removed = 0;
+            foreach (var village in existing)
+            {
+                if (seen.Contains(village.Url)) continue;
+                context.CowVillages.Remove(village);
+                removed++;
+            }
+
+            context.SaveChanges();
+            if (updated == 0 && added == 0 && removed == 0) return Ok("La lista ya estaba así.");
+            return Ok($"Se actualizó la lista. Modificadas: {updated}. Nuevas: {added}. Borradas: {removed}.");
+        }
+
         private static IResult UpdateCowVillage(IServiceProvider services, int accountId, int cowId, CowVillageBody body)
         {
             if (!TryParseCow(body.Url, body.Troops, out var url, out var plan, out var count, out var error)) return Fail(error);
@@ -690,19 +745,26 @@ namespace WPFUI
             return Ok("Aldea guardada.");
         }
 
-        private static async Task<string> ReadVillageName(IServiceProvider services, int accountId, string url)
+        private static async Task<string> ReadVillageName(IServiceProvider services, int accountId, string url, CancellationToken cancellationToken = default)
         {
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var browser = services.GetRequiredService<ChromeManager>().Get(new AccountId(accountId));
                 if (!browser.IsInitialized) return CowOasisParser.MissingName;
                 var name = await browser.InNewTab(async page =>
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     await page.GotoAsync(url, new() { Timeout = 20_000 });
+                    cancellationToken.ThrowIfCancellationRequested();
                     return await CowOasisParser.ReadTitle(page);
                 });
                 if (browser.IsInitialized) await browser.CurrentPage.BringToFrontAsync();
                 return VillageLabel(name);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch
             {
@@ -716,7 +778,7 @@ namespace WPFUI
             return text.Length == 0 ? CowOasisParser.MissingName : text;
         }
 
-        private static async Task<IResult> SyncVillageNames(IServiceProvider services, int accountId, int listId)
+        private static async Task<IResult> SyncVillageNames(IServiceProvider services, int accountId, int listId, CancellationToken cancellationToken)
         {
             List<(int Id, string Url)> villages;
             using (var context = Context(services))
@@ -738,15 +800,25 @@ namespace WPFUI
             if (!browser.IsInitialized) return Fail("La cuenta tiene que estar conectada para abrir el navegador.");
 
             var named = 0;
-            for (var index = 0; index < villages.Count; index++)
+            var visited = 0;
+            try
             {
-                if (index > 0) await Task.Delay(NextNavigationDelay());
-                var (id, url) = villages[index];
-                var name = await ReadVillageName(services, accountId, url);
-                if (name != CowOasisParser.MissingName) named++;
-                using var context = Context(services);
-                context.CowVillages.Where(x => x.Id == id && x.CowList.AccountId == accountId)
-                    .ExecuteUpdate(x => x.SetProperty(village => village.Name, name));
+                for (var index = 0; index < villages.Count; index++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (index > 0) await Task.Delay(NextNavigationDelay(), cancellationToken);
+                    var (id, url) = villages[index];
+                    var name = await ReadVillageName(services, accountId, url, cancellationToken);
+                    visited++;
+                    if (name != CowOasisParser.MissingName) named++;
+                    using var context = Context(services);
+                    context.CowVillages.Where(x => x.Id == id && x.CowList.AccountId == accountId)
+                        .ExecuteUpdate(x => x.SetProperty(village => village.Name, name));
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                return Ok(visited == 0 ? "Sync detenido." : $"Sync detenido. Se actualizaron {visited} aldeas.");
             }
 
             return Ok(named == villages.Count
@@ -778,7 +850,7 @@ namespace WPFUI
 
         private static IResult StartCowList(IServiceProvider services, int accountId, int listId, CowListBody body)
         {
-            if (body.MinMinutes < 0 || body.RepeatMinutes < 0) return Fail("Los minutos tienen que ser 0 o más.");
+            if (body.MinMinutes < 1 || body.RepeatMinutes < 1) return Fail("Para iniciar, el mínimo por aldea y la revisión de la lista tienen que ser de 1 minuto o más.");
             var account = new AccountId(accountId);
             var tasks = services.GetRequiredService<TaskManager>();
             if (tasks.IsExist<RaidCowListTask.Task>(account)) return Fail("Ya hay un raid de vacas en la cola. Detenelo antes de iniciar otra lista.");
@@ -792,9 +864,7 @@ namespace WPFUI
             if (!context.CowVillages.Any(x => x.CowListId == listId)) return Fail("La lista no tiene aldeas.");
 
             tasks.Add(new RaidCowListTask.Task(account, listId));
-            return Ok(body.RepeatMinutes == 0
-                ? $"Empieza la revisión. Mínimo por aldea: {body.MinMinutes} minutos."
-                : $"Empieza la revisión. Mínimo por aldea: {body.MinMinutes} minutos. La próxima revisión es {body.RepeatMinutes} minutos después de que termine esta.");
+            return Ok($"Empieza la revisión. Mínimo por aldea: {body.MinMinutes} minutos. La próxima revisión es {body.RepeatMinutes} minutos después de que termine esta.");
         }
 
         private static IResult StopCowList(IServiceProvider services, int accountId, int listId)
@@ -806,6 +876,11 @@ namespace WPFUI
             if (running is not null) running.KeepRepeating = false;
             tasks.CancelIfCurrent<RaidCowListTask.Task>(account);
             tasks.Remove<RaidCowListTask.Task>(account);
+            using var context = Context(services);
+            context.CowVillages
+                .Where(x => x.CowListId == listId && x.CowList.AccountId == accountId)
+                .Where(x => x.LastSkipReason == "Analizando" || x.LastSkipReason == "Atacando")
+                .ExecuteUpdate(x => x.SetProperty(village => village.LastSkipReason, ""));
             return Ok("Se detuvo el raid y la repetición.");
         }
 
@@ -1219,6 +1294,89 @@ namespace WPFUI
             return true;
         }
 
+        private readonly record struct CowBulkLine(bool HasName, string Name, string Url, string Plan, int Count);
+
+        private static bool TryParseCowLines(string text, out List<CowBulkLine> lines, out string error)
+        {
+            lines = [];
+            error = "";
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var number = 0;
+            foreach (var rawLine in (text ?? "").Replace("\r", "").Split('\n'))
+            {
+                var line = rawLine.Trim();
+                if (line.Length == 0) continue;
+                number++;
+                if (!TryParseCowLine(line, out var parsed, out var parseError))
+                {
+                    error = $"Línea {number}: {parseError}";
+                    return false;
+                }
+
+                if (!seen.Add(parsed.Url))
+                {
+                    error = $"Línea {number}: el enlace está repetido.";
+                    return false;
+                }
+
+                lines.Add(parsed);
+            }
+
+            if (lines.Count == 0)
+            {
+                error = "No hay aldeas. Cada línea es: enlace | tropas.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool TryParseCowLine(string line, out CowBulkLine parsed, out string error)
+        {
+            parsed = default;
+            var hasName = false;
+            var name = "";
+            string urlInput;
+            string troops;
+            if (line.Contains('|'))
+            {
+                var parts = line.Split('|');
+                if (parts.Length == 2)
+                {
+                    urlInput = parts[0].Trim();
+                    troops = parts[1].Trim();
+                }
+                else if (parts.Length == 3)
+                {
+                    hasName = parts[0].Trim().Length > 0;
+                    name = VillageLabel(parts[0]);
+                    urlInput = parts[1].Trim();
+                    troops = parts[2].Trim();
+                }
+                else
+                {
+                    error = "usá enlace | tropas, o nombre | enlace | tropas.";
+                    return false;
+                }
+            }
+            else
+            {
+                var space = line.IndexOf(' ');
+                if (space <= 0)
+                {
+                    error = "usá enlace | tropas. Ejemplo: https://... | 2";
+                    return false;
+                }
+
+                urlInput = line[..space].Trim();
+                troops = line[(space + 1)..].Trim();
+            }
+
+            if (!TryParseCow(urlInput, troops, out var url, out var plan, out var count, out error)) return false;
+            parsed = new CowBulkLine(hasName, name, url, plan, count);
+            return true;
+        }
+
         private static bool TryParseDistance(string input, out double distance)
         {
             var text = (input ?? "").Trim();
@@ -1230,6 +1388,7 @@ namespace WPFUI
 
         private static string FormatStatus(DateTime? lastAttackedAt, string skipReason)
         {
+            if (skipReason is "Analizando" or "Atacando") return skipReason;
             if (lastAttackedAt is not null)
             {
                 var minutes = (int)Math.Floor((DateTime.Now - lastAttackedAt.Value).TotalMinutes);

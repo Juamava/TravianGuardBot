@@ -188,28 +188,29 @@ function Shell() {
           ))}
         </Stack>
         <Stack spacing={0.3} sx={{ px: 1, pb: 1.5 }}>
-          <NavItem selected={page === 'ajustes'} disabled={!connected} icon={SettingsIcon} label="Ajustes" onClick={() => setPage('ajustes')} />
+          <NavItem selected={page === 'ajustes'} disabled={!account} icon={SettingsIcon} label="Ajustes" onClick={() => setPage('ajustes')} />
           <NavItem tone="danger" icon={PowerSettingsNewIcon} label="Cerrar" onClick={() => post('/api/shutdown')} />
         </Stack>
       </Stack>
 
-      <Box sx={{ overflow: 'auto', p: 3, bgcolor: '#313338' }}>
+      <Box sx={{ overflow: 'auto', p: 3, bgcolor: '#313338', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {page === 'cuentas' && (
           <Stack spacing={3}>
-            <Accounts accountId={accountId} notify={ui.notify} refresh={() => refresh().catch((error: Error) => ui.notify(error.message))} />
+            <Accounts notify={ui.notify} refresh={() => refresh().catch((error: Error) => ui.notify(error.message))} />
             <Templates notify={ui.notify} refresh={() => refresh().catch(() => undefined)} />
           </Stack>
         )}
-        {page !== 'cuentas' && connected && accountId && (
+        {page === 'ajustes' && accountId && <AccountSettings key={accountId} accountId={accountId} meta={meta} notify={ui.notify} refresh={() => refresh().catch((error: Error) => ui.notify(error.message))} />}
+        {page === 'ajustes' && !accountId && <Empty title="Elegí una cuenta" text="Creá una cuenta con el + y después vas a poder cambiar el servidor, la contraseña y el resto desde acá." />}
+        {page !== 'cuentas' && page !== 'ajustes' && connected && accountId && (
           <>
             {page === 'hero' && <Hero key={accountId} accountId={accountId} notify={ui.notify} />}
-            {page === 'ajustes' && <AccountSettings key={accountId} accountId={accountId} meta={meta} notify={ui.notify} />}
             {page === 'aldeas' && <Villages key={accountId} accountId={accountId} meta={meta} notify={ui.notify} />}
             {page === 'farming' && <Farming key={accountId} accountId={accountId} notify={ui.notify} />}
             {page === 'debug' && <Debug key={accountId} accountId={accountId} notify={ui.notify} />}
           </>
         )}
-        {page !== 'cuentas' && !connected && (
+        {page !== 'cuentas' && page !== 'ajustes' && !connected && (
           <Empty
             title={heldByOther && holder ? `${holder.username} está conectada en este bot` : 'Conectá la cuenta'}
             text={heldByOther && holder
