@@ -204,7 +204,7 @@ function Shell() {
         {page === 'ajustes' && !accountId && <Empty title="Elegí una cuenta" text="Creá una cuenta con el + y después vas a poder cambiar el servidor, la contraseña y el resto desde acá." />}
         {page !== 'cuentas' && page !== 'ajustes' && connected && accountId && (
           <>
-            {page === 'hero' && <Hero />}
+            {page === 'hero' && <Hero key={accountId} accountId={accountId} notify={ui.notify} />}
             {page === 'aldeas' && <Villages key={accountId} accountId={accountId} meta={meta} notify={ui.notify} />}
             {page === 'farming' && <Farming key={accountId} accountId={accountId} notify={ui.notify} />}
             {page === 'debug' && <Debug key={accountId} accountId={accountId} notify={ui.notify} />}

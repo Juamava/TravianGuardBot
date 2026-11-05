@@ -61,6 +61,36 @@ namespace MainCore.Parsers
             return string.Equals(cellText, "none", StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>
+        /// Total animals in the oasis troop table ("Examples HTML/Unoccupied oasis with animals.html").
+        /// 0 when the table says none, null when the table is not on the page.
+        /// </summary>
+        public static async Task<int?> ReadAnimalCount(IPage page)
+        {
+            // The reports tab reuses the id: table#troop_info.rep.
+            var tables = page.Locator("#map_details table#troop_info:not(.rep)");
+            if (await tables.CountAsync() == 0) return null;
+
+            // Without unit rows the table only says "none": nothing to kill, which callers treat as skip.
+            var values = await tables.First.Locator("tr:has(img.unit) td.val").AllInnerTextsAsync();
+            if (values.Count == 0) return 0;
+
+            var total = 0;
+            foreach (var value in values)
+            {
+                var number = HeroLevelingRules.ParseNumber(value);
+                if (number is null || number < 0) return null;
+                total += number.Value;
+            }
+            return total;
+        }
+
+        /// <summary>"simulate raid" link on the tile: build.php?id=39&amp;tt=3&amp;screen=combatSimulator&amp;kid=...</summary>
+        public static ILocator GetSimulatorLink(IPage page)
+        {
+            return page.Locator("a[href*='screen=combatSimulator'][href*='kid=']").First;
+        }
+
         public static ILocator GetRaidLink(IPage page)
         {
             return page.GetByRole(AriaRole.Link, new() { Name = "Raid unoccupied oasis" }).First;
