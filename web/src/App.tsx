@@ -202,7 +202,7 @@ function Shell() {
         )}
         {page !== 'cuentas' && connected && accountId && (
           <>
-            {page === 'hero' && <Hero />}
+            {page === 'hero' && <Hero key={accountId} accountId={accountId} notify={ui.notify} />}
             {page === 'ajustes' && <AccountSettings key={accountId} accountId={accountId} meta={meta} notify={ui.notify} />}
             {page === 'aldeas' && <Villages key={accountId} accountId={accountId} meta={meta} notify={ui.notify} />}
             {page === 'farming' && <Farming key={accountId} accountId={accountId} notify={ui.notify} />}
