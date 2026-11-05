@@ -62,10 +62,11 @@ jobs:
         run: |
           if (-not (Test-Path 'publish\TravianBotSharp.exe')) { throw 'El publish no generó TravianBotSharp.exe' }
           if (-not (Test-Path 'publish\electron\electron.exe')) { throw 'El publish no incluye la ventana Electron' }
+          if (-not (Test-Path 'publish\.playwright\node\win32_x64\node.exe')) { throw 'El publish no incluye el driver del navegador' }
           $zip = Join-Path $pwd 'TravianGuardBot-win-x64.zip'
           if (Test-Path $zip) { Remove-Item $zip }
           $root = (Resolve-Path publish).Path
-          $skipDir = '\\(Data|Screenshots|Logs|logs|\.playwright|refs)(\\|$)'
+          $skipDir = '\\(Data|Screenshots|Logs|logs|refs)(\\|$)'
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $archive = [System.IO.Compression.ZipFile]::Open($zip, 'Create')
           try {
