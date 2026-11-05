@@ -67,16 +67,14 @@ export function emptyAccess(): Access {
 }
 
 export type HeroStatus = {
-  enabled: boolean
   state: string
   message: string
   level: number | null
   hpPercent: number | null
   experience: number | null
   updatedAt: string | null
-  nextCheckAt: string | null
-  queued: boolean
-  oasisCount: number
+  statsAt: string | null
+  heroLists: string[]
   minHpPercent: number
   minHealthLeft: number
 }

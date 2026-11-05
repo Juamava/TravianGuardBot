@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Stack, Switch, TextField, Tooltip, Typography } from '@mui/material'
+import { Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Stack, Switch, TextField, Tooltip, Typography } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
@@ -10,7 +10,7 @@ import { api, del, post, put } from '../api'
 import { Empty, panel, useUi } from '../ui'
 
 type Village = { id: number; name: string; x: number; y: number }
-type CowList = { id: number; name: string; minMinutes: number; repeatMinutes: number; autoStart: boolean }
+type CowList = { id: number; name: string; minMinutes: number; repeatMinutes: number; levelHero: boolean; autoStart: boolean }
 type Cow = { id: number; listId: number; name: string; url: string; troops: string; status: string }
 type FarmingData = { villages: Village[]; lists: CowList[]; cows: Cow[]; countdown: string }
 type SearchResult = { count: number; villageName: string; originX: number; originY: number; troopPlan: string; hits: { x: number; y: number; distance: number }[] }
@@ -288,6 +288,23 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
             <Switch checked={!!selectedList?.autoStart} disabled={!listId || saving || syncing} onChange={event => setAutoStart(event.target.checked)} />
             <Typography fontWeight={600}>Inicio automático</Typography>
             <Hint text="Al conectar la cuenta, esta lista se encola sola. Necesita el mínimo, la revisión y al menos una aldea. Si lo activás en otra lista, este se apaga." />
+          </Stack>
+          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ ...panel, py: 1 }}>
+            <FormControlLabel
+              label="Levear héroe"
+              control={
+                <Checkbox
+                  checked={selectedList?.levelHero ?? false}
+                  disabled={!selectedList || saving}
+                  onChange={event => {
+                    if (!selectedList) return
+                    const levelHero = event.target.checked
+                    run(() => put(`/api/accounts/${accountId}/farming/lists/${listId}`, { name: selectedList.name, minMinutes: selectedList.minMinutes, repeatMinutes: selectedList.repeatMinutes, autoStart: selectedList.autoStart, levelHero }))
+                  }}
+                />
+              }
+            />
+            <Hint text={'En los oasis con animales, el bot simula el atraco con el héroe solo y lo manda únicamente si sobrevive con al menos 25% de vida y mata animales. Si el héroe tiene menos de 50% de vida, primero cobra tareas. Los oasis vacíos se siguen atacando con tropas como siempre.'} />
           </Stack>
 
           {(cowId > 0 || adding) && (
