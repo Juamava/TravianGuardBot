@@ -125,18 +125,6 @@ namespace MainCore.Parsers
             return AnimalOasisAction.TryHero;
         }
 
-        /// <summary>
-        /// For lists with "Levear héroe": an oasis the troops would skip before opening it
-        /// (no plan / not enough troops) is still worth opening while the hero may go.
-        /// </summary>
-        public static bool HeroMightGo(bool levelHero, HeroRunState run)
-        {
-            if (!levelHero || run.Sent || run.SeenAway) return false;
-            if (run.StatsRead && run.HpPercent is null) return false;
-            if (run.StatsRead && run.TasksCollected && run.HpPercent < MinHpPercent) return false;
-            return true;
-        }
-
         public static string StatusFor(AnimalOasisAction action)
         {
             return action switch

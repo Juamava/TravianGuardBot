@@ -248,19 +248,6 @@ namespace MainCore.Test
         }
 
         [Fact]
-        public void HeroMightGo_only_while_the_hero_can_still_leave()
-        {
-            HeroLevelingRules.HeroMightGo(false, Run()).ShouldBeFalse();
-            HeroLevelingRules.HeroMightGo(true, Run(statsRead: false, hp: null)).ShouldBeTrue();
-            HeroLevelingRules.HeroMightGo(true, Run()).ShouldBeTrue();
-            HeroLevelingRules.HeroMightGo(true, Run(hp: 30, collected: false)).ShouldBeTrue();
-            HeroLevelingRules.HeroMightGo(true, Run(hp: 30, collected: true)).ShouldBeFalse();
-            HeroLevelingRules.HeroMightGo(true, Run(sent: true)).ShouldBeFalse();
-            HeroLevelingRules.HeroMightGo(true, Run(seenAway: true)).ShouldBeFalse();
-            HeroLevelingRules.HeroMightGo(true, Run(statsRead: true, hp: null)).ShouldBeFalse();
-        }
-
-        [Fact]
         public void HeroRunState_reset_clears_the_run()
         {
             var run = Run(sent: true, hp: 30, collected: true, seenAway: true);
