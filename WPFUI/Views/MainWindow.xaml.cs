@@ -44,8 +44,15 @@ namespace WPFUI.Views
         private async void OnLoaded(object sender, RoutedEventArgs e)
         {
             if (_isLoaded) return;
-            _isLoaded = false;
-            await ViewModel.Load();
+            try
+            {
+                await ViewModel.Load();
+            }
+            catch (Exception ex)
+            {
+                WPFUI.AppLog.Write("ventana", "No se pudo cargar la ventana.", ex);
+            }
+
             _isLoaded = true;
         }
 

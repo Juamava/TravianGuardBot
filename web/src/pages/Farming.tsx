@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Box, Button, Checkbox, FormControlLabel, MenuItem, Stack, Switch, TextField, Tooltip, Typography } from '@mui/material'
+import { Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Stack, Switch, TextField, Tooltip, Typography } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
@@ -68,6 +68,10 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
   const [syncing, setSyncing] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkText, setBulkText] = useState('')
+  const [oasisOpen, setOasisOpen] = useState(false)
+  const [oasisTroops, setOasisTroops] = useState('2')
+  const [oasisFrom, setOasisFrom] = useState('0')
+  const [oasisTo, setOasisTo] = useState('20')
   const syncAbort = useRef<AbortController | null>(null)
 
   async function load(nextVillage = villageId) {
@@ -178,15 +182,26 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
   }
 
   async function search() {
-    const troopText = await ui.prompt('Tropas para cada oasis. Ejemplo: 2 o A:2 D:1', '2')
-    if (!troopText) return
-    const distance = await ui.prompt('Distancia máxima en casillas', '20')
-    if (!distance) return
+    const from = Number(oasisFrom.replace(',', '.'))
+    const to = Number(oasisTo.replace(',', '.'))
+    if (!Number.isFinite(from) || from < 0) {
+      notify('La distancia desde tiene que ser un número de 0 o más.')
+      return
+    }
+    if (!Number.isFinite(to) || to <= 0) {
+      notify('La distancia hasta tiene que ser un número mayor que 0.')
+      return
+    }
+    if (from > to) {
+      notify('La distancia desde no puede ser mayor que la hasta.')
+      return
+    }
+    setOasisOpen(false)
     try {
-      const found = await post<SearchResult>(`/api/accounts/${accountId}/farming/lists/${listId}/search`, { troops: troopText, distance })
+      const found = await post<SearchResult>(`/api/accounts/${accountId}/farming/lists/${listId}/search`, { troops: oasisTroops, minDistance: oasisFrom, distance: oasisTo })
       notify(found.message)
       if (!found.data.count) return
-      const accepted = await ui.confirm(`Se encontraron ${found.data.count} oasis. ¿Agregarlos con ${found.data.troopPlan}?`)
+      const accepted = await ui.confirm(`¿Agregar los ${found.data.count} oasis con ${found.data.troopPlan}?`)
       if (!accepted) return
       const applied = await post(`/api/accounts/${accountId}/farming/lists/${listId}/search/apply`, { troopPlan: found.data.troopPlan, hits: found.data.hits })
       notify(applied.message)
@@ -242,7 +257,7 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
                 </Box>
               </Tooltip>
               <Tile color="#23a559" icon={<AddIcon />} label="Agregar" disabled={!listId || saving || syncing} onClick={() => { setAdding(true); setCowId(0); setCowName(''); setUrl(''); setTroops('') }} />
-              <Tile color="#f0b232" icon={<SearchIcon />} label="Oasis" disabled={!listId || saving || syncing} onClick={search} />
+              <Tile color="#f0b232" icon={<SearchIcon />} label="Oasis" disabled={!listId || saving || syncing} onClick={() => setOasisOpen(true)} />
               <Tooltip title={raidRunning ? 'Ya hay un raid iniciado.' : timesReady ? '' : 'Completá el mínimo por aldea y cada cuánto se revisa la lista. Los dos tienen que ser de 1 minuto o más.'}>
                 <Box sx={{ minWidth: 0, display: 'flex', '& > .MuiButton-root': { flex: 1 } }}>
                   <Tile color="#23a559" icon={<PlayArrowIcon />} label="Iniciar" disabled={!listId || saving || syncing || !timesReady || raidRunning} onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/start`, { minMinutes, repeatMinutes }))} />
@@ -355,6 +370,21 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
           </Stack>
         </Stack>
       </Box>
+      <Dialog open={oasisOpen} onClose={() => setOasisOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>Buscar oasis</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField label="Tropas" value={oasisTroops} onChange={event => setOasisTroops(event.target.value)} placeholder="2 o A:2 D:1" />
+            <TextField label="Desde (casillas)" value={oasisFrom} onChange={event => setOasisFrom(event.target.value)} />
+            <TextField label="Hasta (casillas)" value={oasisTo} onChange={event => setOasisTo(event.target.value)} />
+            <Typography color="text.secondary">Se incluyen los dos límites. Para oasis lejanos, por ejemplo desde 10 hasta 30. Desde 0 incluye los cercanos.</Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setOasisOpen(false)}>Cancelar</Button>
+          <Button variant="contained" onClick={search}>Buscar</Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   )
 }

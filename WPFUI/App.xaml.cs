@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -34,6 +35,10 @@ namespace WPFUI
         protected override async void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
+            // The splash is the only window until the host shows the shell. Closing it must not quit the process.
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            RegisterLogging();
+            AppLog.Write("arranque", "Versión " + AppUpdate.CurrentVersion() + " en " + AppContext.BaseDirectory);
             UpdateSplash.Show(AppUpdate.CurrentVersion());
             var hostBuilder = AppMixins.GetHostBuilder()
                 .ConfigureServices(services => services.AddHostedService<AdminWebHost>())
@@ -57,7 +62,31 @@ namespace WPFUI
                 sp.GetRequiredService<RxQueue>().Setup();
             });
 
-            await host.RunAsync();
+            try
+            {
+                await host.RunAsync();
+                AppLog.Write("arranque", "El programa se cerró.");
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("arranque", "El programa se cerró por un error.", ex);
+                MessageBox.Show("No se pudo abrir. El detalle está en la carpeta logs.", "Travian Guard");
+            }
+        }
+
+        private void RegisterLogging()
+        {
+            AppDomain.CurrentDomain.UnhandledException += (_, args) => AppLog.Write("error", "Error no controlado.", args.ExceptionObject as Exception);
+            TaskScheduler.UnobservedTaskException += (_, args) =>
+            {
+                AppLog.Write("error", "Tarea no observada.", args.Exception);
+                args.SetObserved();
+            };
+            DispatcherUnhandledException += (_, args) =>
+            {
+                AppLog.Write("error", "Error de la interfaz.", args.Exception);
+                args.Handled = true;
+            };
         }
 
         private static void SetupDialogService(IServiceProvider serviceProvider)
@@ -193,7 +222,7 @@ namespace WPFUI
                 Log
                     .ForContext<LoggingExceptionObserver>()
                     .Error(value, "Unhandled exception");
-                MessageBox.Show("There is something wrong. Please check logs/logs-Other.txt.", "Error");
+                MessageBox.Show("Hay un error. El detalle está en la carpeta logs.", "Travian Guard");
 
                 if (!Debugger.IsAttached) return;
                 Debugger.Break();

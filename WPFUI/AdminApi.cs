@@ -946,7 +946,9 @@ namespace WPFUI
         private static async Task<IResult> SearchOasis(IServiceProvider services, int accountId, int listId, SearchBody body)
         {
             if (!CowTroopPlan.TryParse(body.Troops ?? "", out var slots, out var troopError)) return Fail(troopError);
-            if (!TryParseDistance(body.Distance ?? "", out var distance)) return Fail("La distancia tiene que ser un número mayor que 0.");
+            if (!TryParseDistance(body.MinDistance, out var minDistance, allowZero: true)) return Fail("La distancia mínima tiene que ser un número de 0 o más.");
+            if (!TryParseDistance(body.Distance ?? "", out var maxDistance)) return Fail("La distancia máxima tiene que ser un número mayor que 0.");
+            if (minDistance > maxDistance) return Fail("La distancia mínima no puede ser mayor que la máxima.");
 
             string server;
             int originX;
@@ -971,14 +973,17 @@ namespace WPFUI
             try
             {
                 var catalogUrl = OasisCatalog.BuildCatalogUrl(server, originX, originY);
-                found = await browser.InNewTab(page => OasisCatalog.Collect(page, catalogUrl, originX, originY, distance));
+                found = await browser.InNewTab(page => OasisCatalog.Collect(page, catalogUrl, originX, originY, minDistance, maxDistance));
             }
             catch (Exception ex)
             {
                 return Fail("No se pudo leer la lista de oasis. " + ex.Message);
             }
 
-            return Ok(found.Count == 0 ? "No se encontraron oasis dentro de esa distancia." : $"Se encontraron {found.Count} oasis.", new
+            var range = minDistance > 0
+                ? $"entre {minDistance.ToString("0.##", CultureInfo.CurrentCulture)} y {maxDistance.ToString("0.##", CultureInfo.CurrentCulture)} casillas"
+                : $"a {maxDistance.ToString("0.##", CultureInfo.CurrentCulture)} casillas o menos";
+            return Ok(found.Count == 0 ? $"No se encontraron oasis {range}." : $"Se encontraron {found.Count} oasis {range}.", new
             {
                 count = found.Count,
                 villageName,
@@ -1319,54 +1324,44 @@ namespace WPFUI
         private static bool TryParseCowLine(string line, out CowBulkLine parsed, out string error)
         {
             parsed = default;
-            var hasName = false;
-            var name = "";
-            string urlInput;
-            string troops;
-            if (line.Contains('|'))
+            var urlStart = IndexOfUrl(line);
+            if (urlStart < 0)
             {
-                var parts = line.Split('|');
-                if (parts.Length == 2)
-                {
-                    urlInput = parts[0].Trim();
-                    troops = parts[1].Trim();
-                }
-                else if (parts.Length == 3)
-                {
-                    hasName = parts[0].Trim().Length > 0;
-                    name = VillageLabel(parts[0]);
-                    urlInput = parts[1].Trim();
-                    troops = parts[2].Trim();
-                }
-                else
-                {
-                    error = "usá enlace | tropas, o nombre | enlace | tropas.";
-                    return false;
-                }
-            }
-            else
-            {
-                var space = line.IndexOf(' ');
-                if (space <= 0)
-                {
-                    error = "usá enlace | tropas. Ejemplo: https://... | 2";
-                    return false;
-                }
-
-                urlInput = line[..space].Trim();
-                troops = line[(space + 1)..].Trim();
+                error = "usá enlace | tropas, o nombre | enlace | tropas.";
+                return false;
             }
 
+            var urlEnd = urlStart;
+            while (urlEnd < line.Length && !char.IsWhiteSpace(line[urlEnd]) && line[urlEnd] != '|') urlEnd++;
+            var urlInput = line[urlStart..urlEnd];
+            var name = line[..urlStart].Trim().Trim('|').Trim();
+            var troops = line[urlEnd..].Trim().Trim('|').Trim();
             if (!TryParseCow(urlInput, troops, out var url, out var plan, out var count, out error)) return false;
-            parsed = new CowBulkLine(hasName, name, url, plan, count);
+            parsed = new CowBulkLine(name.Length > 0, name.Length > 0 ? VillageLabel(name) : "", url, plan, count);
             return true;
         }
 
-        private static bool TryParseDistance(string input, out double distance)
+        private static int IndexOfUrl(string line)
+        {
+            var http = line.IndexOf("http://", StringComparison.OrdinalIgnoreCase);
+            var https = line.IndexOf("https://", StringComparison.OrdinalIgnoreCase);
+            if (http < 0) return https;
+            if (https < 0) return http;
+            return Math.Min(http, https);
+        }
+
+        private static bool TryParseDistance(string input, out double distance, bool allowZero = false)
         {
             var text = (input ?? "").Trim();
-            if (double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out distance) && distance > 0) return true;
-            if (double.TryParse(text.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out distance) && distance > 0) return true;
+            if (allowZero && text.Length == 0)
+            {
+                distance = 0;
+                return true;
+            }
+
+            var minimum = allowZero ? 0 : double.Epsilon;
+            if (double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out distance) && distance >= minimum && (allowZero || distance > 0)) return true;
+            if (double.TryParse(text.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out distance) && distance >= minimum && (allowZero || distance > 0)) return true;
             distance = 0;
             return false;
         }
@@ -1520,6 +1515,7 @@ namespace WPFUI
     public sealed class SearchBody
     {
         public string Troops { get; set; }
+        public string MinDistance { get; set; }
         public string Distance { get; set; }
     }
 
