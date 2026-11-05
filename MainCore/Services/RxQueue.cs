@@ -54,11 +54,6 @@ namespace MainCore.Services
             {
                 taskManager.Add(startAdventureTask);
             }
-            var heroLevelingTask = new HeroLevelingTask.Task(accountId);
-            if (heroLevelingTask.CanStart(context) && !taskManager.IsExist<HeroLevelingTask.Task>(accountId))
-            {
-                taskManager.Add(heroLevelingTask);
-            }
             var villages = context.Villages
                 .Where(x => x.AccountId == accountId.Value)
                 .Select(x => new VillageId(x.Id))
