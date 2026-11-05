@@ -28,6 +28,7 @@ namespace MainCore.Infrasturecture.Persistence
         public DbSet<Farm> FarmLists { get; set; }
         public DbSet<CowList> CowLists { get; set; }
         public DbSet<CowVillage> CowVillages { get; set; }
+        public DbSet<HeroLeveling> HeroLevelings { get; set; }
 
         #endregion table
 
@@ -263,6 +264,29 @@ namespace MainCore.Infrasturecture.Persistence
             EnsureColumn("CowVillages", "TroopPlan", "TEXT NULL");
             EnsureColumn("CowVillages", "LastSkipReason", "TEXT NULL");
             EnsureColumn("CowVillages", "Name", "TEXT NOT NULL DEFAULT 'Aldea sin nombre'");
+        }
+
+        public void EnsureHeroLevelingTable()
+        {
+            Database.ExecuteSqlRaw(
+                """
+                CREATE TABLE IF NOT EXISTS "HeroLevelings" (
+                    "AccountId" INTEGER NOT NULL CONSTRAINT "PK_HeroLevelings" PRIMARY KEY,
+                    "Enabled" INTEGER NOT NULL DEFAULT 0,
+                    "State" TEXT NULL,
+                    "Message" TEXT NULL,
+                    "Level" INTEGER NULL,
+                    "HpPercent" INTEGER NULL,
+                    "Experience" INTEGER NULL,
+                    "UpdatedAt" TEXT NULL,
+                    "NextCheckAt" TEXT NULL,
+                    CONSTRAINT "FK_HeroLevelings_Accounts_AccountId" FOREIGN KEY ("AccountId") REFERENCES "Accounts" ("Id") ON DELETE CASCADE
+                );
+                """);
+
+            EnsureColumn("HeroLevelings", "NextOasisId", "INTEGER NULL");
+            EnsureColumn("HeroLevelings", "SearchLevel", "INTEGER NULL");
+            EnsureColumn("HeroLevelings", "SearchHp", "INTEGER NULL");
         }
 
         private void EnsureColumn(string table, string name, string definition)

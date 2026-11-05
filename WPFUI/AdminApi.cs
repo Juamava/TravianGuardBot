@@ -107,6 +107,10 @@ namespace WPFUI
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/search", (int id, int listId, SearchBody body) => SearchOasis(services, id, listId, body));
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/search/apply", (int id, int listId, ApplySearchBody body) => ApplyOasis(services, id, listId, body));
 
+            app.MapGet("/api/accounts/{id:int}/hero", (int id) => GetHero(services, id));
+            app.MapPost("/api/accounts/{id:int}/hero/leveling/start", (int id) => StartHeroLeveling(services, id));
+            app.MapPost("/api/accounts/{id:int}/hero/leveling/stop", (int id) => StopHeroLeveling(services, id));
+
             app.MapGet("/api/accounts/{id:int}/debug", (int id) => GetDebug(services, id));
             app.MapPost("/api/accounts/{id:int}/debug/front", (int id) => BringToFront(services, id));
             app.MapPost("/api/logs/open", () => OpenLogs());
@@ -878,6 +882,80 @@ namespace WPFUI
                 .Where(x => x.LastSkipReason == "Analizando" || x.LastSkipReason == "Atacando")
                 .ExecuteUpdate(x => x.SetProperty(village => village.LastSkipReason, ""));
             return Ok("Se detuvo el raid y la repetición.");
+        }
+
+        private static int CountOasisTargets(AppDbContext context, int accountId)
+        {
+            var listIds = context.CowLists
+                .Where(x => x.AccountId == accountId)
+                .Select(x => new { x.Id, x.Name })
+                .AsEnumerable()
+                .Where(x => HeroLevelingRules.IsOasisList(x.Name))
+                .Select(x => x.Id)
+                .ToList();
+            if (listIds.Count == 0) return -1;
+            return context.CowVillages.Count(x => listIds.Contains(x.CowListId));
+        }
+
+        private static IResult GetHero(IServiceProvider services, int accountId)
+        {
+            var account = new AccountId(accountId);
+            using var context = Context(services);
+            var row = HeroLevelingStore.Get(context, account);
+            var oasisCount = CountOasisTargets(context, accountId);
+            var queued = services.GetRequiredService<TaskManager>().GetTaskList(account).OfType<HeroLevelingTask.Task>().FirstOrDefault();
+
+            return Ok("", new
+            {
+                enabled = row?.Enabled ?? false,
+                state = row?.State ?? "Detenido",
+                message = row?.Message ?? "",
+                level = row?.Level,
+                hpPercent = row?.HpPercent,
+                experience = row?.Experience,
+                updatedAt = row?.UpdatedAt?.ToString("yyyy-MM-dd HH:mm"),
+                nextCheckAt = (queued?.ExecuteAt ?? row?.NextCheckAt)?.ToString("HH:mm"),
+                queued = queued is not null,
+                oasisCount,
+                minHpPercent = HeroLevelingRules.MinHpPercent,
+                minHealthLeft = HeroLevelingRules.MinHealthLeftAfterFight,
+            });
+        }
+
+        private static IResult StartHeroLeveling(IServiceProvider services, int accountId)
+        {
+            var account = new AccountId(accountId);
+            using var context = Context(services);
+            if (CountOasisTargets(context, accountId) <= 0)
+            {
+                HeroLevelingStore.SetEnabled(context, account, false, HeroLevelingStore.MissingListMessage);
+                return Fail(HeroLevelingStore.MissingListMessage);
+            }
+
+            HeroLevelingStore.SetEnabled(context, account, true, "Arranca en unos segundos.");
+
+            var tasks = services.GetRequiredService<TaskManager>();
+            if (tasks.GetStatus(account) != StatusEnums.Offline && !tasks.IsExist<HeroLevelingTask.Task>(account))
+            {
+                tasks.Add(new HeroLevelingTask.Task(account));
+                return Ok("El héroe se pone a levear.");
+            }
+
+            return Ok("Listo. El héroe se pone a levear cuando la cuenta esté conectada.");
+        }
+
+        private static IResult StopHeroLeveling(IServiceProvider services, int accountId)
+        {
+            var account = new AccountId(accountId);
+            using (var context = Context(services))
+            {
+                HeroLevelingStore.SetEnabled(context, account, false, "Detenido por el usuario.");
+            }
+
+            var tasks = services.GetRequiredService<TaskManager>();
+            tasks.CancelIfCurrent<HeroLevelingTask.Task>(account);
+            tasks.Remove<HeroLevelingTask.Task>(account);
+            return Ok("El héroe dejó de levear. Si ya estaba en camino, vuelve solo.");
         }
 
         private static async Task<IResult> SearchOasis(IServiceProvider services, int accountId, int listId, SearchBody body)
