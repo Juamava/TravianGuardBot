@@ -1,3 +1,4 @@
+using MainCore.Infrasturecture.Extensions;
 using MainCore.Tasks.Base;
 
 namespace MainCore.Tasks
@@ -18,7 +19,7 @@ namespace MainCore.Tasks
             protected override string TaskName => $"Raid cow list #{CowListId}";
         }
 
-        private readonly record struct CowTarget(int Id, string Url, string? TroopPlan, int TroopCount, DateTime? LastAttackedAt, int MinAttackMinutes);
+        private readonly record struct CowTarget(int Id, string Url, string Name, string? TroopPlan, int TroopCount, DateTime? LastAttackedAt, int MinAttackMinutes);
 
         private async ValueTask<Result> HandleAsync(Task task, CancellationToken cancellationToken)
         {
@@ -55,9 +56,25 @@ namespace MainCore.Tasks
                     }
 
                     logger.Information("Raiding {Url} with {Troops} ({Index}/{Total})", target.Url, CowTroopPlan.Format(slots), index + 1, targets.Count);
-                    await System.Threading.Tasks.Task.Delay(NextAttackDelay(), cancellationToken);
+                    MarkPhase(target.Id, "Analizando");
+                    await System.Threading.Tasks.Task.Delay(NextAttackDelay(task.AccountId), cancellationToken);
 
-                    var result = await RaidTarget(task, target, slots);
+                    Result result;
+                    try
+                    {
+                        result = await RaidTarget(task, target, slots);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.Warning(ex, "Skipping {Url}: {Message}", target.Url, ex.Message);
+                        MarkSkipped(target.Id, "Error");
+                        continue;
+                    }
+
                     if (result.IsFailed)
                     {
                         task.NextIndex = index;
@@ -70,6 +87,7 @@ namespace MainCore.Tasks
             catch (OperationCanceledException)
             {
                 logger.Information("Raid cow list #{Id} stopped", task.CowListId);
+                ClearLiveStatus(task.CowListId);
                 return Result.Ok();
             }
 
@@ -82,8 +100,15 @@ namespace MainCore.Tasks
             var result = await browser.Navigate(target.Url);
             if (result.IsFailed)
             {
+                logger.Warning("Page did not open for {Url}. Retrying once. {Error}", target.Url, string.Join(" ", result.Reasons.Select(reason => reason.Message)));
+                result = await browser.Navigate(target.Url);
+            }
+
+            if (result.IsFailed)
+            {
+                logger.Warning("Skipping {Url}: page did not open. {Error}", target.Url, string.Join(" ", result.Reasons.Select(reason => reason.Message)));
                 MarkSkipped(target.Id, "Error");
-                return result;
+                return Result.Ok();
             }
 
             if (await LoginParser.IsLoginPage(browser.CurrentPage) || !await LoginParser.IsIngamePage(browser.CurrentPage))
@@ -91,6 +116,8 @@ namespace MainCore.Tasks
                 MarkSkipped(target.Id, "Error");
                 return Retry.Error.WithError($"Tile page did not load for {target.Url}");
             }
+
+            await CaptureMissingName(target);
 
             var tile = await CowOasisParser.ReadTile(browser.CurrentPage);
             if (!tile.IsOasis)
@@ -127,6 +154,8 @@ namespace MainCore.Tasks
                 MarkSkipped(target.Id, "Error");
                 return result;
             }
+
+            MarkPhase(target.Id, "Atacando");
 
             var missing = new List<string>();
             foreach (var slot in slots)
@@ -190,18 +219,12 @@ namespace MainCore.Tasks
             return Result.Ok();
         }
 
-        private static TimeSpan NextAttackDelay()
+        private TimeSpan NextAttackDelay(AccountId accountId)
         {
-            const double minimum = 1.5;
-            const double maximum = 2.5;
-            const double mean = (minimum + maximum) / 2.0;
-            const double stdDev = (maximum - minimum) / 6.0;
-
-            var u1 = 1.0 - Random.Shared.NextDouble();
-            var u2 = 1.0 - Random.Shared.NextDouble();
-            var standardNormal = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Cos(2.0 * Math.PI * u2);
-            var seconds = Math.Clamp(mean + (stdDev * standardNormal), minimum, maximum);
-            return TimeSpan.FromSeconds(seconds);
+            using var context = contextFactory.CreateDbContext();
+            var milliseconds = context.ByName(accountId, AccountSettingEnums.TaskDelayMin, AccountSettingEnums.TaskDelayMax);
+            if (milliseconds < 0) milliseconds = 0;
+            return TimeSpan.FromMilliseconds(milliseconds);
         }
 
         private static bool IsOnCooldown(CowTarget target, int minAttackMinutes, out int elapsedMinutes)
@@ -238,6 +261,46 @@ namespace MainCore.Tasks
             task.ExecuteAt = DateTime.Now.AddMinutes(repeat);
         }
 
+        private async System.Threading.Tasks.Task CaptureMissingName(CowTarget target)
+        {
+            if (!string.IsNullOrWhiteSpace(target.Name) && target.Name.Trim() != CowOasisParser.MissingName) return;
+
+            var name = await CowOasisParser.ReadTitle(browser.CurrentPage);
+            if (string.IsNullOrWhiteSpace(name) || name == CowOasisParser.MissingName) return;
+
+            using var context = contextFactory.CreateDbContext();
+            var updated = context.CowVillages
+                .Where(x => x.Id == target.Id)
+                .Where(x => x.Name == null || x.Name == "" || x.Name == CowOasisParser.MissingName)
+                .ExecuteUpdate(x => x.SetProperty(village => village.Name, name));
+            if (updated == 0 || browser.AccountId == AccountId.Empty) return;
+
+            rxQueue.Enqueue(new CowVillagesModified(browser.AccountId));
+        }
+
+        private void MarkPhase(int cowVillageId, string phase)
+        {
+            using var context = contextFactory.CreateDbContext();
+            var updated = context.CowVillages
+                .Where(x => x.Id == cowVillageId)
+                .ExecuteUpdate(x => x.SetProperty(village => village.LastSkipReason, phase));
+            if (updated == 0 || browser.AccountId == AccountId.Empty) return;
+
+            rxQueue.Enqueue(new CowVillagesModified(browser.AccountId));
+        }
+
+        private void ClearLiveStatus(int cowListId)
+        {
+            using var context = contextFactory.CreateDbContext();
+            context.CowVillages
+                .Where(x => x.CowListId == cowListId)
+                .Where(x => x.LastSkipReason == "Analizando" || x.LastSkipReason == "Atacando")
+                .ExecuteUpdate(x => x.SetProperty(village => village.LastSkipReason, ""));
+            if (browser.AccountId == AccountId.Empty) return;
+
+            rxQueue.Enqueue(new CowVillagesModified(browser.AccountId));
+        }
+
         private void MarkAttacked(int cowVillageId)
         {
             using var context = contextFactory.CreateDbContext();
@@ -270,9 +333,9 @@ namespace MainCore.Tasks
                 .Where(x => x.CowListId == task.CowListId)
                 .Where(x => x.CowList.AccountId == task.AccountId.Value)
                 .OrderBy(x => x.Id)
-                .Select(x => new { x.Id, x.Url, x.TroopPlan, x.TroopCount, x.LastAttackedAt, x.CowList.MinAttackMinutes })
+                .Select(x => new { x.Id, x.Url, x.Name, x.TroopPlan, x.TroopCount, x.LastAttackedAt, x.CowList.MinAttackMinutes })
                 .AsEnumerable()
-                .Select(x => new CowTarget(x.Id, x.Url, x.TroopPlan, x.TroopCount, x.LastAttackedAt, x.MinAttackMinutes))
+                .Select(x => new CowTarget(x.Id, x.Url, x.Name, x.TroopPlan, x.TroopCount, x.LastAttackedAt, x.MinAttackMinutes))
                 .ToList();
         }
     }
