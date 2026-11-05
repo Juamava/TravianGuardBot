@@ -657,8 +657,11 @@ namespace WPFUI
             if (body.AutoStart && (body.MinMinutes < 1 || body.RepeatMinutes < 1))
                 return Fail("Para el inicio automático, el mínimo por aldea y la revisión tienen que ser de 1 minuto o más.");
             using var context = Context(services);
-            var villageId = context.CowLists.Where(x => x.Id == listId && x.AccountId == accountId).Select(x => x.VillageId).FirstOrDefault();
-            if (villageId == 0) return Fail("No se encontró la lista.");
+            var current = context.CowLists.Where(x => x.Id == listId && x.AccountId == accountId)
+                .Select(x => new { x.VillageId, x.AutoStart })
+                .FirstOrDefault();
+            if (current is null) return Fail("No se encontró la lista.");
+            var villageId = current.VillageId;
             if (context.CowLists.Any(x => x.AccountId == accountId && x.VillageId == villageId && x.Id != listId && x.Name == name))
                 return Fail("Ya existe una lista con ese nombre en esta aldea.");
             if (body.AutoStart && !context.CowVillages.Any(x => x.CowListId == listId))
@@ -680,10 +683,21 @@ namespace WPFUI
             // Only when the client sends it, so older calls (rename) keep the current value.
             if (body.LevelHero is bool levelHero)
                 context.CowLists.Where(x => x.Id == listId).ExecuteUpdate(x => x.SetProperty(list => list.LevelHero, levelHero));
-            if (!body.AutoStart) return Ok("Lista guardada.");
-            return Ok(turnedOff > 0
+            if (!body.AutoStart || current.AutoStart) return Ok("Lista guardada.");
+
+            var message = turnedOff > 0
                 ? "Inicio automático activado. Se apagó en las otras listas."
-                : "Lista guardada. Arranca sola al conectar la cuenta.");
+                : "Inicio automático activado.";
+            var account = new AccountId(accountId);
+            var tasks = services.GetRequiredService<TaskManager>();
+            var status = tasks.GetStatus(account);
+            if (status is not (StatusEnums.Online or StatusEnums.Paused))
+                return Ok(message + " Arranca sola al conectar la cuenta.");
+            if (tasks.IsExist<RaidCowListTask.Task>(account))
+                return Ok(message + " Ya hay un raid iniciado.");
+
+            tasks.Add(new RaidCowListTask.Task(account, listId));
+            return Ok(message + " El raid empezó.");
         }
 
         private static IResult DeleteCowList(IServiceProvider services, int accountId, int listId)

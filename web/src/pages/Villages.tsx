@@ -111,29 +111,26 @@ export function Villages({ accountId, meta, notify }: { accountId: number; meta:
         )}
         {villages.length > 0 && (
           <ToggleButtonGroup exclusive size="small" value={tab} onChange={(_, value) => value && setTab(value)} sx={tabGroup}>
-            <ToggleButton value="build">Construir</ToggleButton>
-            <ToggleButton value="settings">Ajustes</ToggleButton>
+            <ToggleButton value="build">Construcción</ToggleButton>
+            <ToggleButton value="troops">Tropas</ToggleButton>
+            <ToggleButton value="trade">Comercio</ToggleButton>
           </ToggleButtonGroup>
         )}
       </Stack>
 
       {villages.length === 0 && <Empty title="Todavía no hay aldeas" text="Conectá la cuenta. Cuando el juego cargue las aldeas, van a aparecer acá." />}
 
-      {villages.length > 0 && tab === 'settings' && villageId > 0 && (
-        <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-          <VillageSettings accountId={accountId} villageId={villageId} meta={meta} notify={notify} />
-        </Box>
-      )}
-
-      {villages.length > 0 && tab === 'build' && build && (
-        <>
+      {villages.length > 0 && (
+        <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          {tab === 'build' && build && (
+            <>
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 1 }}>
             <ReloadTile icon={<RefreshIcon />} label="Esta aldea" hint="Vuelve a leer los edificios de la aldea seleccionada." onClick={() => reload(`/api/accounts/${accountId}/villages/${villageId}/reload`)} />
             <ReloadTile icon={<RefreshIcon />} label="Incompletas" hint="Lee las aldeas a las que todavía les faltan edificios." onClick={() => reload(`/api/accounts/${accountId}/villages/reload-missing`)} />
             <ReloadTile icon={<RefreshIcon />} label="Todas" hint="Vuelve a leer los edificios de todas las aldeas." onClick={() => reload(`/api/accounts/${accountId}/villages/reload-all`)} />
           </Box>
 
-          <Box sx={{ flex: 1, minHeight: 0, display: 'grid', gap: 1.5, alignItems: 'stretch', gridTemplateColumns: 'minmax(240px, 1.15fr) minmax(250px, 320px) minmax(280px, 1fr)', '@media (max-width: 1100px)': { gridTemplateColumns: '1fr', overflow: 'auto' } }}>
+          <Box sx={{ minHeight: 520, display: 'grid', gap: 1.5, alignItems: 'stretch', gridTemplateColumns: 'minmax(240px, 1.15fr) minmax(250px, 320px) minmax(280px, 1fr)', '@media (max-width: 1100px)': { gridTemplateColumns: '1fr' } }}>
             <Stack sx={{ ...panel, p: 1, minHeight: 0, height: '100%', overflow: 'hidden' }}>
               <Typography sx={{ px: 1, py: 0.75, fontWeight: 700 }}>Edificios</Typography>
               <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0, pr: 0.5 }}>
@@ -241,7 +238,12 @@ export function Villages({ accountId, meta, notify }: { accountId: number; meta:
               </Stack>
             </Stack>
           </Box>
-        </>
+            </>
+          )}
+          {villageId > 0 && (
+            <VillageSettings accountId={accountId} villageId={villageId} meta={meta} notify={notify} section={tab === 'troops' ? 'troops' : tab === 'trade' ? 'trade' : 'build'} />
+          )}
+        </Box>
       )}
     </Stack>
   )

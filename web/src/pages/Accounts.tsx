@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Box, Button, Stack, TextField, Typography } from '@mui/material'
 import { api, del, emptyAccess, post, put, type Access, type AccountDetail } from '../api'
 import { useUi } from '../ui'
@@ -15,35 +15,59 @@ export function AccountEditor({ accountId, notify, refresh }: EditorProps) {
   const [username, setUsername] = useState('')
   const [server, setServer] = useState('')
   const [accesses, setAccesses] = useState<Access[]>([emptyAccess()])
+  const draft = useRef({ username: '', server: '', accesses: [emptyAccess()] })
+  const saved = useRef('')
+  const ready = useRef(false)
 
   useEffect(() => {
+    ready.current = false
     if (!accountId) return
     api<AccountDetail>(`/api/accounts/${accountId}`).then(result => {
-      setUsername(result.data.username)
-      setServer(result.data.server)
-      setAccesses(result.data.accesses.length ? result.data.accesses : [emptyAccess()])
+      const next = {
+        username: result.data.username,
+        server: result.data.server,
+        accesses: result.data.accesses.length ? result.data.accesses : [emptyAccess()],
+      }
+      draft.current = next
+      saved.current = JSON.stringify(next)
+      ready.current = true
+      setUsername(next.username)
+      setServer(next.server)
+      setAccesses(next.accesses)
     }).catch((error: Error) => notify(error.message))
   }, [accountId])
 
   function updateAccess(index: number, patch: Partial<Access>) {
-    setAccesses(current => current.map((access, i) => i === index ? { ...access, ...patch } : access))
+    const next = accesses.map((access, i) => i === index ? { ...access, ...patch } : access)
+    draft.current = { ...draft.current, accesses: next }
+    setAccesses(next)
   }
 
-  async function save() {
-    const body = { username, server, accesses }
+  async function commit() {
+    if (!accountId || !ready.current) return
+    const body = draft.current
+    const text = JSON.stringify(body)
+    if (text === saved.current) return
     try {
-      const result = editing && accountId
-        ? await put(`/api/accounts/${accountId}`, body)
-        : await post('/api/accounts', body)
+      const result = await put(`/api/accounts/${accountId}`, body)
+      saved.current = text
       notify(result.message)
-      if (!editing) {
-        setUsername('')
-        setServer('')
-        setAccesses([emptyAccess()])
-      }
       refresh()
     } catch (error) {
       notify(error instanceof Error ? error.message : 'No se pudo guardar')
+    }
+  }
+
+  async function create() {
+    try {
+      const result = await post('/api/accounts', { username, server, accesses })
+      notify(result.message)
+      setUsername('')
+      setServer('')
+      setAccesses([emptyAccess()])
+      refresh()
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo agregar')
     }
   }
 
@@ -62,34 +86,43 @@ export function AccountEditor({ accountId, notify, refresh }: EditorProps) {
     <Stack spacing={2}>
       <Typography color="text.secondary">Nombre, servidor y los accesos para entrar. El proxy y el user agent son opcionales.</Typography>
       <Stack spacing={1.5} sx={{ p: 2, borderRadius: 2, bgcolor: '#2b2d31' }}>
-        <TextField label="Nombre" value={username} onChange={event => setUsername(event.target.value)} />
-        <TextField label="Servidor" placeholder="https://ts1.x1.international.travian.com" value={server} onChange={event => setServer(event.target.value)} />
+        <TextField label="Nombre" value={username} onChange={event => { setUsername(event.target.value); draft.current = { ...draft.current, username: event.target.value } }} onBlur={commit} />
+        <TextField label="Servidor" placeholder="https://ts1.x1.international.travian.com" value={server} onChange={event => { setServer(event.target.value); draft.current = { ...draft.current, server: event.target.value } }} onBlur={commit} />
       </Stack>
       {accesses.map((access, index) => (
         <Box key={index} sx={{ p: 2, borderRadius: 2, bgcolor: '#2b2d31' }}>
           <Stack spacing={1.5}>
             <Stack direction="row" alignItems="center" justifyContent="space-between">
               <Typography fontWeight={700}>Acceso {index + 1}</Typography>
-              {accesses.length > 1 && <Button size="small" color="error" onClick={() => setAccesses(current => current.filter((_, i) => i !== index))}>Quitar</Button>}
+              {accesses.length > 1 && <Button size="small" color="error" onClick={() => {
+                const next = accesses.filter((_, i) => i !== index)
+                draft.current = { ...draft.current, accesses: next }
+                setAccesses(next)
+                void commit()
+              }}>Quitar</Button>}
             </Stack>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
-              <TextField fullWidth label="Usuario" value={access.username} onChange={event => updateAccess(index, { username: event.target.value })} />
-              <TextField fullWidth label="Contraseña" type="password" value={access.password} onChange={event => updateAccess(index, { password: event.target.value })} />
+              <TextField fullWidth label="Usuario" value={access.username} onChange={event => updateAccess(index, { username: event.target.value })} onBlur={commit} />
+              <TextField fullWidth label="Contraseña" type="password" value={access.password} onChange={event => updateAccess(index, { password: event.target.value })} onBlur={commit} />
             </Stack>
             <Typography variant="caption" color="text.secondary">Proxy, si la cuenta entra por uno.</Typography>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
-              <TextField fullWidth label="Proxy" value={access.proxyHost} onChange={event => updateAccess(index, { proxyHost: event.target.value })} />
-              <TextField fullWidth label="Puerto" type="number" value={access.proxyPort || ''} onChange={event => updateAccess(index, { proxyPort: Number(event.target.value) })} />
-              <TextField fullWidth label="Usuario proxy" value={access.proxyUsername} onChange={event => updateAccess(index, { proxyUsername: event.target.value })} />
-              <TextField fullWidth label="Contraseña proxy" value={access.proxyPassword} onChange={event => updateAccess(index, { proxyPassword: event.target.value })} />
+              <TextField fullWidth label="Proxy" value={access.proxyHost} onChange={event => updateAccess(index, { proxyHost: event.target.value })} onBlur={commit} />
+              <TextField fullWidth label="Puerto" type="number" value={access.proxyPort || ''} onChange={event => updateAccess(index, { proxyPort: Number(event.target.value) })} onBlur={commit} />
+              <TextField fullWidth label="Usuario proxy" value={access.proxyUsername} onChange={event => updateAccess(index, { proxyUsername: event.target.value })} onBlur={commit} />
+              <TextField fullWidth label="Contraseña proxy" value={access.proxyPassword} onChange={event => updateAccess(index, { proxyPassword: event.target.value })} onBlur={commit} />
             </Stack>
-            <TextField label="User agent" value={access.useragent} onChange={event => updateAccess(index, { useragent: event.target.value })} />
+            <TextField label="User agent" value={access.useragent} onChange={event => updateAccess(index, { useragent: event.target.value })} onBlur={commit} />
           </Stack>
         </Box>
       ))}
       <Stack direction="row" spacing={1} flexWrap="wrap">
-        <Button variant="outlined" onClick={() => setAccesses(current => [...current, emptyAccess()])}>Otro acceso</Button>
-        <Button variant="contained" onClick={save}>{editing ? 'Guardar' : 'Agregar'}</Button>
+        <Button variant="outlined" onClick={() => {
+          const next = [...accesses, emptyAccess()]
+          draft.current = { ...draft.current, accesses: next }
+          setAccesses(next)
+        }}>Otro acceso</Button>
+        {!editing && <Button variant="contained" onClick={create}>Agregar</Button>}
         {editing && <Button variant="contained" color="error" onClick={remove}>Borrar cuenta</Button>}
       </Stack>
     </Stack>
