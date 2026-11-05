@@ -316,7 +316,14 @@ namespace WPFUI
                 $backup = Join-Path $root 'backup'
                 $ready = Join-Path $root 'ready'
                 $exe = Join-Path $Install 'TravianBotSharp.exe'
-                function Write-Log($text) { Add-Content -Path $log -Value ((Get-Date -Format o) + ' ' + $text) }
+                function Write-Log($text) {
+                  $line = (Get-Date -Format o) + ' ' + $text
+                  Add-Content -Path $log -Value $line
+                  if (-not $Install) { return }
+                  $folder = Join-Path $Install 'logs'
+                  New-Item -ItemType Directory -Force -Path $folder | Out-Null
+                  Add-Content -Path (Join-Path $folder 'update.log') -Value $line
+                }
                 function Copy-Tree($from, $to) {
                   New-Item -ItemType Directory -Force -Path $to | Out-Null
                   & robocopy $from $to /E /NFL /NDL /NJH /NJS /XD Data Screenshots Logs /XF *.pdb > $null
