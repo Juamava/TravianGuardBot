@@ -38,6 +38,9 @@ namespace WPFUI
             // The splash is the only window until the host shows the shell. Closing it must not quit the process.
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
             RegisterLogging();
+            AppLog.Write("arranque", StayAwake.Hold()
+                ? "Windows no entra en Sleep mientras el bot está abierto."
+                : "No se pudo impedir que Windows entre en Sleep.");
             AppLog.Write("arranque", "Versión " + AppUpdate.CurrentVersion() + " en " + AppContext.BaseDirectory);
             UpdateSplash.Show(AppUpdate.CurrentVersion());
             var hostBuilder = AppMixins.GetHostBuilder()
@@ -71,6 +74,11 @@ namespace WPFUI
             {
                 AppLog.Write("arranque", "El programa se cerró por un error.", ex);
                 MessageBox.Show("No se pudo abrir. El detalle está en la carpeta logs.", "Travian Guard");
+            }
+            finally
+            {
+                if (Dispatcher.CheckAccess()) StayAwake.Release();
+                else Dispatcher.Invoke(StayAwake.Release);
             }
         }
 
