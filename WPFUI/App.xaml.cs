@@ -35,6 +35,8 @@ namespace WPFUI
         protected override async void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
+            // The splash is the only window until the host shows the shell. Closing it must not quit the process.
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
             RegisterLogging();
             AppLog.Write("arranque", "Versión " + AppUpdate.CurrentVersion() + " en " + AppContext.BaseDirectory);
             UpdateSplash.Show(AppUpdate.CurrentVersion());
