@@ -50,7 +50,9 @@ jobs:
       - name: Electron
         if: steps.existing.outputs.skip != 'true'
         working-directory: web
-        run: npm ci
+        run: |
+          npm ci
+          npm run build
 
       - name: Publish
         if: steps.existing.outputs.skip != 'true'
@@ -70,7 +72,7 @@ jobs:
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $archive = [System.IO.Compression.ZipFile]::Open($zip, 'Create')
           try {
-            Get-ChildItem publish -Recurse -File | Where-Object {
+            Get-ChildItem publish -Recurse -Force -File | Where-Object {
               $_.Name -ne 'createdump.exe' -and
               $_.Extension -notin '.pdb', '.xml', '.cs', '.sln', '.csproj', '.md', '.yml', '.map' -and
               $_.FullName -notmatch $skipDir
@@ -81,6 +83,29 @@ jobs:
             }
           } finally {
             $archive.Dispose()
+          }
+          $required = @(
+            'TravianBotSharp.exe',
+            'e_sqlite3.dll',
+            'wwwroot/index.html',
+            'electron/electron.exe',
+            'electron/main.cjs',
+            'electron/icudtl.dat',
+            'electron/resources.pak',
+            'electron/snapshot_blob.bin',
+            'electron/v8_context_snapshot.bin',
+            'electron/resources/default_app.asar',
+            '.playwright/node/win32_x64/node.exe',
+            '.playwright/package/cli.js'
+          )
+          $packed = [System.IO.Compression.ZipFile]::OpenRead($zip)
+          try {
+            $names = [System.Collections.Generic.HashSet[string]]::new([string[]]($packed.Entries | ForEach-Object { $_.FullName }), [StringComparer]::OrdinalIgnoreCase)
+            foreach ($item in $required) {
+              if (-not $names.Contains($item)) { throw "El zip no incluye $item" }
+            }
+          } finally {
+            $packed.Dispose()
           }
 
       - name: Publish release
