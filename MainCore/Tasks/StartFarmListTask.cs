@@ -48,9 +48,9 @@ namespace MainCore.Tasks
 
         private static int NextSeconds(int min, int max)
         {
-            if (min < 1) min = 540;
+            if (min < 1) min = 9;
             if (max < min) max = min;
-            return GetSettingsExtension.Normal(min, max);
+            return GetSettingsExtension.Normal(min, max) * 60;
         }
 
         private sealed record FarmPace(bool Active, int Min, int Max);
