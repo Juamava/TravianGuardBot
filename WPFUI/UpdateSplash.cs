@@ -7,12 +7,12 @@ namespace WPFUI
     {
         private static Views.UpdateSplashWindow _window;
 
-        public static void Show(string version)
+        public static void Show(string version, string status = null, int percent = -1, string latest = "")
         {
             var app = Application.Current;
             if (app == null) return;
-            if (app.Dispatcher.CheckAccess()) ShowCore(version);
-            else app.Dispatcher.Invoke(() => ShowCore(version));
+            if (app.Dispatcher.CheckAccess()) ShowCore(version, status, percent, latest);
+            else app.Dispatcher.Invoke(() => ShowCore(version, status, percent, latest));
         }
 
         public static void Report(string status, int percent, string latest)
@@ -21,7 +21,7 @@ namespace WPFUI
             if (app == null) return;
             app.Dispatcher.BeginInvoke(() =>
             {
-                if (_window == null) ShowCore(AppUpdate.CurrentVersion());
+                if (_window == null) ShowCore(AppUpdate.CurrentVersion(), status, percent, latest);
                 _window.Apply(AppUpdate.CurrentVersion(), status, percent, latest);
                 _window.Activate();
             });
@@ -35,16 +35,18 @@ namespace WPFUI
             else app.Dispatcher.Invoke(CloseCore);
         }
 
-        private static void ShowCore(string version)
+        private static void ShowCore(string version, string status, int percent, string latest)
         {
+            var text = string.IsNullOrWhiteSpace(status) ? "Comprobando la versión..." : status;
             if (_window != null)
             {
+                _window.Apply(version, text, percent, latest ?? "");
                 _window.Activate();
                 return;
             }
 
             _window = new Views.UpdateSplashWindow();
-            _window.Apply(version, "Comprobando la versión...", -1, "");
+            _window.Apply(version, text, percent, latest ?? "");
             _window.Show();
         }
 
