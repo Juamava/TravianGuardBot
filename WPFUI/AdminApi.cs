@@ -153,6 +153,16 @@ namespace WPFUI
             });
         }
 
+        private static bool IsVillageWork(BaseTask task)
+        {
+            return task is UpgradeBuildingTask.Task
+                or UpdateBuildingTask.Task
+                or UpdateVillageTask.Task
+                or TrainTroopTask.Task
+                or InstantUpgradeTask.Task
+                or NpcTask.Task;
+        }
+
         private static IResult Overview(IServiceProvider services)
         {
             using var context = Context(services);
@@ -162,7 +172,9 @@ namespace WPFUI
             var version = versionAssembly is null ? "" : $"{versionAssembly.Major}.{versionAssembly.Minor}.{versionAssembly.Build}";
             var accounts = context.Accounts.AsEnumerable().Select(account =>
             {
-                var status = tasks.GetStatus(new AccountId(account.Id));
+                var accountId = new AccountId(account.Id);
+                var status = tasks.GetStatus(accountId);
+                var queued = status == StatusEnums.Online ? tasks.GetTaskList(accountId) : [];
                 return new
                 {
                     id = account.Id,
@@ -171,7 +183,10 @@ namespace WPFUI
                     host = SafeHost(account.Server),
                     status = status.ToString(),
                     pause = PauseLabel(status),
-                    gold = context.BooleanByName(new AccountId(account.Id), AccountSettingEnums.Gold),
+                    gold = context.BooleanByName(accountId, AccountSettingEnums.Gold),
+                    villages = queued.Any(IsVillageWork),
+                    farms = queued.Any(task => task is RaidCowListTask.Task),
+                    gameFarms = queued.Any(task => task is StartFarmListTask.Task or UpdateFarmListTask.Task),
                 };
             }).ToList();
 

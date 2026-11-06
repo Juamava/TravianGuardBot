@@ -50,7 +50,27 @@ const actionButton = {
   '&.Mui-disabled .MuiSvgIcon-root': { color: '#6d6f78' },
 } as const
 
-function NavItem({ selected, disabled, icon: Icon, label, onClick, tone = 'normal' }: { selected?: boolean; disabled?: boolean; icon: SvgIconComponent; label: string; onClick: () => void; tone?: 'normal' | 'danger' }) {
+function LiveLed() {
+  return (
+    <Box
+      component="span"
+      aria-label="En ejecución"
+      sx={{
+        width: 8,
+        height: 8,
+        flexShrink: 0,
+        borderRadius: '50%',
+        bgcolor: '#23a559',
+        boxShadow: '0 0 0 3px rgba(35,165,89,.18)',
+        animation: 'navLed 1.1s ease-in-out infinite',
+        '@keyframes navLed': { '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.2 } },
+        '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
+      }}
+    />
+  )
+}
+
+function NavItem({ selected, disabled, icon: Icon, label, onClick, tone = 'normal', live = false }: { selected?: boolean; disabled?: boolean; icon: SvgIconComponent; label: string; onClick: () => void; tone?: 'normal' | 'danger'; live?: boolean }) {
   const color = tone === 'danger' ? '#ed4245' : selected ? '#fff' : '#949ba4'
   return (
     <Button
@@ -59,6 +79,7 @@ function NavItem({ selected, disabled, icon: Icon, label, onClick, tone = 'norma
       startIcon={<Icon sx={{ fontSize: 20 }} />}
       sx={{
         justifyContent: 'flex-start',
+        width: '100%',
         px: 1.25,
         color,
         bgcolor: selected ? '#404249' : 'transparent',
@@ -66,18 +87,20 @@ function NavItem({ selected, disabled, icon: Icon, label, onClick, tone = 'norma
         '& .MuiButton-startIcon': { color: 'inherit', mr: 1 },
       }}
     >
-      {label}
+      <Box component="span" sx={{ flex: 1, textAlign: 'left' }}>{label}</Box>
+      {live && <LiveLed />}
     </Button>
   )
 }
 
-function SubNav({ selected, disabled, label, onClick }: { selected?: boolean; disabled?: boolean; label: string; onClick: () => void }) {
+function SubNav({ selected, disabled, label, onClick, live = false }: { selected?: boolean; disabled?: boolean; label: string; onClick: () => void; live?: boolean }) {
   return (
     <Button
       disabled={disabled}
       onClick={onClick}
       sx={{
         justifyContent: 'flex-start',
+        width: '100%',
         minHeight: 32,
         py: 0.35,
         pl: 4.25,
@@ -89,7 +112,8 @@ function SubNav({ selected, disabled, label, onClick }: { selected?: boolean; di
         '&:hover': { bgcolor: '#35373c', color: '#dbdee1' },
       }}
     >
-      {label}
+      <Box component="span" sx={{ flex: 1, textAlign: 'left' }}>{label}</Box>
+      {live && <LiveLed />}
     </Button>
   )
 }
@@ -139,6 +163,9 @@ function Shell() {
   }, [account, page])
   const holder = overview?.accounts.find(item => item.status !== 'Offline') ?? null
   const connected = account != null && isConnected(account.status)
+  const villagesLive = !!account?.villages
+  const farmsLive = !!account?.farms
+  const gameLive = !!account?.gameFarms
   const heldByOther = holder != null && holder.id !== account?.id
   useEffect(() => {
     if (!update?.available || !update.publishedAt) return
@@ -279,11 +306,11 @@ function Shell() {
           {pages.map(item => item.id === 'farming' && account?.gold ? (
             <Stack key="farming" spacing={0.15}>
               <NavItem selected={false} disabled={!connected} icon={item.icon} label="Farming" onClick={() => setPage('farming')} />
-              <SubNav selected={page === 'farming'} disabled={!connected} label="Listas propias" onClick={() => setPage('farming')} />
-              <SubNav selected={page === 'farming-juego'} disabled={!connected} label="Listas del juego" onClick={() => setPage('farming-juego')} />
+              <SubNav selected={page === 'farming'} disabled={!connected} live={farmsLive} label="Listas propias" onClick={() => setPage('farming')} />
+              <SubNav selected={page === 'farming-juego'} disabled={!connected} live={gameLive} label="Listas del juego" onClick={() => setPage('farming-juego')} />
             </Stack>
           ) : (
-            <NavItem key={item.id} selected={page === item.id} disabled={!connected} icon={item.icon} label={item.label} onClick={() => setPage(item.id)} />
+            <NavItem key={item.id} selected={page === item.id} disabled={!connected} live={item.id === 'aldeas' ? villagesLive : item.id === 'farming' && (farmsLive || gameLive)} icon={item.icon} label={item.label} onClick={() => setPage(item.id)} />
           ))}
         </Stack>
         <Stack spacing={0.3} sx={{ px: 1, pb: 1.5 }}>
