@@ -32,8 +32,19 @@
         public static async Task<ILocator> GetFillUpButton(IPage page, BuildingEnums building)
         {
             var panel = await GetPanel(page, building);
-            var node = panel.Locator("#contract .resourceWrapper .resource.transfer.fillUp");
-            return node.First;
+            // The (+1) next to a hero resource opens the transfer dialog.
+            // The old .resource.transfer.fillUp node still takes the click and leaves the page unchanged.
+            var plus = panel.Locator("#contract").GetByText("(+1)", new() { Exact = true });
+            var count = await plus.CountAsync();
+            for (var i = 0; i < count; i++)
+            {
+                var item = plus.Nth(i);
+                var around = await item.EvaluateAsync<string>("node => ((node.parentElement && node.parentElement.innerText) || '').trim()");
+                if (!around.StartsWith('0')) return item;
+            }
+
+            if (count > 0) return plus.First;
+            return panel.Locator("#contract .resourceWrapper .resource.transfer.fillUp").First;
         }
 
         public static async Task<ILocator> GetNormalButton(IPage page, BuildingEnums building)
