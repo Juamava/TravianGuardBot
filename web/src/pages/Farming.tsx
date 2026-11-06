@@ -12,7 +12,8 @@ import { Empty, panel, useUi } from '../ui'
 type Village = { id: number; name: string; x: number; y: number }
 type CowList = { id: number; name: string; minMinutes: number; repeatMinutes: number; levelHero: boolean; autoStart: boolean; running: boolean; countdown: string }
 type Cow = { id: number; listId: number; name: string; url: string; troops: string; status: string; kind: string; owner: string; tribe: string; alliance: string; population: number; distance: number; x: number | null; y: number | null }
-type FarmingData = { villages: Village[]; lists: CowList[]; cows: Cow[]; countdown: string }
+type GameFarm = { id: number; name: string; active: boolean }
+type FarmingData = { villages: Village[]; lists: CowList[]; cows: Cow[]; countdown: string; gold: boolean; gameLists: GameFarm[]; useStartAll: boolean; farmIntervalMin: number; farmIntervalMax: number; gameRunning: boolean; gameCountdown: string }
 type SearchResult = { count: number; villageName: string; originX: number; originY: number; troopPlan: string; hits: { x: number; y: number; distance: number }[] }
 
 const cowColumns = 'minmax(160px, 1.6fr) 72px minmax(100px, 1fr) 88px 88px 110px minmax(120px, 1fr)'
@@ -79,6 +80,73 @@ function Hint({ text }: { text: string }) {
     <Tooltip title={text} placement="top" arrow enterDelay={200} slotProps={{ tooltip: { sx: { maxWidth: 280, fontSize: 13, lineHeight: 1.45 } } }}>
       <InfoOutlinedIcon sx={{ fontSize: 16, color: '#949ba4', cursor: 'help' }} />
     </Tooltip>
+  )
+}
+
+function GameFarming({ accountId, data, notify, reload }: { accountId: number; data: FarmingData; notify: (message: string) => void; reload: () => Promise<FarmingData | undefined> }) {
+  const [min, setMin] = useState(String(data.farmIntervalMin))
+  const [max, setMax] = useState(String(data.farmIntervalMax))
+  const [all, setAll] = useState(data.useStartAll)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    setMin(String(data.farmIntervalMin))
+    setMax(String(data.farmIntervalMax))
+    setAll(data.useStartAll)
+  }, [data.farmIntervalMin, data.farmIntervalMax, data.useStartAll])
+
+  async function act(action: () => Promise<{ message: string }>) {
+    setBusy(true)
+    try {
+      notify((await action()).message)
+      await reload()
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo completar')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function saveOptions(useStartAll = all, intervalMin = Number(min), intervalMax = Number(max)) {
+    if (!Number.isFinite(intervalMin) || !Number.isFinite(intervalMax) || intervalMin < 0 || intervalMax < intervalMin) {
+      notify('El intervalo mínimo tiene que ser menor o igual que el máximo.')
+      return
+    }
+    await act(() => put(`/api/accounts/${accountId}/farming/game/options`, { useStartAll, intervalMin, intervalMax }))
+  }
+
+  return (
+    <Stack spacing={2} sx={{ minWidth: 0 }}>
+      <Typography variant="h4">Listas del juego</Typography>
+      <Typography color="text.secondary">Esta cuenta es Gold. El bot inicia las listas de vacas que ya tiene Travian.</Typography>
+      <Box sx={{ ...panel }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 1 }}>
+          <Tile color="#5865f2" icon={<SyncIcon />} label="Actualizar" disabled={busy} onClick={() => act(() => post(`/api/accounts/${accountId}/farming/game/refresh`))} />
+          <Tile color="#23a559" icon={<PlayArrowIcon />} label="Iniciar" disabled={busy || data.gameRunning} onClick={() => act(() => post(`/api/accounts/${accountId}/farming/game/start`))} />
+          <Tile color="#ed4245" icon={<StopIcon />} label="Detener" disabled={busy || !data.gameRunning} onClick={() => act(() => post(`/api/accounts/${accountId}/farming/game/stop`))} />
+        </Box>
+        {data.gameCountdown && <Typography color="error" fontWeight={800} sx={{ mt: 1.5 }}>{data.gameCountdown}</Typography>}
+      </Box>
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ ...panel, py: 1 }}>
+        <Switch checked={all} disabled={busy} onChange={event => { const next = event.target.checked; setAll(next); void saveOptions(next) }} />
+        <Typography fontWeight={600}>Iniciar todas</Typography>
+        <Hint text="Si está apagado, solo inicia las listas marcadas como activas. Si está encendido, aprieta el botón de iniciar todas en el juego." />
+      </Stack>
+      <Box sx={{ ...panel, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+        <TextField type="number" label="Repetir desde" value={min} onChange={event => setMin(event.target.value)} onBlur={() => saveOptions()} slotProps={{ input: { endAdornment: <Typography color="text.secondary" sx={{ ml: 1 }}>seg</Typography> } }} />
+        <TextField type="number" label="Repetir hasta" value={max} onChange={event => setMax(event.target.value)} onBlur={() => saveOptions()} slotProps={{ input: { endAdornment: <Typography color="text.secondary" sx={{ ml: 1 }}>seg</Typography> } }} />
+      </Box>
+      <Stack spacing={1} sx={{ ...panel, p: 1 }}>
+        {data.gameLists.map(list => (
+          <Stack key={list.id} direction="row" spacing={1} alignItems="center" sx={{ px: 1, py: 0.5 }}>
+            <Switch checked={list.active} disabled={busy} onChange={() => act(() => post(`/api/accounts/${accountId}/farming/game/${list.id}/active`))} />
+            <Typography sx={{ fontWeight: 600 }}>{list.name}</Typography>
+            <Typography color="text.secondary">{list.active ? 'Activa' : 'Inactiva'}</Typography>
+          </Stack>
+        ))}
+        {data.gameLists.length === 0 && <Empty title="Sin listas del juego" text="Apretá Actualizar para entrar al punto de reunión y leer las listas de Travian." />}
+      </Stack>
+    </Stack>
   )
 }
 
@@ -313,6 +381,8 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
     if (!cow || (cow.name === cowName && cow.url === url && cow.troops === troops)) return
     await run(() => put(`/api/accounts/${accountId}/farming/villages/${cowId}`, { name: cowName, url, troops }))
   }
+  if (data?.gold) return <GameFarming accountId={accountId} data={data} notify={notify} reload={() => load()} />
+
   if (data && data.villages.length === 0) {
     return <Empty title="Esta cuenta no tiene aldeas" text="Conectá la cuenta para que cargue las aldeas. Después vas a poder armar las listas acá." />
   }
