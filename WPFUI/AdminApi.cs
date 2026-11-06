@@ -694,7 +694,7 @@ namespace WPFUI
                 .Select(x =>
                 {
                     var task = gameTasks.FirstOrDefault(item => item.FarmId == x.Id);
-                    var min = x.IntervalMin < 1 ? 540 : x.IntervalMin;
+                    var min = x.IntervalMin < 1 ? 9 : x.IntervalMin;
                     var max = x.IntervalMax < min ? min : x.IntervalMax;
                     return new
                     {
@@ -1060,12 +1060,13 @@ namespace WPFUI
 
         private static IResult SaveGameFarmInterval(IServiceProvider services, int accountId, int farmId, GameIntervalBody body)
         {
-            if (body.IntervalMin < 1 || body.IntervalMax < body.IntervalMin || body.IntervalMax > 604800) return Fail("El mínimo tiene que ser de 1 segundo o más, no puede pasar el máximo, y el máximo es de 7 días.");
+            if (body.IntervalMin < 1 || body.IntervalMax < body.IntervalMin || body.IntervalMax > 10080) return Fail("El mínimo tiene que ser de 1 minuto o más, no puede pasar el máximo, y el máximo es de 7 días.");
             using var context = Context(services);
             var updated = context.FarmLists.Where(x => x.Id == farmId && x.AccountId == accountId)
                 .ExecuteUpdate(x => x
                     .SetProperty(farm => farm.IntervalMin, body.IntervalMin)
-                    .SetProperty(farm => farm.IntervalMax, body.IntervalMax));
+                    .SetProperty(farm => farm.IntervalMax, body.IntervalMax)
+                    .SetProperty(farm => farm.IntervalsInMinutes, 1));
             if (updated == 0) return Fail("No se encontró la lista del juego.");
             return Ok("Frecuencia guardada. Se usa la próxima vez que esa lista vuelva a iniciar.");
         }

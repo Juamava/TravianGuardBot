@@ -18,8 +18,9 @@ namespace MainCore.DTO
         {
             var entity = dto.ToEntity();
             entity.AccountId = accountId.Value;
-            entity.IntervalMin = 540;
-            entity.IntervalMax = 660;
+            entity.IntervalMin = 9;
+            entity.IntervalMax = 11;
+            entity.IntervalsInMinutes = 1;
             return entity;
         }
 
@@ -28,11 +29,13 @@ namespace MainCore.DTO
         [MapperIgnoreTarget(nameof(Farm.IsActive))]
         [MapperIgnoreTarget(nameof(Farm.IntervalMin))]
         [MapperIgnoreTarget(nameof(Farm.IntervalMax))]
+        [MapperIgnoreTarget(nameof(Farm.IntervalsInMinutes))]
         public static partial void To(this FarmDto dto, Farm entity);
 
         [MapperIgnoreTarget(nameof(Farm.AccountId))]
         [MapperIgnoreTarget(nameof(Farm.IntervalMin))]
         [MapperIgnoreTarget(nameof(Farm.IntervalMax))]
+        [MapperIgnoreTarget(nameof(Farm.IntervalsInMinutes))]
         private static partial Farm ToEntity(this FarmDto dto);
 
         private static int ToInt(this FarmId farmId) => farmId.Value;
