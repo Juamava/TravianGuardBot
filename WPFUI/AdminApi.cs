@@ -619,17 +619,43 @@ namespace WPFUI
                 .Select(x => new { id = x.Id, name = x.Name, minMinutes = x.MinAttackMinutes, repeatMinutes = x.RepeatMinutes, levelHero = x.LevelHero, autoStart = x.AutoStart })
                 .ToList();
             var listIds = lists.Select(x => x.id).ToList();
+            var home = context.Villages.Where(x => x.Id == villageId).Select(x => new { x.X, x.Y }).FirstOrDefault();
             var cows = context.CowVillages.Where(x => listIds.Contains(x.CowListId)).OrderBy(x => x.Id)
-                .Select(x => new { x.Id, x.CowListId, x.Name, x.Url, x.TroopCount, x.TroopPlan, x.LastAttackedAt, x.LastSkipReason })
+                .Select(x => new { x.Id, x.CowListId, x.Name, x.Url, x.TroopCount, x.TroopPlan, x.LastAttackedAt, x.LastSkipReason, x.Kind, x.Owner, x.Tribe, x.Alliance, x.Population, x.Distance, x.CoordX, x.CoordY })
                 .AsEnumerable()
-                .Select(x => new
+                .Select(x =>
                 {
-                    id = x.Id,
-                    listId = x.CowListId,
-                    name = VillageLabel(x.Name),
-                    url = x.Url,
-                    troops = CowTroopPlan.Describe(x.TroopPlan, x.TroopCount),
-                    status = FormatStatus(x.LastAttackedAt, x.LastSkipReason),
+                    var coordX = x.CoordX;
+                    var coordY = x.CoordY;
+                    if (coordX is null || coordY is null)
+                    {
+                        if (CowOasisParser.TryReadCoordinates(x.Url, out var parsedX, out var parsedY))
+                        {
+                            coordX = parsedX;
+                            coordY = parsedY;
+                        }
+                    }
+
+                    var distance = x.Distance;
+                    if (distance < 0 && coordX is int targetX && coordY is int targetY && home is not null)
+                        distance = CowOasisParser.TravelDistance(home.X, home.Y, targetX, targetY);
+                    return new
+                    {
+                        id = x.Id,
+                        listId = x.CowListId,
+                        name = VillageLabel(x.Name),
+                        url = x.Url,
+                        troops = CowTroopPlan.Describe(x.TroopPlan, x.TroopCount),
+                        status = FormatStatus(x.LastAttackedAt, x.LastSkipReason),
+                        kind = x.Kind ?? "",
+                        owner = x.Owner ?? "",
+                        tribe = x.Tribe ?? "",
+                        alliance = x.Alliance ?? "",
+                        population = x.Population,
+                        distance,
+                        x = coordX,
+                        y = coordY,
+                    };
                 }).ToList();
             var task = services.GetRequiredService<TaskManager>().GetTaskList(new AccountId(accountId)).OfType<RaidCowListTask.Task>().FirstOrDefault();
             return Ok("", new { villages, lists, cows, countdown = FormatCountdown(task) });
@@ -717,15 +743,18 @@ namespace WPFUI
                 if (!context.CowLists.Any(x => x.Id == listId && x.AccountId == accountId)) return Fail("No se encontró la lista.");
             }
 
-            var name = await ReadVillageName(services, accountId, url);
+            var (originX, originY) = ListOrigin(services, listId);
+            var details = await ReadTileDetails(services, accountId, url);
+            var row = new CowVillage { CowListId = listId, Name = CowOasisParser.MissingName, Url = url, TroopPlan = plan, TroopCount = count };
+            CowOasisParser.CopyOnto(row, details, url, originX, originY, replaceName: true);
             using (var context = Context(services))
             {
                 if (!context.CowLists.Any(x => x.Id == listId && x.AccountId == accountId)) return Fail("No se encontró la lista.");
-                context.CowVillages.Add(new CowVillage { CowListId = listId, Name = name, Url = url, TroopPlan = plan, TroopCount = count });
+                context.CowVillages.Add(row);
                 context.SaveChanges();
             }
 
-            return Ok(name == CowOasisParser.MissingName ? "Aldea agregada sin nombre." : $"Aldea agregada: {name}.");
+            return Ok(row.Name == CowOasisParser.MissingName ? "Aldea agregada sin nombre." : $"Aldea agregada: {row.Name}.");
         }
 
         private static IResult BulkEditCowList(IServiceProvider services, int accountId, int listId, string text)
@@ -796,22 +825,32 @@ namespace WPFUI
             return Ok("Aldea guardada.");
         }
 
-        private static async Task<string> ReadVillageName(IServiceProvider services, int accountId, string url, CancellationToken cancellationToken = default)
+        private static (int? X, int? Y) ListOrigin(IServiceProvider services, int listId)
+        {
+            using var context = Context(services);
+            var origin = context.CowLists.Where(x => x.Id == listId)
+                .Join(context.Villages, list => list.VillageId, village => village.Id, (list, village) => new { village.X, village.Y })
+                .FirstOrDefault();
+            return origin is null ? (null, null) : (origin.X, origin.Y);
+        }
+
+        private static async Task<CowOasisParser.TileDetails> ReadTileDetails(IServiceProvider services, int accountId, string url, CancellationToken cancellationToken = default)
         {
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var browser = services.GetRequiredService<ChromeManager>().Get(new AccountId(accountId));
-                if (!browser.IsInitialized) return CowOasisParser.MissingName;
-                var name = await browser.InNewTab(async page =>
+                if (!browser.IsInitialized) return new CowOasisParser.TileDetails("", "", "", "", "", -1, -1, false);
+                var details = await browser.InNewTab(async page =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     await page.GotoAsync(url, new() { Timeout = 20_000 });
                     cancellationToken.ThrowIfCancellationRequested();
-                    return await CowOasisParser.ReadTitle(page);
+                    await CowOasisParser.ReadTile(page);
+                    return await CowOasisParser.ReadDetails(page);
                 });
                 if (browser.IsInitialized) await browser.CurrentPage.BringToFrontAsync();
-                return VillageLabel(name);
+                return details;
             }
             catch (OperationCanceledException)
             {
@@ -819,7 +858,7 @@ namespace WPFUI
             }
             catch
             {
-                return CowOasisParser.MissingName;
+                return new CowOasisParser.TileDetails("", "", "", "", "", -1, -1, false);
             }
         }
 
@@ -852,6 +891,7 @@ namespace WPFUI
 
             var named = 0;
             var visited = 0;
+            var (originX, originY) = ListOrigin(services, listId);
             try
             {
                 for (var index = 0; index < villages.Count; index++)
@@ -859,12 +899,14 @@ namespace WPFUI
                     cancellationToken.ThrowIfCancellationRequested();
                     if (index > 0) await Task.Delay(NextNavigationDelay(), cancellationToken);
                     var (id, url) = villages[index];
-                    var name = await ReadVillageName(services, accountId, url, cancellationToken);
+                    var details = await ReadTileDetails(services, accountId, url, cancellationToken);
                     visited++;
-                    if (name != CowOasisParser.MissingName) named++;
                     using var context = Context(services);
-                    context.CowVillages.Where(x => x.Id == id && x.CowList.AccountId == accountId)
-                        .ExecuteUpdate(x => x.SetProperty(village => village.Name, name));
+                    var row = context.CowVillages.FirstOrDefault(x => x.Id == id && x.CowList.AccountId == accountId);
+                    if (row is null) continue;
+                    CowOasisParser.CopyOnto(row, details, url, originX, originY, replaceName: true);
+                    if (row.Name != CowOasisParser.MissingName) named++;
+                    context.SaveChanges();
                 }
             }
             catch (OperationCanceledException)
@@ -1017,6 +1059,9 @@ namespace WPFUI
             var server = context.Accounts.Where(x => x.Id == accountId).Select(x => x.Server).FirstOrDefault();
             if (server is null || !context.CowLists.Any(x => x.Id == listId && x.AccountId == accountId)) return Fail("No se encontró la lista.");
 
+            var origin = context.CowLists.Where(x => x.Id == listId)
+                .Join(context.Villages, list => list.VillageId, village => village.Id, (list, village) => new { village.X, village.Y })
+                .FirstOrDefault();
             var existing = context.CowVillages.Where(x => x.CowListId == listId).Select(x => x.Url).ToList();
             var urls = new HashSet<string>(existing, StringComparer.OrdinalIgnoreCase);
             var added = 0;
@@ -1024,7 +1069,18 @@ namespace WPFUI
             {
                 var url = OasisCatalog.BuildOasisUrl(server, hit.X, hit.Y);
                 if (!urls.Add(url)) continue;
-                context.CowVillages.Add(new CowVillage { CowListId = listId, Name = CowOasisParser.MissingName, Url = url, TroopPlan = plan, TroopCount = count });
+                context.CowVillages.Add(new CowVillage
+                {
+                    CowListId = listId,
+                    Name = CowOasisParser.MissingName,
+                    Url = url,
+                    TroopPlan = plan,
+                    TroopCount = count,
+                    Kind = "oasis",
+                    CoordX = hit.X,
+                    CoordY = hit.Y,
+                    Distance = origin is null ? -1 : CowOasisParser.TravelDistance(origin.X, origin.Y, hit.X, hit.Y),
+                });
                 added++;
             }
 

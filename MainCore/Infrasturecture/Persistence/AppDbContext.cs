@@ -266,6 +266,14 @@ namespace MainCore.Infrasturecture.Persistence
             EnsureColumn("CowVillages", "TroopPlan", "TEXT NULL");
             EnsureColumn("CowVillages", "LastSkipReason", "TEXT NULL");
             EnsureColumn("CowVillages", "Name", "TEXT NOT NULL DEFAULT 'Aldea sin nombre'");
+            EnsureColumn("CowVillages", "Kind", "TEXT NOT NULL DEFAULT ''");
+            EnsureColumn("CowVillages", "Owner", "TEXT NOT NULL DEFAULT ''");
+            EnsureColumn("CowVillages", "Tribe", "TEXT NOT NULL DEFAULT ''");
+            EnsureColumn("CowVillages", "Alliance", "TEXT NOT NULL DEFAULT ''");
+            EnsureColumn("CowVillages", "Population", "INTEGER NOT NULL DEFAULT -1");
+            EnsureColumn("CowVillages", "Distance", "REAL NOT NULL DEFAULT -1");
+            EnsureColumn("CowVillages", "CoordX", "INTEGER NULL");
+            EnsureColumn("CowVillages", "CoordY", "INTEGER NULL");
         }
 
         public void EnsureHeroLevelingTable()

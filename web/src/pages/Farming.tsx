@@ -11,9 +11,44 @@ import { Empty, panel, useUi } from '../ui'
 
 type Village = { id: number; name: string; x: number; y: number }
 type CowList = { id: number; name: string; minMinutes: number; repeatMinutes: number; levelHero: boolean; autoStart: boolean }
-type Cow = { id: number; listId: number; name: string; url: string; troops: string; status: string }
+type Cow = { id: number; listId: number; name: string; url: string; troops: string; status: string; kind: string; owner: string; tribe: string; alliance: string; population: number; distance: number; x: number | null; y: number | null }
 type FarmingData = { villages: Village[]; lists: CowList[]; cows: Cow[]; countdown: string }
 type SearchResult = { count: number; villageName: string; originX: number; originY: number; troopPlan: string; hits: { x: number; y: number; distance: number }[] }
+
+const cowColumns = 'minmax(160px, 1.6fr) 72px minmax(100px, 1fr) 88px 88px 110px minmax(120px, 1fr)'
+
+function kindLabel(kind: string) {
+  if (kind === 'oasis') return 'Oasis'
+  if (kind === 'aldea') return 'Aldea'
+  return '—'
+}
+
+function bound(raw: string) {
+  const text = raw.trim().replace(',', '.')
+  if (text === '') return null
+  const value = Number(text)
+  return Number.isFinite(value) ? value : null
+}
+
+function cowMatches(cow: Cow, query: string, kind: string, popFrom: string, popTo: string, distFrom: string, distTo: string) {
+  const text = query.trim().toLowerCase()
+  if (text) {
+    const hay = `${cow.name} ${cow.owner} ${cow.tribe} ${cow.alliance}`.toLowerCase()
+    if (!hay.includes(text)) return false
+  }
+  if (kind !== 'todos' && cow.kind !== kind) return false
+  const fromPop = bound(popFrom)
+  const toPop = bound(popTo)
+  if ((fromPop != null || toPop != null) && cow.population < 0) return false
+  if (fromPop != null && cow.population < fromPop) return false
+  if (toPop != null && cow.population > toPop) return false
+  const fromDist = bound(distFrom)
+  const toDist = bound(distTo)
+  if ((fromDist != null || toDist != null) && cow.distance < 0) return false
+  if (fromDist != null && cow.distance < fromDist) return false
+  if (toDist != null && cow.distance > toDist) return false
+  return true
+}
 
 const tile = {
   minWidth: 0,
@@ -72,6 +107,12 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
   const [oasisTroops, setOasisTroops] = useState('2')
   const [oasisFrom, setOasisFrom] = useState('0')
   const [oasisTo, setOasisTo] = useState('20')
+  const [query, setQuery] = useState('')
+  const [kindFilter, setKindFilter] = useState('todos')
+  const [popFrom, setPopFrom] = useState('')
+  const [popTo, setPopTo] = useState('')
+  const [distFrom, setDistFrom] = useState('')
+  const [distTo, setDistTo] = useState('')
   const syncAbort = useRef<AbortController | null>(null)
   const minutesTimer = useRef<number | null>(null)
   const listDraft = useRef({ listId: 0, name: '', min: 0, repeat: 0, auto: false })
@@ -106,6 +147,12 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
     setTroops('')
     setBulkOpen(false)
     setBulkText('')
+    setQuery('')
+    setKindFilter('todos')
+    setPopFrom('')
+    setPopTo('')
+    setDistFrom('')
+    setDistTo('')
   }
 
   function openBulk() {
@@ -224,6 +271,7 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
   }
 
   const cows = data?.cows.filter(cow => cow.listId === listId) ?? []
+  const shown = cows.filter(cow => cowMatches(cow, query, kindFilter, popFrom, popTo, distFrom, distTo))
   const activeId = cows.find(cow => cow.status === 'Analizando' || cow.status === 'Atacando')?.id ?? 0
   const scrolledId = useRef(0)
   useEffect(() => {
@@ -377,27 +425,51 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
             </Stack>
           )}
 
-          <Stack spacing={0.5} sx={{ ...panel, p: 1 }}>
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 0.5, pb: 0.5 }}>
+          <Stack spacing={1} sx={{ ...panel, p: 1 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 0.5 }}>
               <Typography variant="caption" color="text.secondary">Aldeas de la lista</Typography>
               <Button size="small" disabled={!listId || saving || syncing} onClick={openBulk}>Edición masiva</Button>
             </Stack>
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 160px 180px', gap: 2, px: 1.5, py: 0.5 }}>
-              <Typography variant="caption" color="text.secondary">Aldea</Typography>
-              <Typography variant="caption" color="text.secondary">Tropas</Typography>
-              <Typography variant="caption" color="text.secondary">Estado</Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 1.4fr) 110px 90px 90px 90px 90px', gap: 1, px: 0.5 }}>
+              <TextField size="small" label="Buscar" placeholder="Nombre, dueño, tribu" value={query} onChange={event => setQuery(event.target.value)} />
+              <TextField size="small" select label="Tipo" value={kindFilter} onChange={event => setKindFilter(event.target.value)}>
+                <MenuItem value="todos">Todos</MenuItem>
+                <MenuItem value="aldea">Aldeas</MenuItem>
+                <MenuItem value="oasis">Oasis</MenuItem>
+              </TextField>
+              <TextField size="small" label="Pob. desde" value={popFrom} onChange={event => setPopFrom(event.target.value)} />
+              <TextField size="small" label="Pob. hasta" value={popTo} onChange={event => setPopTo(event.target.value)} />
+              <TextField size="small" label="Dist. desde" value={distFrom} onChange={event => setDistFrom(event.target.value)} />
+              <TextField size="small" label="Dist. hasta" value={distTo} onChange={event => setDistTo(event.target.value)} />
             </Box>
-            {cows.map(cow => {
-              const live = cow.status === 'Analizando' || cow.status === 'Atacando'
-              return (
-                <Box id={`cow-${cow.id}`} key={cow.id} onClick={() => selectCow(cow)} sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 160px 180px', gap: 2, alignItems: 'center', px: 1.5, py: 1.25, borderRadius: 1, cursor: 'pointer', bgcolor: live ? '#3c4280' : cow.id === cowId ? '#404249' : 'transparent', boxShadow: live ? 'inset 3px 0 0 #5865f2' : 'none', '&:hover': { bgcolor: live ? '#3c4280' : cow.id === cowId ? '#404249' : '#35373c' } }}>
-                  <Typography sx={{ fontWeight: 600, fontSize: 15, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{cow.name}</Typography>
-                  <Typography sx={{ color: '#dbdee1' }}>{cow.troops}</Typography>
-                  <Typography sx={{ color: cow.status === 'Atacando' ? '#23a559' : cow.status === 'Analizando' ? '#f0b232' : '#b5bac1', fontSize: 13, fontWeight: live ? 700 : 400 }}>{cow.status}</Typography>
+            <Box sx={{ overflowX: 'auto' }}>
+              <Box sx={{ minWidth: 860 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: cowColumns, gap: 1.5, px: 1.5, py: 0.5 }}>
+                  {['Aldea', 'Tipo', 'Dueño', 'Población', 'Distancia', 'Tropas', 'Estado'].map(label => (
+                    <Typography key={label} variant="caption" color="text.secondary">{label}</Typography>
+                  ))}
                 </Box>
-              )
-            })}
+                {shown.map(cow => {
+                  const live = cow.status === 'Analizando' || cow.status === 'Atacando'
+                  return (
+                    <Box id={`cow-${cow.id}`} key={cow.id} onClick={() => selectCow(cow)} sx={{ display: 'grid', gridTemplateColumns: cowColumns, gap: 1.5, alignItems: 'center', px: 1.5, py: 1.25, borderRadius: 1, cursor: 'pointer', bgcolor: live ? '#3c4280' : cow.id === cowId ? '#404249' : 'transparent', boxShadow: live ? 'inset 3px 0 0 #5865f2' : 'none', '&:hover': { bgcolor: live ? '#3c4280' : cow.id === cowId ? '#404249' : '#35373c' } }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ fontWeight: 600, fontSize: 15, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{cow.name}</Typography>
+                        {cow.x != null && cow.y != null && <Typography variant="caption" color="text.secondary">({cow.x}|{cow.y}){cow.tribe ? ` · ${cow.tribe}` : ''}{cow.alliance ? ` · ${cow.alliance}` : ''}</Typography>}
+                      </Box>
+                      <Typography sx={{ color: '#dbdee1' }}>{kindLabel(cow.kind)}</Typography>
+                      <Typography sx={{ color: '#dbdee1', overflowWrap: 'anywhere' }}>{cow.owner || '—'}</Typography>
+                      <Typography sx={{ color: '#dbdee1' }}>{cow.population >= 0 ? cow.population : '—'}</Typography>
+                      <Typography sx={{ color: '#dbdee1' }}>{cow.distance >= 0 ? cow.distance.toLocaleString('es', { maximumFractionDigits: 2 }) : '—'}</Typography>
+                      <Typography sx={{ color: '#dbdee1' }}>{cow.troops}</Typography>
+                      <Typography sx={{ color: cow.status === 'Atacando' ? '#23a559' : cow.status === 'Analizando' ? '#f0b232' : '#b5bac1', fontSize: 13, fontWeight: live ? 700 : 400 }}>{cow.status}</Typography>
+                    </Box>
+                  )
+                })}
+              </Box>
+            </Box>
             {listId > 0 && cows.length === 0 && <Empty title="Lista vacía" text="Agregá una aldea a mano o buscá oasis." />}
+            {listId > 0 && cows.length > 0 && shown.length === 0 && <Empty title="Ninguna coincide" text="Probá otro dueño, otra población o sacá un filtro." />}
             {listId === 0 && <Empty title="Elegí una lista" text="Las aldeas de esa lista se ven acá, con el nombre completo." />}
           </Stack>
         </Stack>

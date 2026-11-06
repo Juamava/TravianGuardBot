@@ -16,6 +16,14 @@ namespace MainCore.Entities
         public string TroopPlan { get; set; }
         public DateTime? LastAttackedAt { get; set; }
         public string LastSkipReason { get; set; }
+        public string Kind { get; set; } = "";
+        public string Owner { get; set; } = "";
+        public string Tribe { get; set; } = "";
+        public string Alliance { get; set; } = "";
+        public int Population { get; set; } = -1;
+        public double Distance { get; set; } = -1;
+        public int? CoordX { get; set; }
+        public int? CoordY { get; set; }
 
         public CowList CowList { get; set; }
     }
