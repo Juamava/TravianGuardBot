@@ -615,8 +615,25 @@ namespace WPFUI
             using var context = Context(services);
             var villages = context.Villages.Where(x => x.AccountId == accountId).OrderBy(x => x.Name)
                 .Select(x => new { id = x.Id, name = x.Name, x = x.X, y = x.Y }).ToList();
+            var raidTasks = services.GetRequiredService<TaskManager>().GetTaskList(new AccountId(accountId)).OfType<RaidCowListTask.Task>().ToList();
             var lists = context.CowLists.Where(x => x.AccountId == accountId && x.VillageId == villageId).OrderBy(x => x.Name)
-                .Select(x => new { id = x.Id, name = x.Name, minMinutes = x.MinAttackMinutes, repeatMinutes = x.RepeatMinutes, levelHero = x.LevelHero, autoStart = x.AutoStart })
+                .Select(x => new { x.Id, x.Name, x.MinAttackMinutes, x.RepeatMinutes, x.LevelHero, x.AutoStart })
+                .AsEnumerable()
+                .Select(x =>
+                {
+                    var raid = raidTasks.FirstOrDefault(task => task.CowListId == x.Id);
+                    return new
+                    {
+                        id = x.Id,
+                        name = x.Name,
+                        minMinutes = x.MinAttackMinutes,
+                        repeatMinutes = x.RepeatMinutes,
+                        levelHero = x.LevelHero,
+                        autoStart = x.AutoStart,
+                        running = raid is not null,
+                        countdown = FormatCountdown(raid),
+                    };
+                })
                 .ToList();
             var listIds = lists.Select(x => x.id).ToList();
             var home = context.Villages.Where(x => x.Id == villageId).Select(x => new { x.X, x.Y }).FirstOrDefault();
@@ -657,8 +674,7 @@ namespace WPFUI
                         y = coordY,
                     };
                 }).ToList();
-            var task = services.GetRequiredService<TaskManager>().GetTaskList(new AccountId(accountId)).OfType<RaidCowListTask.Task>().FirstOrDefault();
-            return Ok("", new { villages, lists, cows, countdown = FormatCountdown(task) });
+            return Ok("", new { villages, lists, cows, countdown = "" });
         }
 
         private static IResult CreateCowList(IServiceProvider services, int accountId, CowListBody body)
@@ -693,14 +709,6 @@ namespace WPFUI
             if (body.AutoStart && !context.CowVillages.Any(x => x.CowListId == listId))
                 return Fail("La lista no tiene aldeas.");
 
-            var turnedOff = 0;
-            if (body.AutoStart)
-            {
-                turnedOff = context.CowLists
-                    .Where(x => x.AccountId == accountId && x.Id != listId && x.AutoStart)
-                    .ExecuteUpdate(x => x.SetProperty(list => list.AutoStart, false));
-            }
-
             context.CowLists.Where(x => x.Id == listId).ExecuteUpdate(x => x
                 .SetProperty(list => list.Name, name)
                 .SetProperty(list => list.MinAttackMinutes, body.MinMinutes)
@@ -711,19 +719,20 @@ namespace WPFUI
                 context.CowLists.Where(x => x.Id == listId).ExecuteUpdate(x => x.SetProperty(list => list.LevelHero, levelHero));
             if (!body.AutoStart || current.AutoStart) return Ok("Lista guardada.");
 
-            var message = turnedOff > 0
-                ? "Inicio automático activado. Se apagó en las otras listas."
-                : "Inicio automático activado.";
+            const string message = "Inicio automático activado.";
             var account = new AccountId(accountId);
             var tasks = services.GetRequiredService<TaskManager>();
             var status = tasks.GetStatus(account);
             if (status is not (StatusEnums.Online or StatusEnums.Paused))
                 return Ok(message + " Arranca sola al conectar la cuenta.");
-            if (tasks.IsExist<RaidCowListTask.Task>(account))
-                return Ok(message + " Ya hay un raid iniciado.");
+            if (tasks.GetTaskList(account).OfType<RaidCowListTask.Task>().Any(x => x.CowListId == listId))
+                return Ok(message);
 
+            var queued = tasks.GetTaskList(account).OfType<RaidCowListTask.Task>().Any();
             tasks.Add(new RaidCowListTask.Task(account, listId));
-            return Ok(message + " El raid empezó.");
+            return Ok(queued
+                ? message + " Empieza cuando termine la lista que está en curso."
+                : message + " El raid empezó.");
         }
 
         private static IResult DeleteCowList(IServiceProvider services, int accountId, int listId)
@@ -732,6 +741,7 @@ namespace WPFUI
             context.CowVillages.Where(x => x.CowListId == listId && x.CowList.AccountId == accountId).ExecuteDelete();
             var deleted = context.CowLists.Where(x => x.Id == listId && x.AccountId == accountId).ExecuteDelete();
             if (deleted == 0) return Fail("No se encontró la lista.");
+            StopListRaid(services, accountId, listId);
             return Ok("Lista borrada.");
         }
 
@@ -946,7 +956,8 @@ namespace WPFUI
             if (body.MinMinutes < 1 || body.RepeatMinutes < 1) return Fail("Para iniciar, el mínimo por aldea y la revisión de la lista tienen que ser de 1 minuto o más.");
             var account = new AccountId(accountId);
             var tasks = services.GetRequiredService<TaskManager>();
-            if (tasks.IsExist<RaidCowListTask.Task>(account)) return Fail("Ya hay un raid de vacas en la cola. Detenelo antes de iniciar otra lista.");
+            if (tasks.GetTaskList(account).OfType<RaidCowListTask.Task>().Any(x => x.CowListId == listId))
+                return Fail("Esa lista ya está en curso.");
 
             using var context = Context(services);
             var updated = context.CowLists.Where(x => x.Id == listId && x.AccountId == accountId)
@@ -956,25 +967,39 @@ namespace WPFUI
             if (updated == 0) return Fail("No se encontró la lista.");
             if (!context.CowVillages.Any(x => x.CowListId == listId)) return Fail("La lista no tiene aldeas.");
 
+            var queued = tasks.GetTaskList(account).OfType<RaidCowListTask.Task>().Any();
             tasks.Add(new RaidCowListTask.Task(account, listId));
-            return Ok($"Empieza la revisión. Mínimo por aldea: {body.MinMinutes} minutos. La próxima revisión es {body.RepeatMinutes} minutos después de que termine esta.");
+            var when = queued
+                ? "Empieza cuando termine la lista que está en curso."
+                : "Empieza la revisión ahora.";
+            return Ok($"{when} Mínimo por aldea: {body.MinMinutes} minutos. La próxima revisión es {body.RepeatMinutes} minutos después de que termine esta.");
         }
 
         private static IResult StopCowList(IServiceProvider services, int accountId, int listId)
         {
+            if (!StopListRaid(services, accountId, listId)) return Fail("Esa lista no está en curso.");
+            return Ok("Se detuvo esta lista. Las otras siguen.");
+        }
+
+        private static bool StopListRaid(IServiceProvider services, int accountId, int listId)
+        {
             var account = new AccountId(accountId);
             var tasks = services.GetRequiredService<TaskManager>();
-            var running = tasks.GetTaskList(account).OfType<RaidCowListTask.Task>().FirstOrDefault(x => x.CowListId == listId) ??
-                          tasks.GetTaskList(account).OfType<RaidCowListTask.Task>().FirstOrDefault();
-            if (running is not null) running.KeepRepeating = false;
-            tasks.CancelIfCurrent<RaidCowListTask.Task>(account);
-            tasks.Remove<RaidCowListTask.Task>(account);
+            var running = tasks.GetTaskList(account).OfType<RaidCowListTask.Task>().FirstOrDefault(x => x.CowListId == listId);
+            if (running is null) return false;
+
+            running.KeepRepeating = false;
+            if (ReferenceEquals(tasks.GetCurrentTask(account), running))
+                tasks.CancelIfCurrent<RaidCowListTask.Task>(account);
+            else
+                tasks.Remove(account, running);
+
             using var context = Context(services);
             context.CowVillages
                 .Where(x => x.CowListId == listId && x.CowList.AccountId == accountId)
                 .Where(x => x.LastSkipReason == "Analizando" || x.LastSkipReason == "Atacando")
                 .ExecuteUpdate(x => x.SetProperty(village => village.LastSkipReason, ""));
-            return Ok("Se detuvo el raid y la repetición.");
+            return true;
         }
 
         private static IResult GetHero(IServiceProvider services, int accountId)

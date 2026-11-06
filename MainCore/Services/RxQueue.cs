@@ -86,17 +86,18 @@ namespace MainCore.Services
                 }
             }
 
-            if (taskManager.IsExist<RaidCowListTask.Task>(accountId)) return;
-
-            var autoListId = context.CowLists
+            var queued = taskManager.GetTaskList(accountId).OfType<RaidCowListTask.Task>().Select(x => x.CowListId).ToHashSet();
+            var autoListIds = context.CowLists
                 .Where(x => x.AccountId == accountId.Value && x.AutoStart && x.MinAttackMinutes >= 1 && x.RepeatMinutes >= 1)
                 .Where(x => context.CowVillages.Any(village => village.CowListId == x.Id))
                 .OrderBy(x => x.Id)
-                .Select(x => (int?)x.Id)
-                .FirstOrDefault();
-            if (autoListId is null) return;
-
-            taskManager.Add(new RaidCowListTask.Task(accountId, autoListId.Value));
+                .Select(x => x.Id)
+                .ToList();
+            foreach (var autoListId in autoListIds)
+            {
+                if (queued.Contains(autoListId)) continue;
+                taskManager.Add(new RaidCowListTask.Task(accountId, autoListId));
+            }
         }
 
         private static readonly List<JobTypeEnums> _jobTypes = new() {
