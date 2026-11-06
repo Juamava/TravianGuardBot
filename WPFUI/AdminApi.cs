@@ -807,6 +807,13 @@ namespace WPFUI
             if (!context.CowLists.Any(x => x.Id == listId && x.AccountId == accountId)) return Fail("No se encontró la lista.");
 
             var existing = context.CowVillages.Where(x => x.CowListId == listId).ToList();
+            if (lines.Count == 0)
+            {
+                context.CowVillages.RemoveRange(existing);
+                context.SaveChanges();
+                return Ok(existing.Count == 0 ? "La lista ya estaba vacía." : "Se vació la lista.");
+            }
+
             var byUrl = new Dictionary<string, CowVillage>(StringComparer.OrdinalIgnoreCase);
             foreach (var village in existing)
                 byUrl[village.Url] = village;
@@ -1511,12 +1518,6 @@ namespace WPFUI
                 }
 
                 lines.Add(parsed);
-            }
-
-            if (lines.Count == 0)
-            {
-                error = "No hay aldeas. Cada línea es: enlace | tropas.";
-                return false;
             }
 
             return true;
