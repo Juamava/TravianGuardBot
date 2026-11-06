@@ -171,6 +171,7 @@ namespace WPFUI
                     host = SafeHost(account.Server),
                     status = status.ToString(),
                     pause = PauseLabel(status),
+                    gold = context.BooleanByName(new AccountId(account.Id), AccountSettingEnums.Gold),
                 };
             }).ToList();
 
@@ -387,7 +388,7 @@ namespace WPFUI
             context.SaveAccountSetting(accountId, saved);
             context.TriggerTask(services.GetRequiredService<TaskManager>(), accountId, saved);
             var isGold = saved.GetValueOrDefault(AccountSettingEnums.Gold) == 1;
-            if (wasGold != isGold) SwitchFarmMode(services, id, isGold);
+            if (wasGold && !isGold) StopGameFarms(services, id);
             return Ok("Ajustes guardados.");
         }
 
@@ -996,8 +997,19 @@ namespace WPFUI
             using var context = Context(services);
             if (!context.BooleanByName(account, AccountSettingEnums.UseStartAllButton) && !context.FarmLists.Any(x => x.AccountId == accountId && x.IsActive))
                 return Fail("No hay ninguna lista activa. Activa una, o encendé Iniciar todas.");
-            services.GetRequiredService<TaskManager>().AddOrUpdate(new StartFarmListTask.Task(account));
-            return Ok("Empieza a iniciar las listas del juego.");
+            var tasks = services.GetRequiredService<TaskManager>();
+            var waiting = BrowserBusy(tasks, account);
+            tasks.AddOrUpdate(new StartFarmListTask.Task(account));
+            return Ok(waiting
+                ? "Empieza cuando termine lo que está usando el navegador."
+                : "Empieza a iniciar las listas del juego.");
+        }
+
+        private static bool BrowserBusy(TaskManager tasks, AccountId account)
+        {
+            if (tasks.IsExecuting(account)) return true;
+            var due = DateTime.Now.AddSeconds(1);
+            return tasks.GetTaskList(account).Any(task => task.ExecuteAt <= due);
         }
 
         private static IResult StopGameFarms(IServiceProvider services, int accountId)
@@ -1036,28 +1048,6 @@ namespace WPFUI
             return context.BooleanByName(new AccountId(accountId), AccountSettingEnums.Gold);
         }
 
-        private static void SwitchFarmMode(IServiceProvider services, int accountId, bool gold)
-        {
-            var account = new AccountId(accountId);
-            var tasks = services.GetRequiredService<TaskManager>();
-            if (gold)
-            {
-                foreach (var raid in tasks.GetTaskList(account).OfType<RaidCowListTask.Task>().ToList())
-                {
-                    raid.KeepRepeating = false;
-                    if (ReferenceEquals(tasks.GetCurrentTask(account), raid))
-                        tasks.CancelIfCurrent<RaidCowListTask.Task>(account);
-                    else
-                        tasks.Remove(account, raid);
-                }
-                return;
-            }
-
-            if (tasks.GetCurrentTask(account) is StartFarmListTask.Task)
-                tasks.CancelIfCurrent<StartFarmListTask.Task>(account);
-            tasks.Remove<StartFarmListTask.Task>(account);
-        }
-
         private static void WriteSetting(AppDbContext context, int accountId, AccountSettingEnums setting, int value)
         {
             var updated = context.AccountsSetting.Where(x => x.AccountId == accountId && x.Setting == setting)
@@ -1069,7 +1059,6 @@ namespace WPFUI
 
         private static IResult StartCowList(IServiceProvider services, int accountId, int listId, CowListBody body)
         {
-            if (IsGold(services, accountId)) return Fail("Esta cuenta es Gold. Farming usa las listas del juego.");
             if (body.MinMinutes < 1 || body.RepeatMinutes < 1) return Fail("Para iniciar, el mínimo por aldea y la revisión de la lista tienen que ser de 1 minuto o más.");
             var account = new AccountId(accountId);
             var tasks = services.GetRequiredService<TaskManager>();
@@ -1084,10 +1073,10 @@ namespace WPFUI
             if (updated == 0) return Fail("No se encontró la lista.");
             if (!context.CowVillages.Any(x => x.CowListId == listId)) return Fail("La lista no tiene aldeas.");
 
-            var queued = tasks.GetTaskList(account).OfType<RaidCowListTask.Task>().Any();
+            var waiting = BrowserBusy(tasks, account);
             tasks.Add(new RaidCowListTask.Task(account, listId));
-            var when = queued
-                ? "Empieza cuando termine la lista que está en curso."
+            var when = waiting
+                ? "Empieza cuando termine lo que está usando el navegador."
                 : "Empieza la revisión ahora.";
             return Ok($"{when} Mínimo por aldea: {body.MinMinutes} minutos. La próxima revisión es {body.RepeatMinutes} minutos después de que termine esta.");
         }
