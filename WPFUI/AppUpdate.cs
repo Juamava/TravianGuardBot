@@ -40,11 +40,11 @@ namespace WPFUI
             return version.Major + "." + version.Minor + "." + build;
         }
 
-        public static async Task<UpdateInfo> Check()
+        public static async Task<UpdateInfo> Check(bool force = false)
         {
             lock (Gate)
             {
-                if (_checkedAt != DateTime.MinValue && DateTime.UtcNow - _checkedAt < TimeSpan.FromMinutes(30))
+                if (!force && _checkedAt != DateTime.MinValue && DateTime.UtcNow - _checkedAt < TimeSpan.FromMinutes(30))
                     return _cached;
             }
 
