@@ -86,6 +86,8 @@ namespace MainCore.Services
                 }
             }
 
+            if (context.BooleanByName(accountId, AccountSettingEnums.Gold)) return;
+
             var queued = taskManager.GetTaskList(accountId).OfType<RaidCowListTask.Task>().Select(x => x.CowListId).ToHashSet();
             var autoListIds = context.CowLists
                 .Where(x => x.AccountId == accountId.Value && x.AutoStart && x.MinAttackMinutes >= 1 && x.RepeatMinutes >= 1)
