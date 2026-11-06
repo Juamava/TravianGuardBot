@@ -250,6 +250,7 @@ namespace MainCore.Infrasturecture.Persistence
             EnsureColumn("CowLists", "RepeatMinutes", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("CowLists", "LevelHero", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("CowLists", "AutoStart", "INTEGER NOT NULL DEFAULT 0");
+            EnsureFarmIntervals();
 
             Database.ExecuteSqlRaw(
                 """
@@ -327,7 +328,30 @@ namespace MainCore.Infrasturecture.Persistence
             }
         }
 
-        private void EnsureColumn(string table, string name, string definition)
+        private void EnsureFarmIntervals()
+        {
+            var addedMin = EnsureColumn("FarmLists", "IntervalMin", "INTEGER NOT NULL DEFAULT 540");
+            var addedMax = EnsureColumn("FarmLists", "IntervalMax", "INTEGER NOT NULL DEFAULT 660");
+            if (!addedMin && !addedMax) return;
+
+            var accounts = FarmLists.Select(x => x.AccountId).Distinct().ToList();
+            foreach (var accountId in accounts)
+            {
+                var settings = AccountsSetting
+                    .Where(x => x.AccountId == accountId && (x.Setting == AccountSettingEnums.FarmIntervalMin || x.Setting == AccountSettingEnums.FarmIntervalMax))
+                    .ToList();
+                var min = settings.FirstOrDefault(x => x.Setting == AccountSettingEnums.FarmIntervalMin)?.Value ?? 540;
+                var max = settings.FirstOrDefault(x => x.Setting == AccountSettingEnums.FarmIntervalMax)?.Value ?? 660;
+                if (min < 1) min = 540;
+                if (max < min) max = min;
+                FarmLists.Where(x => x.AccountId == accountId)
+                    .ExecuteUpdate(x => x
+                        .SetProperty(farm => farm.IntervalMin, min)
+                        .SetProperty(farm => farm.IntervalMax, max));
+            }
+        }
+
+        private bool EnsureColumn(string table, string name, string definition)
         {
             var connection = Database.GetDbConnection();
             var openedHere = connection.State != System.Data.ConnectionState.Open;
@@ -338,11 +362,12 @@ namespace MainCore.Infrasturecture.Persistence
                 using var command = connection.CreateCommand();
                 command.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{name}'";
                 var count = Convert.ToInt32(command.ExecuteScalar());
-                if (count > 0) return;
+                if (count > 0) return false;
 
                 using var alter = connection.CreateCommand();
                 alter.CommandText = $"ALTER TABLE \"{table}\" ADD COLUMN \"{name}\" {definition}";
                 alter.ExecuteNonQuery();
+                return true;
             }
             finally
             {
