@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace MainCore.Parsers
@@ -102,10 +103,13 @@ namespace MainCore.Parsers
 
         public static ILocator GetSendTroopsLink(IPage page)
         {
-            return page.GetByRole(AriaRole.Link, new() { Name = "Send troops" })
-                .Or(page.GetByRole(AriaRole.Link, new() { Name = "Enviar tropas" }))
+            // The map also draws <a href="#flag">send troops</a>. That rally flag sits off-screen and is not the attack.
+            return page.Locator("a[href]:not([href^='#'])")
+                .Filter(new() { HasTextRegex = SendTroopsText() })
                 .First;
         }
+
+        private static Regex SendTroopsText() => new(@"^\s*(Send troops|Enviar tropas)\s*$", RegexOptions.IgnoreCase);
 
         public readonly record struct TileDetails(
             string Title,
@@ -119,7 +123,8 @@ namespace MainCore.Parsers
 
         public static async Task<TileDetails> ReadDetails(IPage page)
         {
-            var raw = await page.EvaluateAsync<TileRaw>(@"() => {
+            // A string comes back intact. Deserializing the object here avoids Playwright turning the field map into null.
+            var json = await page.EvaluateAsync<string>(@"() => {
                 const marker = /owner|propietario|dueño|population|población|unoccupied oasis|occupied oasis|send troops|enviar tropas|raid unoccupied/i;
                 const dialog = [...document.querySelectorAll('#map_details, #tileDetails, form, .dialog')]
                     .find(node => marker.test(node.innerText || ''));
@@ -135,11 +140,13 @@ namespace MainCore.Parsers
                     if (!fields[label]) fields[label] = value;
                 });
                 const title = ((root.querySelector('h1') || {}).innerText || '').replace(/\s+/g, ' ').trim();
-                const links = [...root.querySelectorAll('a')].map(link => (link.innerText || '').replace(/\s+/g, ' ').trim());
+                const links = [...root.querySelectorAll('a')].map(link => (link.innerText || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
                 const text = (root.innerText || '').toLowerCase();
-                return { fields, title, links, text };
+                return JSON.stringify({ fields, title, links, text });
             }");
 
+            if (string.IsNullOrWhiteSpace(json)) return new TileDetails("", "", "", "", "", -1, -1, false);
+            var raw = JsonSerializer.Deserialize<TileRaw>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             return FromFields(raw?.Fields, raw?.Title ?? "", raw?.Links, raw?.Text ?? "");
         }
 

@@ -140,6 +140,14 @@ namespace MainCore.Tasks
                     return Result.Ok();
                 }
 
+                try
+                {
+                    await troopsLink.ScrollIntoViewIfNeededAsync(new() { Timeout = 2_000 });
+                }
+                catch (TimeoutException)
+                {
+                }
+
                 result = await browser.Click(troopsLink);
                 if (result.IsFailed)
                 {
