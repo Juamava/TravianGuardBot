@@ -468,9 +468,9 @@ namespace MainCore.UI.ViewModels.Tabs
                 return;
             }
 
-            if (_taskManager.IsExist<RaidCowListTask.Task>(AccountId))
+            if (_taskManager.GetTaskList(AccountId).OfType<RaidCowListTask.Task>().Any(x => x.CowListId == CowLists.SelectedItem.Id))
             {
-                await _dialogService.SendMessage("Information", "Ya hay un raid de vacas en la cola. Detenelo antes de iniciar otra lista.");
+                await _dialogService.SendMessage("Information", "Esa lista ya está en curso.");
                 return;
             }
 
@@ -512,11 +512,20 @@ namespace MainCore.UI.ViewModels.Tabs
         [ReactiveCommand(RunInBackground = true)]
         private async Task StopCowList()
         {
-            var running = _taskManager.GetTaskList(AccountId).OfType<RaidCowListTask.Task>().FirstOrDefault();
-            if (running is not null) running.KeepRepeating = false;
-            _taskManager.CancelIfCurrent<RaidCowListTask.Task>(AccountId);
-            _taskManager.Remove<RaidCowListTask.Task>(AccountId);
-            await _dialogService.SendMessage("Information", "Se detuvo el raid y la repetición.");
+            var listId = CowLists.SelectedItem?.Id ?? 0;
+            var running = _taskManager.GetTaskList(AccountId).OfType<RaidCowListTask.Task>().FirstOrDefault(x => x.CowListId == listId);
+            if (running is null)
+            {
+                await _dialogService.SendMessage("Information", "Esa lista no está en curso.");
+                return;
+            }
+
+            running.KeepRepeating = false;
+            if (ReferenceEquals(_taskManager.GetCurrentTask(AccountId), running))
+                _taskManager.CancelIfCurrent<RaidCowListTask.Task>(AccountId);
+            else
+                _taskManager.Remove(AccountId, running);
+            await _dialogService.SendMessage("Information", "Se detuvo esta lista. Las otras siguen.");
         }
 
         private (string Url, string TroopPlan) LoadCowVillageFields(ListBoxItem? item)

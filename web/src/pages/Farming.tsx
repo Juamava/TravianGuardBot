@@ -10,12 +10,17 @@ import { api, del, post, put } from '../api'
 import { Empty, panel, useUi } from '../ui'
 
 type Village = { id: number; name: string; x: number; y: number }
-type CowList = { id: number; name: string; minMinutes: number; repeatMinutes: number; levelHero: boolean; autoStart: boolean }
+type CowList = { id: number; name: string; minMinutes: number; repeatMinutes: number; levelHero: boolean; autoStart: boolean; running: boolean; countdown: string }
 type Cow = { id: number; listId: number; name: string; url: string; troops: string; status: string; kind: string; owner: string; tribe: string; alliance: string; population: number; distance: number; x: number | null; y: number | null }
 type FarmingData = { villages: Village[]; lists: CowList[]; cows: Cow[]; countdown: string }
 type SearchResult = { count: number; villageName: string; originX: number; originY: number; troopPlan: string; hits: { x: number; y: number; distance: number }[] }
 
 const cowColumns = 'minmax(160px, 1.6fr) 72px minmax(100px, 1fr) 88px 88px 110px minmax(120px, 1fr)'
+
+function listTitle(list: CowList) {
+  const marks = [list.running ? 'en curso' : '', list.autoStart ? 'auto' : ''].filter(Boolean)
+  return marks.length === 0 ? list.name : `${list.name} · ${marks.join(' · ')}`
+}
 
 function kindLabel(kind: string) {
   if (kind === 'oasis') return 'Oasis'
@@ -279,10 +284,11 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
     scrolledId.current = activeId
     document.getElementById(`cow-${activeId}`)?.scrollIntoView({ block: 'nearest' })
   }, [activeId])
-  const countdown = data?.countdown ?? ''
-  const raidRunning = countdown.length > 0
   const timesReady = minMinutes >= 1 && repeatMinutes >= 1
   const selectedList = data?.lists.find(list => list.id === listId)
+  const selectedRunning = !!selectedList?.running
+  const anyRunning = data?.lists.some(list => list.running) ?? false
+  const countdown = selectedList?.countdown ?? ''
   listDraft.current = { listId, name: selectedList?.name ?? name, min: minMinutes, repeat: repeatMinutes, auto: !!selectedList?.autoStart }
 
   function changeMinutes(kind: 'min' | 'repeat', raw: string) {
@@ -322,7 +328,7 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
       <Box sx={{ display: 'grid', gridTemplateColumns: '260px minmax(0, 1fr)', gap: 2, alignItems: 'start' }}>
         <Stack spacing={1} sx={{ minWidth: 0 }}>
           {(data?.lists ?? []).map(list => (
-            <Button key={list.id} variant={list.id === listId ? 'contained' : 'outlined'} onClick={() => selectList(list)} sx={{ justifyContent: 'flex-start', minHeight: 40, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{list.autoStart ? `${list.name} · auto` : list.name}</Button>
+            <Button key={list.id} variant={list.id === listId ? 'contained' : 'outlined'} onClick={() => selectList(list)} sx={{ justifyContent: 'flex-start', minHeight: 40, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{listTitle(list)}</Button>
           ))}
           {(data?.lists.length ?? 0) === 0 && <Typography color="text.secondary">Todavía no hay listas en esta aldea.</Typography>}
           <TextField label="Nombre de la lista" value={name} onChange={event => setName(event.target.value)} />
@@ -335,21 +341,21 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
           <Box sx={{ ...panel }}>
             <Typography fontWeight={700} sx={{ mb: 1.5 }}>{selectedList ? selectedList.name : 'Elegí una lista'}</Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 1 }}>
-              <Tooltip title={raidRunning ? 'Hay un raid iniciado. Detenelo para poder sincronizar.' : ''}>
+              <Tooltip title={anyRunning ? 'Hay una lista en curso. Detenela para poder sincronizar.' : ''}>
                 <Box sx={{ minWidth: 0, display: 'flex', '& > .MuiButton-root': { flex: 1 } }}>
-                  <Tile color="#5865f2" icon={<SyncIcon />} label={syncing ? 'Sync...' : 'Sync'} disabled={!listId || cows.length === 0 || saving || syncing || raidRunning} onClick={syncNames} />
+                  <Tile color="#5865f2" icon={<SyncIcon />} label={syncing ? 'Sync...' : 'Sync'} disabled={!listId || cows.length === 0 || saving || syncing || anyRunning} onClick={syncNames} />
                 </Box>
               </Tooltip>
               <Tile color="#23a559" icon={<AddIcon />} label="Agregar" disabled={!listId || saving || syncing} onClick={() => { setAdding(true); setCowId(0); setCowName(''); setUrl(''); setTroops('') }} />
               <Tile color="#f0b232" icon={<SearchIcon />} label="Oasis" disabled={!listId || saving || syncing} onClick={() => setOasisOpen(true)} />
-              <Tooltip title={raidRunning ? 'Ya hay un raid iniciado.' : timesReady ? '' : 'Completá el mínimo por aldea y cada cuánto se revisa la lista. Los dos tienen que ser de 1 minuto o más.'}>
+              <Tooltip title={selectedRunning ? 'Esta lista ya está en curso.' : timesReady ? '' : 'Completá el mínimo por aldea y cada cuánto se revisa la lista. Los dos tienen que ser de 1 minuto o más.'}>
                 <Box sx={{ minWidth: 0, display: 'flex', '& > .MuiButton-root': { flex: 1 } }}>
-                  <Tile color="#23a559" icon={<PlayArrowIcon />} label="Iniciar" disabled={!listId || saving || syncing || !timesReady || raidRunning} onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/start`, { minMinutes, repeatMinutes }))} />
+                  <Tile color="#23a559" icon={<PlayArrowIcon />} label="Iniciar" disabled={!listId || saving || syncing || !timesReady || selectedRunning} onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/start`, { minMinutes, repeatMinutes }))} />
                 </Box>
               </Tooltip>
-              <Tooltip title={listId > 0 && !raidRunning && !syncing ? 'Se habilita cuando hay un raid iniciado.' : ''}>
+              <Tooltip title={selectedRunning ? 'Detiene solo esta lista.' : listId > 0 && !syncing ? 'Se habilita cuando esta lista está en curso.' : ''}>
                 <Box sx={{ minWidth: 0, display: 'flex', '& > .MuiButton-root': { flex: 1 } }}>
-                  <Tile color="#ed4245" icon={<StopIcon />} label="Detener" disabled={!listId || (saving && !syncing) || (!raidRunning && !syncing)} onClick={stopAll} />
+                  <Tile color="#ed4245" icon={<StopIcon />} label="Detener" disabled={!listId || (saving && !syncing) || (!selectedRunning && !syncing)} onClick={stopAll} />
                 </Box>
               </Tooltip>
             </Box>
@@ -370,7 +376,7 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
           <Stack direction="row" spacing={1} alignItems="center" sx={{ ...panel, py: 1 }}>
             <Switch checked={!!selectedList?.autoStart} disabled={!listId || saving || syncing} onChange={event => setAutoStart(event.target.checked)} />
             <Typography fontWeight={600}>Inicio automático</Typography>
-            <Hint text="Al activarlo se presiona Iniciar. También arranca sola la próxima vez que conectes la cuenta. Necesita el mínimo, la revisión y al menos una aldea. Si lo activás en otra lista, este se apaga." />
+            <Hint text="Al activarlo se presiona Iniciar en esta lista. También arranca sola la próxima vez que conectes la cuenta. Cada lista es independiente: si hay otra en curso, esta espera a que termine el recorrido." />
           </Stack>
           <Stack direction="row" spacing={0.75} alignItems="center" sx={{ ...panel, py: 1 }}>
             <FormControlLabel
