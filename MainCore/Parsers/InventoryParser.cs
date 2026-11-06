@@ -103,7 +103,8 @@ namespace MainCore.Parsers
         public static async Task<long[]> GetInventoryResources(IPage page)
         {
             var jsonResult = await page.EvaluateAsync<JsonElement>(@"() => {
-                const cells = document.querySelectorAll('div.heroItem');
+                const root = document.querySelector('div.resourceTransferDialog') || document;
+                const cells = root.querySelectorAll('div.heroItem');
                 const result = [];
 
                 function parseCount(text) {

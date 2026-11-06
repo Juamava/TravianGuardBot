@@ -24,7 +24,17 @@
                 return result;
             }
 
-            result = await browser.Click(InventoryParser.GetResourceConfirmButton(browser.CurrentPage));
+            for (var i = 0; i < resource.Length && i < _itemInputName.Count; i++)
+            {
+                if (resource[i] <= 0) continue;
+                result = await browser.Input(InventoryParser.GetAmountBox(browser.CurrentPage, _itemInputName[i]), resource[i].ToString());
+                if (result.IsFailed) return result;
+            }
+
+            var buttons = InventoryParser.GetResourceConfirmButton(browser.CurrentPage);
+            var buttonCount = await buttons.CountAsync();
+            var confirm = buttonCount >= 2 ? buttons.Nth(1) : buttons.First;
+            result = await browser.Click(confirm);
             if (result.IsFailed) return result;
 
             result = await browser.WaitPageChanged("&reload=auto");
