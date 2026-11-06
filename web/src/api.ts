@@ -31,6 +31,9 @@ export type AccountRow = {
   status: string
   pause: string
   gold?: boolean
+  villages?: boolean
+  farms?: boolean
+  gameFarms?: boolean
 }
 
 export type Overview = {
