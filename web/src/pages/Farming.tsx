@@ -118,7 +118,7 @@ function GameFarming({ accountId, data, notify, reload }: { accountId: number; d
   return (
     <Stack spacing={2} sx={{ minWidth: 0 }}>
       <Typography variant="h4">Listas del juego</Typography>
-      <Typography color="text.secondary">Esta cuenta es Gold. El bot inicia las listas de vacas que ya tiene Travian.</Typography>
+      <Typography color="text.secondary">El bot inicia las listas de vacas que ya tiene Travian. Si también hay una lista propia en curso, esta espera a que el navegador se libere.</Typography>
       <Box sx={{ ...panel }}>
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 1 }}>
           <Tile color="#5865f2" icon={<SyncIcon />} label="Actualizar" disabled={busy} onClick={() => act(() => post(`/api/accounts/${accountId}/farming/game/refresh`))} />
@@ -159,7 +159,7 @@ function Tile({ icon, label, color, disabled, onClick }: { icon: ReactNode; labe
   )
 }
 
-export function Farming({ accountId, notify }: { accountId: number; notify: (message: string) => void }) {
+export function Farming({ accountId, notify, mode }: { accountId: number; notify: (message: string) => void; mode: 'bot' | 'game' }) {
   const ui = useUi()
   const [data, setData] = useState<FarmingData | null>(null)
   const [villageId, setVillageId] = useState(0)
@@ -381,7 +381,11 @@ export function Farming({ accountId, notify }: { accountId: number; notify: (mes
     if (!cow || (cow.name === cowName && cow.url === url && cow.troops === troops)) return
     await run(() => put(`/api/accounts/${accountId}/farming/villages/${cowId}`, { name: cowName, url, troops }))
   }
-  if (data?.gold) return <GameFarming accountId={accountId} data={data} notify={notify} reload={() => load()} />
+  if (mode === 'game') {
+    if (!data) return null
+    if (!data.gold) return <Empty title="Esta cuenta no es Gold" text="Marcá Cuenta Gold en Ajustes para usar las listas del juego." />
+    return <GameFarming accountId={accountId} data={data} notify={notify} reload={() => load()} />
+  }
 
   if (data && data.villages.length === 0) {
     return <Empty title="Esta cuenta no tiene aldeas" text="Conectá la cuenta para que cargue las aldeas. Después vas a poder armar las listas acá." />
