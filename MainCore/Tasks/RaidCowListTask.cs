@@ -128,14 +128,26 @@ namespace MainCore.Tasks
                 return Retry.Error.WithError($"Tile page did not load for {target.Url}");
             }
 
-            await CaptureMissingName(target);
-
             var tile = await CowOasisParser.ReadTile(browser.CurrentPage);
+            await CaptureDetails(task, target);
             if (!tile.IsOasis)
             {
-                logger.Information("Skipping {Url}: it is not an oasis", target.Url);
-                MarkSkipped(target.Id, "No oasis");
-                return Result.Ok();
+                var troopsLink = CowOasisParser.GetSendTroopsLink(browser.CurrentPage);
+                if (await troopsLink.CountAsync() == 0)
+                {
+                    logger.Information("Skipping {Url}: it is not an oasis and has no Send troops", target.Url);
+                    MarkSkipped(target.Id, "Sin ataque");
+                    return Result.Ok();
+                }
+
+                result = await browser.Click(troopsLink);
+                if (result.IsFailed)
+                {
+                    MarkSkipped(target.Id, "Error");
+                    return result;
+                }
+
+                return await SendPlannedTroops(task, target, slots);
             }
 
             if (!tile.IsUnoccupied)
@@ -161,7 +173,12 @@ namespace MainCore.Tasks
                 return result;
             }
 
-            result = await browser.Wait(CowOasisParser.GetTroopTable(browser.CurrentPage));
+            return await SendPlannedTroops(task, target, slots);
+        }
+
+        private async Task<Result> SendPlannedTroops(Task task, CowTarget target, IReadOnlyList<CowTroopSlot> slots)
+        {
+            var result = await browser.Wait(CowOasisParser.GetTroopTable(browser.CurrentPage));
             if (result.IsFailed)
             {
                 MarkSkipped(target.Id, "Error");
@@ -315,20 +332,36 @@ namespace MainCore.Tasks
             task.ExecuteAt = DateTime.Now.AddMinutes(repeat);
         }
 
-        private async System.Threading.Tasks.Task CaptureMissingName(CowTarget target)
+        private async System.Threading.Tasks.Task CaptureDetails(Task task, CowTarget target)
         {
-            if (!string.IsNullOrWhiteSpace(target.Name) && target.Name.Trim() != CowOasisParser.MissingName) return;
+            CowOasisParser.TileDetails details;
+            try
+            {
+                details = await CowOasisParser.ReadDetails(browser.CurrentPage);
+            }
+            catch (Exception ex)
+            {
+                logger.Warning(ex, "Could not read tile details for {Url}", target.Url);
+                return;
+            }
 
-            var name = await CowOasisParser.ReadTitle(browser.CurrentPage);
-            if (string.IsNullOrWhiteSpace(name) || name == CowOasisParser.MissingName) return;
+            if (string.IsNullOrWhiteSpace(details.Title) || details.Title == CowOasisParser.MissingName)
+            {
+                var title = await CowOasisParser.ReadTitle(browser.CurrentPage);
+                if (!string.IsNullOrWhiteSpace(title) && title != CowOasisParser.MissingName)
+                    details = details with { Title = title };
+            }
 
             using var context = contextFactory.CreateDbContext();
-            var updated = context.CowVillages
-                .Where(x => x.Id == target.Id)
-                .Where(x => x.Name == null || x.Name == "" || x.Name == CowOasisParser.MissingName)
-                .ExecuteUpdate(x => x.SetProperty(village => village.Name, name));
-            if (updated == 0 || browser.AccountId == AccountId.Empty) return;
+            var row = context.CowVillages.FirstOrDefault(x => x.Id == target.Id);
+            if (row is null) return;
 
+            var listVillageId = context.CowLists.Where(x => x.Id == task.CowListId).Select(x => x.VillageId).FirstOrDefault();
+            var origin = context.Villages.Where(x => x.Id == listVillageId).Select(x => new { x.X, x.Y }).FirstOrDefault();
+            if (!CowOasisParser.CopyOnto(row, details, target.Url, origin?.X, origin?.Y, replaceName: false)) return;
+
+            context.SaveChanges();
+            if (browser.AccountId == AccountId.Empty) return;
             rxQueue.Enqueue(new CowVillagesModified(browser.AccountId));
         }
 

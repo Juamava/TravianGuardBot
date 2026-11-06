@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+
 namespace MainCore.Parsers
 {
     public static class CowOasisParser
@@ -16,10 +19,11 @@ namespace MainCore.Parsers
         {
             var unoccupied = page.GetByText("Unoccupied oasis");
             var occupied = page.GetByText("Occupied oasis");
+            var sendTroops = GetSendTroopsLink(page);
 
             try
             {
-                await unoccupied.Or(occupied).First.WaitForAsync(new() { Timeout = 8_000 });
+                await unoccupied.Or(occupied).Or(sendTroops).First.WaitForAsync(new() { Timeout = 8_000 });
             }
             catch (TimeoutException)
             {
@@ -94,6 +98,182 @@ namespace MainCore.Parsers
         public static ILocator GetRaidLink(IPage page)
         {
             return page.GetByRole(AriaRole.Link, new() { Name = "Raid unoccupied oasis" }).First;
+        }
+
+        public static ILocator GetSendTroopsLink(IPage page)
+        {
+            return page.GetByRole(AriaRole.Link, new() { Name = "Send troops" })
+                .Or(page.GetByRole(AriaRole.Link, new() { Name = "Enviar tropas" }))
+                .First;
+        }
+
+        public readonly record struct TileDetails(
+            string Title,
+            string Kind,
+            string Owner,
+            string Tribe,
+            string Alliance,
+            int Population,
+            double Distance,
+            bool HasSendTroops);
+
+        public static async Task<TileDetails> ReadDetails(IPage page)
+        {
+            var raw = await page.EvaluateAsync<TileRaw>(@"() => {
+                const marker = /owner|propietario|dueño|population|población|unoccupied oasis|occupied oasis|send troops|enviar tropas|raid unoccupied/i;
+                const dialog = [...document.querySelectorAll('#map_details, #tileDetails, form, .dialog')]
+                    .find(node => marker.test(node.innerText || ''));
+                const root = dialog || document.body;
+                const fields = {};
+                root.querySelectorAll('tr').forEach(row => {
+                    const cells = [...row.querySelectorAll('th, td')]
+                        .map(cell => (cell.innerText || '').replace(/\s+/g, ' ').trim())
+                        .filter(Boolean);
+                    if (cells.length === 0) return;
+                    const label = cells[0].replace(/:$/, '');
+                    const value = cells.length > 1 ? cells[cells.length - 1] : '';
+                    if (!fields[label]) fields[label] = value;
+                });
+                const title = ((root.querySelector('h1') || {}).innerText || '').replace(/\s+/g, ' ').trim();
+                const links = [...root.querySelectorAll('a')].map(link => (link.innerText || '').replace(/\s+/g, ' ').trim());
+                const text = (root.innerText || '').toLowerCase();
+                return { fields, title, links, text };
+            }");
+
+            return FromFields(raw?.Fields, raw?.Title ?? "", raw?.Links, raw?.Text ?? "");
+        }
+
+        public static TileDetails FromFields(IReadOnlyDictionary<string, string>? fields, string title, IReadOnlyList<string>? links, string pageText = "")
+        {
+            fields ??= new Dictionary<string, string>();
+            links ??= [];
+            var owner = Field(fields, "Owner", "Propietario", "Dueño");
+            var tribe = Field(fields, "Tribe", "Tribu");
+            var alliance = Field(fields, "Alliance", "Alianza");
+            var population = ParsePopulation(Field(fields, "Population", "Población"));
+            var distance = ParseDistance(Field(fields, "Distance", "Distancia"));
+            var text = pageText ?? "";
+            var linkText = string.Join(" ", links);
+            var hasSend = links.Any(link => link.Contains("Send troops", StringComparison.OrdinalIgnoreCase) || link.Contains("Enviar tropas", StringComparison.OrdinalIgnoreCase));
+            var isOasis = text.Contains("unoccupied oasis", StringComparison.OrdinalIgnoreCase)
+                || text.Contains("occupied oasis", StringComparison.OrdinalIgnoreCase)
+                || linkText.Contains("oasis", StringComparison.OrdinalIgnoreCase);
+            var kind = isOasis ? "oasis" : hasSend || owner.Length > 0 || population >= 0 ? "aldea" : "";
+            return new TileDetails(title.Trim(), kind, owner, tribe, alliance, population, distance, hasSend);
+        }
+
+        public static bool TryReadCoordinates(string url, out int x, out int y)
+        {
+            x = 0;
+            y = 0;
+            if (string.IsNullOrWhiteSpace(url)) return false;
+            var matchX = Regex.Match(url, @"[?&]x=(-?\d+)", RegexOptions.IgnoreCase);
+            var matchY = Regex.Match(url, @"[?&]y=(-?\d+)", RegexOptions.IgnoreCase);
+            if (!matchX.Success || !matchY.Success) return false;
+            return int.TryParse(matchX.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out x)
+                && int.TryParse(matchY.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out y);
+        }
+
+        public static double TravelDistance(int fromX, int fromY, int toX, int toY)
+        {
+            var dx = fromX - toX;
+            var dy = fromY - toY;
+            return Math.Round(Math.Sqrt((dx * dx) + (dy * dy)), 2);
+        }
+
+        public static bool CopyOnto(CowVillage row, TileDetails details, string url, int? originX, int? originY, bool replaceName)
+        {
+            var changed = false;
+            var title = string.IsNullOrWhiteSpace(details.Title) ? "" : details.Title.Trim();
+            if (title.Length > 0 && title != MissingName && (replaceName || string.IsNullOrWhiteSpace(row.Name) || row.Name == MissingName) && row.Name != title)
+            {
+                row.Name = title;
+                changed = true;
+            }
+
+            changed |= SetText(value => row.Kind = value, row.Kind, details.Kind);
+            changed |= SetText(value => row.Owner = value, row.Owner, details.Owner);
+            changed |= SetText(value => row.Tribe = value, row.Tribe, details.Tribe);
+            changed |= SetText(value => row.Alliance = value, row.Alliance, details.Alliance);
+            if (details.Population >= 0 && row.Population != details.Population)
+            {
+                row.Population = details.Population;
+                changed = true;
+            }
+
+            int? x = null;
+            int? y = null;
+            if (TryReadCoordinates(url, out var parsedX, out var parsedY))
+            {
+                x = parsedX;
+                y = parsedY;
+            }
+
+            var distance = details.Distance;
+            if (distance < 0 && row.Distance < 0 && x is int targetX && y is int targetY && originX is int fromX && originY is int fromY)
+                distance = TravelDistance(fromX, fromY, targetX, targetY);
+            if (distance >= 0 && Math.Abs(row.Distance - distance) > 0.001)
+            {
+                row.Distance = distance;
+                changed = true;
+            }
+
+            if (x is int coordX && row.CoordX != coordX)
+            {
+                row.CoordX = coordX;
+                changed = true;
+            }
+
+            if (y is int coordY && row.CoordY != coordY)
+            {
+                row.CoordY = coordY;
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        private static bool SetText(Action<string> assign, string current, string next)
+        {
+            if (string.IsNullOrWhiteSpace(next) || current == next) return false;
+            assign(next);
+            return true;
+        }
+
+        private static string Field(IReadOnlyDictionary<string, string> fields, params string[] names)
+        {
+            foreach (var pair in fields)
+            {
+                foreach (var name in names)
+                {
+                    if (pair.Key.Equals(name, StringComparison.OrdinalIgnoreCase)) return (pair.Value ?? "").Trim();
+                }
+            }
+
+            return "";
+        }
+
+        private static int ParsePopulation(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return -1;
+            var digits = new string(text.Where(char.IsDigit).ToArray());
+            return int.TryParse(digits, NumberStyles.Integer, CultureInfo.InvariantCulture, out var population) ? population : -1;
+        }
+
+        private static double ParseDistance(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return -1;
+            var match = Regex.Match(text, @"\d+(?:[.,]\d+)?");
+            if (!match.Success) return -1;
+            return double.TryParse(match.Value.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var distance) ? distance : -1;
+        }
+
+        private sealed class TileRaw
+        {
+            public Dictionary<string, string>? Fields { get; set; }
+            public string? Title { get; set; }
+            public List<string>? Links { get; set; }
+            public string? Text { get; set; }
         }
 
         public static ILocator GetTroopTable(IPage page)
