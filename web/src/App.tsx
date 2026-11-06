@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Box, Button, Stack, Tooltip, Typography } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import AgricultureIcon from '@mui/icons-material/Agriculture'
@@ -139,9 +139,13 @@ function Shell() {
   const [meta, setMeta] = useState<Meta | null>(null)
   const [accountId, setAccountId] = useState<number | null>(null)
   const [page, setPage] = useState<Page>('farming')
-  const [update, setUpdate] = useState<{ current: string; latest: string; available: boolean; mandatory: boolean; publishedAt: string; detail: string } | null>(null)
+  const [update, setUpdate] = useState<{ current: string; latest: string; available: boolean; mandatory: boolean; publishedAt: string; detail: string; phase?: string; percent?: number; progress?: string } | null>(null)
   const [updateDue, setUpdateDue] = useState(false)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const updatePoll = useRef<number | null>(null)
+  useEffect(() => () => {
+    if (updatePoll.current !== null) window.clearInterval(updatePoll.current)
+  }, [])
 
   async function refresh() {
     const result = await api<Overview>('/api/overview')
@@ -152,7 +156,7 @@ function Shell() {
   useEffect(() => {
     refresh().catch((error: Error) => ui.notify(error.message))
     api<Meta>('/api/meta').then(result => setMeta(result.data)).catch(() => undefined)
-    api<{ current: string; latest: string; available: boolean; mandatory: boolean; publishedAt: string; detail: string }>('/api/update').then(result => setUpdate(result.data)).catch(() => undefined)
+    api<{ current: string; latest: string; available: boolean; mandatory: boolean; publishedAt: string; detail: string; phase?: string; percent?: number; progress?: string }>('/api/update').then(result => setUpdate(result.data)).catch(() => undefined)
     const timer = window.setInterval(() => refresh().catch(() => undefined), 2000)
     return () => window.clearInterval(timer)
   }, [])
@@ -180,11 +184,13 @@ function Shell() {
     return () => window.clearTimeout(timer)
   }, [update?.available, update?.publishedAt])
   const mandatory = !!update?.available && (update.mandatory || updateDue)
+  const updateBusy = update?.phase === 'checking' || update?.phase === 'downloading' || update?.phase === 'extracting' || update?.phase === 'installing'
+  const updateLabel = checkingUpdate ? 'Buscando...' : updateBusy ? (update?.progress || 'Descargando...') : update?.available && !mandatory ? `Actualizar a ${update.latest}` : 'Buscar actualización'
 
   async function searchUpdate() {
     setCheckingUpdate(true)
     try {
-      const result = await api<{ current: string; latest: string; available: boolean; mandatory: boolean; publishedAt: string; detail: string }>('/api/update?force=true')
+      const result = await api<{ current: string; latest: string; available: boolean; mandatory: boolean; publishedAt: string; detail: string; phase?: string; percent?: number; progress?: string }>('/api/update?force=true')
       setUpdate(result.data)
       if (!result.data.available) ui.notify(result.data.detail || 'Ya está al día.')
     } catch (error) {
@@ -194,11 +200,35 @@ function Shell() {
     }
   }
 
+  function watchUpdate() {
+    if (updatePoll.current !== null) window.clearInterval(updatePoll.current)
+    let reading = false
+    const read = async () => {
+      if (reading) return
+      reading = true
+      try {
+        const result = await api<{ current: string; latest: string; available: boolean; mandatory: boolean; publishedAt: string; detail: string; phase?: string; percent?: number; progress?: string }>('/api/update')
+        setUpdate(result.data)
+        if (result.data.phase === 'failed') {
+          if (updatePoll.current !== null) window.clearInterval(updatePoll.current)
+          updatePoll.current = null
+          ui.notify(result.data.progress || 'No se pudo actualizar')
+        }
+      } catch {
+        // The app is about to close. The next tick retries.
+      } finally {
+        reading = false
+      }
+    }
+    void read()
+    updatePoll.current = window.setInterval(() => { void read() }, 1000)
+  }
+
   async function install(forced: boolean) {
-    if (!forced && !await ui.confirm(`Se cierra el bot, se instala la versión ${update?.latest ?? ''} y se vuelve a abrir. Las cuentas y el navegador no se tocan. Si hay una cuenta conectada, desconectala antes.`)) return
+    if (!forced && !await ui.confirm(`Se descarga la versión ${update?.latest ?? ''} mientras el bot sigue. Al terminar se cierra unos segundos para instalar y se vuelve a abrir.`)) return
     try {
-      if (forced && holder && holder.status !== 'Offline') await post(`/api/accounts/${holder.id}/logout`)
       ui.notify((await post('/api/update')).message)
+      watchUpdate()
     } catch (error) {
       ui.notify(error instanceof Error ? error.message : 'No se pudo actualizar')
     }
@@ -263,7 +293,7 @@ function Shell() {
               <Box
                 component="button"
                 type="button"
-                disabled={checkingUpdate}
+                disabled={checkingUpdate || updateBusy}
                 onClick={() => (update?.available && !mandatory ? install(false) : searchUpdate())}
                 sx={{
                   p: 0,
@@ -279,7 +309,7 @@ function Shell() {
                   '&:disabled': { cursor: 'default', color: '#6d6f78', textDecoration: 'none' },
                 }}
               >
-                {checkingUpdate ? 'Buscando...' : update?.available && !mandatory ? `Actualizar a ${update.latest}` : 'Buscar actualización'}
+                {updateLabel}
               </Box>
             </Box>
           </Typography>
@@ -349,8 +379,8 @@ function Shell() {
         <Box sx={{ position: 'fixed', inset: 0, zIndex: 30, bgcolor: 'rgba(0,0,0,.72)', display: 'grid', placeItems: 'center', p: 3 }}>
           <Stack spacing={2} sx={{ width: 420, maxWidth: '100%', bgcolor: '#2b2d31', borderRadius: 2, p: 3 }}>
             <Typography variant="h5">Hay que instalar la versión {update.latest}</Typography>
-            <Typography color="text.secondary">Ya pasó un día desde que salió. Esta versión no sigue en uso. Las cuentas y el navegador no se tocan.</Typography>
-            <Button variant="contained" onClick={() => install(true)}>Actualizar ahora</Button>
+            <Typography color="text.secondary">Ya pasó un día desde que salió. Se descarga ahora y el bot se cierra unos segundos para instalarla.</Typography>
+            <Button variant="contained" disabled={updateBusy} onClick={() => install(true)}>{updateBusy ? (update.progress || 'Descargando...') : 'Actualizar ahora'}</Button>
           </Stack>
         </Box>
       )}

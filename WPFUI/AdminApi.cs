@@ -128,20 +128,26 @@ namespace WPFUI
 
         private static async Task<IResult> CheckUpdate(bool force)
         {
-            var info = await AppUpdate.Check(force);
-            return Ok(info.Detail ?? "", new { current = info.Current, latest = info.Latest, available = info.Available, mandatory = info.Mandatory, publishedAt = info.PublishedAt, detail = info.Detail });
+            var progress = AppUpdate.Progress();
+            var local = progress.Phase is "checking" or "downloading" or "extracting" or "installing" or "failed";
+            var info = local && !force ? AppUpdate.Peek() : await AppUpdate.Check(force);
+            return Ok(info.Detail ?? "", new
+            {
+                current = info.Current,
+                latest = info.Latest,
+                available = info.Available,
+                mandatory = info.Mandatory,
+                publishedAt = info.PublishedAt,
+                detail = info.Detail,
+                phase = progress.Phase,
+                percent = progress.Percent,
+                progress = progress.Message,
+            });
         }
 
-        private static async Task<IResult> ApplyUpdate(IServiceProvider services)
+        private static IResult ApplyUpdate(IServiceProvider services)
         {
-            try
-            {
-                return Ok(await AppUpdate.Apply(services));
-            }
-            catch (Exception ex)
-            {
-                return Fail(ex.Message);
-            }
+            return Ok(AppUpdate.Begin(services));
         }
 
         private static IResult Meta()
