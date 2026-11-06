@@ -3,21 +3,13 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
-using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
-
-using MainCore.Entities;
-using MainCore.Enums;
-using MainCore.Infrasturecture.Persistence;
-using MainCore.Services;
-
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace WPFUI
 {
@@ -31,6 +23,9 @@ namespace WPFUI
         private static DateTime _checkedAt;
         private static UpdateInfo _cached = new UpdateInfo();
         private static int _applying;
+        private static string _phase = "idle";
+        private static int _percent;
+        private static string _progress = "";
 
         public static string CurrentVersion()
         {
@@ -65,58 +60,121 @@ namespace WPFUI
             File.WriteAllText(path, CurrentVersion());
         }
 
+        public static UpdateInfo Peek()
+        {
+            lock (Gate)
+            {
+                return _cached;
+            }
+        }
+
+        public static (string Phase, int Percent, string Message) Progress()
+        {
+            lock (Gate)
+            {
+                return (_phase, _percent, _progress);
+            }
+        }
+
+        public static string Begin(IServiceProvider services)
+        {
+            if (System.Threading.Interlocked.Exchange(ref _applying, 1) == 1)
+                return "La actualización ya se está descargando.";
+
+            SetProgress("checking", 0, "Comprobando...");
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Run(null, splashAtEnd: true);
+                }
+                catch (Exception ex)
+                {
+                    SetProgress("failed", 0, ex.Message);
+                    UpdateSplash.Close();
+                    System.Threading.Interlocked.Exchange(ref _applying, 0);
+                }
+            });
+            return "Se descarga mientras el bot sigue. Cuando termine se cierra unos segundos para instalar.";
+        }
+
         public static async Task<string> Apply(IServiceProvider services, Action<string, int> progress = null)
         {
             if (System.Threading.Interlocked.Exchange(ref _applying, 1) == 1)
                 throw new InvalidOperationException("La actualización ya está en curso.");
             try
             {
-                UpdateSplash.Show(CurrentVersion());
-                if (AccountIsOpen(services))
-                    throw new InvalidOperationException("Desconectá la cuenta antes de actualizar.");
-
-                var info = await CheckRemote();
-                if (!info.Available)
-                    throw new InvalidOperationException(string.IsNullOrWhiteSpace(info.Detail) ? "Ya está al día." : info.Detail);
-
-                Report(progress, "Descargando " + info.Latest + "...", 10);
-                var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TravianGuardBot", "update");
-                Directory.CreateDirectory(root);
-                var zipPath = Path.Combine(root, AssetName);
-                var staging = Path.Combine(root, "staging");
-                if (Directory.Exists(staging)) Directory.Delete(staging, true);
-                Directory.CreateDirectory(staging);
-
-                await Download(info.AssetUrl, zipPath, progress, info.Latest);
-                Report(progress, "Preparando los archivos...", 88);
-                Extract(zipPath, staging);
-                if (!File.Exists(Path.Combine(staging, "TravianBotSharp.exe")))
-                    throw new InvalidOperationException("El paquete no trae el programa.");
-
-                Report(progress, "Se instala " + info.Latest + ". Si algo falla, vuelve sola a la versión " + info.Current + ".", 96);
-                var install = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                var script = Path.Combine(root, "apply.ps1");
-                File.WriteAllText(script, ApplyScript(), new UTF8Encoding(true));
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + script + "\" -Install \"" + install + "\" -Staging \"" + staging + "\" -TargetPid " + Environment.ProcessId,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                });
-
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(800);
-                    System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => System.Windows.Application.Current.Shutdown());
-                });
-
-                return "Se cierra el bot para instalar " + info.Latest + ". Se vuelve a abrir solo. Las cuentas y el navegador quedan como están.";
+                return await Run(progress, splashAtEnd: false);
             }
             catch
             {
+                UpdateSplash.Close();
                 System.Threading.Interlocked.Exchange(ref _applying, 0);
                 throw;
+            }
+        }
+
+        private static async Task<string> Run(Action<string, int> progress, bool splashAtEnd)
+        {
+            SetProgress("checking", 0, "Comprobando...");
+            Report(progress, "Comprobando la versión...", 0);
+            var info = await CheckRemote();
+            if (!info.Available)
+                throw new InvalidOperationException(string.IsNullOrWhiteSpace(info.Detail) ? "Ya está al día." : info.Detail);
+
+            SetProgress("downloading", 10, "Descargando...");
+            Report(progress, "Descargando " + info.Latest + "...", 10);
+            var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TravianGuardBot", "update");
+            Directory.CreateDirectory(root);
+            var zipPath = Path.Combine(root, AssetName);
+            var staging = Path.Combine(root, "staging");
+            if (Directory.Exists(staging)) Directory.Delete(staging, true);
+            Directory.CreateDirectory(staging);
+
+            await Download(info.AssetUrl, zipPath, (status, percent) =>
+            {
+                SetProgress("downloading", percent, "Descargando " + percent + "%");
+                Report(progress, status, percent);
+            }, info.Latest);
+            SetProgress("extracting", 90, "Preparando...");
+            Report(progress, "Preparando los archivos...", 90);
+            Extract(zipPath, staging);
+            if (!File.Exists(Path.Combine(staging, "TravianBotSharp.exe")))
+                throw new InvalidOperationException("El paquete no trae el programa.");
+
+            SetProgress("installing", 98, "Instalando...");
+            var closing = "Se cierra unos segundos para instalar " + info.Latest + ".";
+            if (splashAtEnd) UpdateSplash.Show(info.Current, closing, 98, info.Latest);
+            else UpdateSplash.Report(closing, 98, info.Latest);
+            Report(progress, closing, 98);
+
+            var install = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var script = Path.Combine(root, "apply.ps1");
+            File.WriteAllText(script, ApplyScript(), new UTF8Encoding(true));
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + script + "\" -Install \"" + install + "\" -Staging \"" + staging + "\" -TargetPid " + Environment.ProcessId,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(800);
+                System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => System.Windows.Application.Current.Shutdown());
+            });
+
+            return closing + " Se vuelve a abrir solo.";
+        }
+
+        private static void SetProgress(string phase, int percent, string message)
+        {
+            lock (Gate)
+            {
+                _phase = phase;
+                _percent = percent;
+                _progress = message;
             }
         }
 
@@ -170,21 +228,29 @@ namespace WPFUI
 
         private static async Task<HttpResponseMessage> SendLatest()
         {
-            var response = await SendLatest("");
+            var response = await SendLatest("", TimeSpan.FromSeconds(20));
             if (response.IsSuccessStatusCode) return response;
             var token = ReadToken();
             if (token.Length == 0) return response;
             response.Dispose();
-            return await SendLatest(token);
+            return await SendLatest(token, TimeSpan.FromSeconds(20));
         }
 
-        private static Task<HttpResponseMessage> SendLatest(string token)
+        private static async Task<HttpResponseMessage> SendLatest(string token, TimeSpan timeout)
         {
             var request = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/repos/" + Repo + "/releases/latest");
             request.Headers.UserAgent.ParseAdd("TravianGuardBot");
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
             if (token.Length > 0) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            return Http.SendAsync(request);
+            using var cancel = new CancellationTokenSource(timeout);
+            try
+            {
+                return await Http.SendAsync(request, cancel.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                throw new InvalidOperationException("GitHub no respondió a tiempo.");
+            }
         }
 
         private static async Task Download(string assetUrl, string zipPath, Action<string, int> progress, string latest)
@@ -250,13 +316,6 @@ namespace WPFUI
             }
         }
 
-        private static bool AccountIsOpen(IServiceProvider services)
-        {
-            var tasks = services.GetRequiredService<TaskManager>();
-            using var context = services.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContext();
-            return context.Accounts.AsEnumerable().Any(account => tasks.GetStatus(new AccountId(account.Id)) != StatusEnums.Offline);
-        }
-
         private static string ReadToken()
         {
             var fromEnv = Environment.GetEnvironmentVariable("TRAVIAN_GITHUB_TOKEN");
@@ -282,8 +341,12 @@ namespace WPFUI
                     };
                     using var process = Process.Start(start);
                     if (process == null) continue;
+                    if (!process.WaitForExit(4000))
+                    {
+                        try { process.Kill(true); } catch { }
+                        continue;
+                    }
                     var output = process.StandardOutput.ReadToEnd().Trim();
-                    if (!process.WaitForExit(8000)) continue;
                     if (process.ExitCode == 0 && output.Length > 0 && !output.Contains(' ')) return output;
                 }
                 catch
