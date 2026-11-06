@@ -58,7 +58,7 @@ namespace WPFUI
             app.MapGet("/api/health", () => Ok("listo"));
             app.MapGet("/api/meta", Meta);
             app.MapGet("/api/overview", () => Overview(services));
-            app.MapGet("/api/update", () => CheckUpdate());
+            app.MapGet("/api/update", (bool force = false) => CheckUpdate(force));
             app.MapPost("/api/update", () => ApplyUpdate(services));
             app.MapPost("/api/shutdown", () =>
             {
@@ -119,9 +119,9 @@ namespace WPFUI
             app.MapPost("/api/templates/{kind}/upload", async (string kind, HttpRequest request) => await UploadTemplate(services, kind, request));
         }
 
-        private static async Task<IResult> CheckUpdate()
+        private static async Task<IResult> CheckUpdate(bool force)
         {
-            var info = await AppUpdate.Check();
+            var info = await AppUpdate.Check(force);
             return Ok(info.Detail ?? "", new { current = info.Current, latest = info.Latest, available = info.Available, mandatory = info.Mandatory, publishedAt = info.PublishedAt, detail = info.Detail });
         }
 
