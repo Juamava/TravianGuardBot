@@ -135,8 +135,8 @@ function GameFarmRow({ accountId, list, disabled, notify, reload }: { accountId:
     editing.current = false
     const intervalMin = Number(min)
     const intervalMax = Number(max)
-    if (!Number.isFinite(intervalMin) || !Number.isFinite(intervalMax) || intervalMin < 1 || intervalMax < intervalMin || intervalMax > 604800) {
-      notify('El mínimo tiene que ser de 1 segundo o más, no puede pasar el máximo, y el máximo es de 7 días.')
+    if (!Number.isFinite(intervalMin) || !Number.isFinite(intervalMax) || intervalMin < 1 || intervalMax < intervalMin || intervalMax > 10080) {
+      notify('El mínimo tiene que ser de 1 minuto o más, no puede pasar el máximo, y el máximo es de 7 días.')
       setMin(String(list.intervalMin))
       setMax(String(list.intervalMax))
       return
@@ -165,8 +165,8 @@ function GameFarmRow({ accountId, list, disabled, notify, reload }: { accountId:
         <Typography color="text.secondary" sx={{ fontSize: 13 }}>{list.active ? 'Activa' : 'Inactiva'}</Typography>
       </Stack>
       <Stack direction="row" spacing={1} alignItems="center" sx={{ pl: 6.5 }}>
-        <TextField size="small" type="number" label="Desde" value={min} disabled={disabled} onFocus={() => { editing.current = true }} onChange={event => setMin(event.target.value)} onBlur={() => void save()} sx={{ width: 128 }} slotProps={{ input: { endAdornment: <Typography color="text.secondary" sx={{ ml: 0.5, fontSize: 13 }}>seg</Typography> } }} />
-        <TextField size="small" type="number" label="Hasta" value={max} disabled={disabled} onFocus={() => { editing.current = true }} onChange={event => setMax(event.target.value)} onBlur={() => void save()} sx={{ width: 128 }} slotProps={{ input: { endAdornment: <Typography color="text.secondary" sx={{ ml: 0.5, fontSize: 13 }}>seg</Typography> } }} />
+        <TextField size="small" type="number" label="Desde" value={min} disabled={disabled} onFocus={() => { editing.current = true }} onChange={event => setMin(event.target.value)} onBlur={() => void save()} sx={{ width: 128 }} slotProps={{ input: { endAdornment: <Typography color="text.secondary" sx={{ ml: 0.5, fontSize: 13 }}>min</Typography> } }} />
+        <TextField size="small" type="number" label="Hasta" value={max} disabled={disabled} onFocus={() => { editing.current = true }} onChange={event => setMax(event.target.value)} onBlur={() => void save()} sx={{ width: 128 }} slotProps={{ input: { endAdornment: <Typography color="text.secondary" sx={{ ml: 0.5, fontSize: 13 }}>min</Typography> } }} />
         {list.countdown && <Typography color="error" sx={{ fontSize: 13, fontWeight: 700 }}>{list.countdown}</Typography>}
       </Stack>
     </Stack>

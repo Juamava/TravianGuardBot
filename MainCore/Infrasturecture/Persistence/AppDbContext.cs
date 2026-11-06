@@ -332,23 +332,44 @@ namespace MainCore.Infrasturecture.Persistence
         {
             var addedMin = EnsureColumn("FarmLists", "IntervalMin", "INTEGER NOT NULL DEFAULT 540");
             var addedMax = EnsureColumn("FarmLists", "IntervalMax", "INTEGER NOT NULL DEFAULT 660");
-            if (!addedMin && !addedMax) return;
-
-            var accounts = FarmLists.Select(x => x.AccountId).Distinct().ToList();
-            foreach (var accountId in accounts)
+            if (addedMin || addedMax)
             {
-                var settings = AccountsSetting
-                    .Where(x => x.AccountId == accountId && (x.Setting == AccountSettingEnums.FarmIntervalMin || x.Setting == AccountSettingEnums.FarmIntervalMax))
-                    .ToList();
-                var min = settings.FirstOrDefault(x => x.Setting == AccountSettingEnums.FarmIntervalMin)?.Value ?? 540;
-                var max = settings.FirstOrDefault(x => x.Setting == AccountSettingEnums.FarmIntervalMax)?.Value ?? 660;
-                if (min < 1) min = 540;
-                if (max < min) max = min;
-                FarmLists.Where(x => x.AccountId == accountId)
-                    .ExecuteUpdate(x => x
-                        .SetProperty(farm => farm.IntervalMin, min)
-                        .SetProperty(farm => farm.IntervalMax, max));
+                var accounts = FarmLists.Select(x => x.AccountId).Distinct().ToList();
+                foreach (var accountId in accounts)
+                {
+                    var settings = AccountsSetting
+                        .Where(x => x.AccountId == accountId && (x.Setting == AccountSettingEnums.FarmIntervalMin || x.Setting == AccountSettingEnums.FarmIntervalMax))
+                        .ToList();
+                    var min = settings.FirstOrDefault(x => x.Setting == AccountSettingEnums.FarmIntervalMin)?.Value ?? 540;
+                    var max = settings.FirstOrDefault(x => x.Setting == AccountSettingEnums.FarmIntervalMax)?.Value ?? 660;
+                    if (min < 1) min = 540;
+                    if (max < min) max = min;
+                    FarmLists.Where(x => x.AccountId == accountId)
+                        .ExecuteUpdate(x => x
+                            .SetProperty(farm => farm.IntervalMin, min)
+                            .SetProperty(farm => farm.IntervalMax, max));
+                }
             }
+
+            // Existing rows keep seconds until this column appears. It is added once, then those seconds become minutes.
+            if (!EnsureColumn("FarmLists", "IntervalsInMinutes", "INTEGER NOT NULL DEFAULT 0")) return;
+
+            var farms = FarmLists.ToList();
+            foreach (var farm in farms)
+            {
+                farm.IntervalMin = SecondsToMinutes(farm.IntervalMin);
+                farm.IntervalMax = SecondsToMinutes(farm.IntervalMax);
+                if (farm.IntervalMax < farm.IntervalMin) farm.IntervalMax = farm.IntervalMin;
+                farm.IntervalsInMinutes = 1;
+            }
+            if (farms.Count > 0) SaveChanges();
+        }
+
+        private static int SecondsToMinutes(int seconds)
+        {
+            if (seconds < 1) return 9;
+            var minutes = (int)Math.Round(seconds / 60.0, MidpointRounding.AwayFromZero);
+            return minutes < 1 ? 1 : minutes;
         }
 
         private bool EnsureColumn(string table, string name, string definition)
