@@ -165,6 +165,7 @@ export function Farming({ accountId, notify, mode }: { accountId: number; notify
   const [villageId, setVillageId] = useState(0)
   const [listId, setListId] = useState(0)
   const [name, setName] = useState('')
+  const [newName, setNewName] = useState('')
   const [minMinutes, setMinMinutes] = useState(0)
   const [repeatMinutes, setRepeatMinutes] = useState(0)
   const [cowId, setCowId] = useState(0)
@@ -190,11 +191,16 @@ export function Farming({ accountId, notify, mode }: { accountId: number; notify
   const minutesTimer = useRef<number | null>(null)
   const listDraft = useRef({ listId: 0, name: '', min: 0, repeat: 0, auto: false })
   const bulkBaseline = useRef('')
+  const appliedList = useRef(0)
+  const loadSeq = useRef(0)
 
   async function load(nextVillage = villageId) {
+    const seq = ++loadSeq.current
     const result = await api<FarmingData>(`/api/accounts/${accountId}/farming?villageId=${nextVillage}`)
+    if (seq !== loadSeq.current) return result.data
     setData(result.data)
     if (!nextVillage && result.data.villages[0]) setVillageId(result.data.villages[0].id)
+    setListId(current => result.data.lists.some(list => list.id === current) ? current : (result.data.lists[0]?.id ?? 0))
     return result.data
   }
 
@@ -209,6 +215,7 @@ export function Farming({ accountId, notify, mode }: { accountId: number; notify
       window.clearTimeout(minutesTimer.current)
       minutesTimer.current = null
     }
+    appliedList.current = list.id
     setListId(list.id)
     setName(list.name)
     setMinMinutes(list.minMinutes)
@@ -228,6 +235,41 @@ export function Farming({ accountId, notify, mode }: { accountId: number; notify
     setDistTo('')
   }
 
+  useEffect(() => {
+    if (!data) return
+    const list = data.lists.find(item => item.id === listId) ?? null
+    if (!list) {
+      if (appliedList.current === 0) return
+      appliedList.current = 0
+      setName('')
+      setMinMinutes(0)
+      setRepeatMinutes(0)
+      setCowId(0)
+      setAdding(false)
+      setBulkOpen(false)
+      setBulkText('')
+      return
+    }
+    if (appliedList.current === list.id) return
+    appliedList.current = list.id
+    setName(list.name)
+    setMinMinutes(list.minMinutes)
+    setRepeatMinutes(list.repeatMinutes)
+    setCowId(0)
+    setAdding(false)
+    setCowName('')
+    setUrl('')
+    setTroops('')
+    setBulkOpen(false)
+    setBulkText('')
+    setQuery('')
+    setKindFilter('todos')
+    setPopFrom('')
+    setPopTo('')
+    setDistFrom('')
+    setDistTo('')
+  }, [data, listId])
+
   function openBulk() {
     const text = cows.map(cow => cow.name && cow.name !== 'Aldea sin nombre'
       ? `${cow.name} | ${cow.url} | ${cow.troops}`
@@ -244,7 +286,8 @@ export function Farming({ accountId, notify, mode }: { accountId: number; notify
       setBulkOpen(false)
       return
     }
-    if (!await ui.confirm('Las aldeas que no estén en el texto se borran de la lista. ¿Aplicar los cambios?')) return
+    const clearing = bulkText.trim() === ''
+    if (!await ui.confirm(clearing ? '¿Vaciar la lista? Se borran todas las aldeas.' : 'Las aldeas que no estén en el texto se borran de la lista. ¿Aplicar los cambios?')) return
     const saved = await run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/bulk`, { text: bulkText }))
     if (saved) setBulkOpen(false)
   }
@@ -255,6 +298,13 @@ export function Farming({ accountId, notify, mode }: { accountId: number; notify
     setUrl(cow.url)
     setTroops(cow.troops)
     setAdding(false)
+  }
+
+  async function createList() {
+    const label = newName.trim()
+    if (!villageId || label === '') return
+    const saved = await run(() => post(`/api/accounts/${accountId}/farming/lists`, { villageId, name: label }))
+    if (saved) setNewName('')
   }
 
   async function run(action: () => Promise<{ message: string }>) {
@@ -400,20 +450,28 @@ export function Farming({ accountId, notify, mode }: { accountId: number; notify
         </TextField>
       </Stack>
       <Box sx={{ display: 'grid', gridTemplateColumns: '260px minmax(0, 1fr)', gap: 2, alignItems: 'start' }}>
-        <Stack spacing={1} sx={{ minWidth: 0 }}>
-          {(data?.lists ?? []).map(list => (
-            <Button key={list.id} variant={list.id === listId ? 'contained' : 'outlined'} onClick={() => selectList(list)} sx={{ justifyContent: 'flex-start', minHeight: 40, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{listTitle(list)}</Button>
-          ))}
-          {(data?.lists.length ?? 0) === 0 && <Typography color="text.secondary">Todavía no hay listas en esta aldea.</Typography>}
-          <TextField label="Nombre de la lista" value={name} onChange={event => setName(event.target.value)} />
-          <Button variant="contained" onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists`, { villageId, name }))}>Crear</Button>
-          <Button disabled={!listId || saving} onClick={() => run(() => put(`/api/accounts/${accountId}/farming/lists/${listId}`, { name, minMinutes, repeatMinutes, autoStart: selectedList?.autoStart ?? false }))}>Renombrar</Button>
-          <Button color="error" disabled={!listId || saving} onClick={async () => { if (await ui.confirm('¿Borrar esta lista y todas sus aldeas?')) run(() => del(`/api/accounts/${accountId}/farming/lists/${listId}`)) }}>Borrar</Button>
+        <Stack spacing={2} sx={{ minWidth: 0 }}>
+          <Stack spacing={1}>
+            <Typography variant="caption" color="text.secondary">Listas</Typography>
+            {(data?.lists ?? []).map(list => (
+              <Button key={list.id} variant={list.id === listId ? 'contained' : 'outlined'} onClick={() => selectList(list)} sx={{ justifyContent: 'flex-start', minHeight: 40, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{listTitle(list)}</Button>
+            ))}
+            {(data?.lists.length ?? 0) === 0 && <Typography color="text.secondary">Todavía no hay listas en esta aldea.</Typography>}
+          </Stack>
+          <Stack spacing={1} sx={{ ...panel }}>
+            <Typography fontWeight={700}>Nueva lista</Typography>
+            <TextField label="Nombre" value={newName} onChange={event => setNewName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void createList() }} />
+            <Button variant="contained" disabled={!villageId || saving || newName.trim() === ''} onClick={() => void createList()}>Crear</Button>
+          </Stack>
         </Stack>
 
         <Stack spacing={1.5} sx={{ minWidth: 0 }}>
           <Box sx={{ ...panel }}>
-            <Typography fontWeight={700} sx={{ mb: 1.5 }}>{selectedList ? selectedList.name : 'Elegí una lista'}</Typography>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+              <TextField size="small" label="Lista seleccionada" value={listId ? name : ''} disabled={!listId || saving} onChange={event => setName(event.target.value)} sx={{ flex: 1, minWidth: 0 }} />
+              <Button size="small" disabled={!listId || saving || name.trim() === ''} onClick={() => run(() => put(`/api/accounts/${accountId}/farming/lists/${listId}`, { name, minMinutes, repeatMinutes, autoStart: selectedList?.autoStart ?? false }))} sx={{ height: 40, flexShrink: 0 }}>Renombrar</Button>
+              <Button size="small" color="error" disabled={!listId || saving} onClick={async () => { if (await ui.confirm('¿Borrar esta lista y todas sus aldeas?')) run(() => del(`/api/accounts/${accountId}/farming/lists/${listId}`)) }} sx={{ height: 40, flexShrink: 0 }}>Borrar</Button>
+            </Stack>
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 1 }}>
               <Tooltip title={anyRunning ? 'Hay una lista en curso. Detenela para poder sincronizar.' : ''}>
                 <Box sx={{ minWidth: 0, display: 'flex', '& > .MuiButton-root': { flex: 1 } }}>
@@ -496,7 +554,7 @@ export function Farming({ accountId, notify, mode }: { accountId: number; notify
             <Stack spacing={1.5} sx={{ ...panel }}>
               <Stack direction="row" spacing={0.75} alignItems="center">
                 <Typography fontWeight={700}>Edición masiva</Typography>
-                <Hint text="Una aldea por línea: enlace | tropas. Para el nombre: nombre | enlace | tropas. También podés separar el enlace y las tropas con un espacio. Al cerrar se guardan los cambios: las líneas que saques se borran. Las nuevas quedan como Aldea sin nombre hasta que uses Sync." />
+                <Hint text="Una aldea por línea: enlace | tropas. Para el nombre: nombre | enlace | tropas. También podés separar el enlace y las tropas con un espacio. Al cerrar se guardan los cambios: las líneas que saques se borran. Si dejás el texto vacío, la lista queda sin aldeas. Las nuevas quedan como Aldea sin nombre hasta que uses Sync." />
               </Stack>
               <TextField multiline minRows={8} value={bulkText} onChange={event => setBulkText(event.target.value)} placeholder={'https://servidor/karte.php?d=1 | 2\nOasis norte | https://servidor/karte.php?d=2 | A:2 D:1'} />
               <Stack direction="row" spacing={1}>
