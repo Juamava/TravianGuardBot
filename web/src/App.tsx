@@ -202,12 +202,34 @@ function Shell() {
       <Stack sx={{ bgcolor: '#2b2d31', minHeight: 0 }}>
         <Box sx={{ px: 2, py: 1.5, boxShadow: '0 1px 0 rgba(0,0,0,.2)' }}>
           <Typography sx={{ fontWeight: 700, color: '#f2f3f5', textTransform: 'none' }} noWrap>{account?.username ?? 'Travian Guard'}</Typography>
-          <Typography variant="caption" color="text.secondary">{account ? `${account.host} · ${account.status} · ${overview?.version ?? ''}` : `Versión ${overview?.version ?? ''}`}</Typography>
-          {update?.available && !mandatory ? (
-            <Button size="small" sx={{ mt: 0.75, color: '#fff', bgcolor: '#5865f2', '&:hover': { bgcolor: '#4752c4' } }} onClick={() => install(false)}>Actualizar a {update.latest}</Button>
-          ) : (
-            <Button size="small" disabled={checkingUpdate} sx={{ mt: 0.75, color: '#dbdee1', bgcolor: '#313338', '&:hover': { bgcolor: '#35373c' } }} onClick={searchUpdate}>{checkingUpdate ? 'Buscando...' : 'Buscar actualización'}</Button>
-          )}
+          <Typography component="div" variant="caption" color="text.secondary" sx={{ mt: 0.25, lineHeight: 1.45 }}>
+            {account && <Box sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{account.host}</Box>}
+            <Box>
+              {account ? `${account.status} · ${overview?.version ?? ''}` : `Versión ${overview?.version ?? ''}`}
+              {' · '}
+              <Box
+                component="button"
+                type="button"
+                disabled={checkingUpdate}
+                onClick={() => (update?.available && !mandatory ? install(false) : searchUpdate())}
+                sx={{
+                  p: 0,
+                  border: 0,
+                  bgcolor: 'transparent',
+                  font: 'inherit',
+                  lineHeight: 'inherit',
+                  cursor: 'pointer',
+                  color: update?.available && !mandatory ? '#dee0fc' : 'inherit',
+                  textDecoration: 'underline',
+                  textUnderlineOffset: '2px',
+                  '&:hover': { color: '#fff' },
+                  '&:disabled': { cursor: 'default', color: '#6d6f78', textDecoration: 'none' },
+                }}
+              >
+                {checkingUpdate ? 'Buscando...' : update?.available && !mandatory ? `Actualizar a ${update.latest}` : 'Buscar actualización'}
+              </Box>
+            </Box>
+          </Typography>
         </Box>
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.75, px: 1.5, py: 1.25 }}>
           <Button onClick={() => act('login')} disabled={!account || account.status !== 'Offline' || heldByOther} sx={actionButton}>
