@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 
 using MainCore.Infrasturecture.Extensions;
+using MainCore.Tasks.Base;
 
 using Microsoft.Extensions.DependencyInjection;
 
@@ -20,16 +21,18 @@ namespace MainCore.Services
         private readonly RxQueue _rxQueue;
         private readonly CustomServiceScopeFactory _serviceScopeFactory;
         private readonly IDbContextFactory<AppDbContext> _contextFactory;
+        private readonly ILogger _logger;
 
         private static readonly ResiliencePropertyKey<ContextData> contextDataKey = new(nameof(ContextData));
         private readonly ResiliencePipeline<Result> _pipeline;
 
-        public TimerManager(TaskManager taskManager, CustomServiceScopeFactory serviceScopeFactory, RxQueue rxQueue, IDbContextFactory<AppDbContext> contextFactory)
+        public TimerManager(TaskManager taskManager, CustomServiceScopeFactory serviceScopeFactory, RxQueue rxQueue, IDbContextFactory<AppDbContext> contextFactory, ILogger logger)
         {
             _taskManager = taskManager;
             _serviceScopeFactory = serviceScopeFactory;
             _rxQueue = rxQueue;
             _contextFactory = contextFactory;
+            _logger = logger;
 
             static async ValueTask OnRetry(OnRetryArguments<Result> args)
             {
@@ -129,16 +132,14 @@ namespace MainCore.Services
                 if (ex is OperationCanceledException)
                 {
                     logger.Information("Pause button is pressed");
+                    _taskManager.SetStatus(accountId, StatusEnums.Paused);
                 }
                 else
                 {
-                    var filename = await browser.Screenshot();
-                    logger.Information("Screenshot saved as {FileName}", filename);
-                    logger.Warning("There is something wrong. Bot is pausing. Last exception is");
-                    logger.Error(ex, "{Message}", ex.Message);
+                    await SaveScreenshot(browser, logger);
+                    logger.Error(ex, "Task {TaskName} failed. The bot keeps running. {Message}", task.Description, ex.Message);
+                    Postpone(task, cacheExecuteTime, logger);
                 }
-
-                _taskManager.SetStatus(accountId, StatusEnums.Paused);
             }
 
             if (poliResult.Result is not null)
@@ -146,10 +147,8 @@ namespace MainCore.Services
                 var result = poliResult.Result;
                 if (result.IsFailed)
                 {
-                    if (result.HasError<Stop>() || result.HasError<Retry>())
+                    if (result.HasError<Cancel>())
                     {
-                        var filename = await browser.Screenshot();
-                        logger.Information(messageTemplate: "Screenshot saved as {FileName}", filename);
                         _taskManager.SetStatus(accountId, StatusEnums.Paused);
                     }
                     else if (result.HasError<Skip>())
@@ -163,9 +162,12 @@ namespace MainCore.Services
                             logger.Information("Schedule next run at {Time}", task.ExecuteAt.ToString("yyyy-MM-dd HH:mm:ss"));
                         }
                     }
-                    else if (result.HasError<Cancel>())
+                    else
                     {
-                        _taskManager.SetStatus(accountId, StatusEnums.Paused);
+                        await SaveScreenshot(browser, logger);
+                        var message = string.Join(Environment.NewLine, result.Errors.Select(error => error.Message));
+                        logger.Warning("Task {TaskName} failed. The bot keeps running. {Message}", task.Description, message);
+                        Postpone(task, cacheExecuteTime, logger);
                     }
                 }
                 else
@@ -224,6 +226,18 @@ namespace MainCore.Services
                     {
                         break;
                     }
+                    catch (Exception ex)
+                    {
+                        _logger.Error(ex, "The task loop hit an error and keeps running");
+                        try
+                        {
+                            await Task.Delay(1000, cancellationTokenSource.Token);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            break;
+                        }
+                    }
                 }
 
                 if (_loops.TryRemove(accountId, out var ownedCancellationTokenSource))
@@ -231,6 +245,27 @@ namespace MainCore.Services
                     ownedCancellationTokenSource.Dispose();
                 }
             }, cancellationTokenSource.Token);
+        }
+
+        private static void Postpone(BaseTask task, DateTime cacheExecuteTime, ILogger logger)
+        {
+            if (task.ExecuteAt == cacheExecuteTime)
+                task.ExecuteAt = DateTime.Now.AddMinutes(5);
+            logger.Information("Schedule next run at {Time}", task.ExecuteAt.ToString("yyyy-MM-dd HH:mm:ss"));
+        }
+
+        private static async Task SaveScreenshot(IChromeBrowser browser, ILogger logger)
+        {
+            try
+            {
+                var filename = await browser.Screenshot();
+                if (!string.IsNullOrEmpty(filename))
+                    logger.Information("Screenshot saved as {FileName}", filename);
+            }
+            catch (Exception ex)
+            {
+                logger.Warning(ex, "Could not save a screenshot");
+            }
         }
 
         public record ContextData(string TaskName, IChromeBrowser Browser);
