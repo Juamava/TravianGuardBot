@@ -86,6 +86,7 @@ namespace MainCore.Services
                 }
             }
 
+            if (context.BooleanByName(accountId, AccountSettingEnums.Gold)) return;
             if (taskManager.IsExist<RaidCowListTask.Task>(accountId)) return;
 
             var autoListId = context.CowLists

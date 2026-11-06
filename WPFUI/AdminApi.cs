@@ -23,6 +23,7 @@ using MainCore.Notifications;
 using MainCore.Parsers;
 using MainCore.Services;
 using MainCore.Tasks;
+using MainCore.Tasks.Base;
 using MainCore.UI.Models.Input;
 using MainCore.UI.Models.Output;
 using MainCore.UI.ViewModels.Tabs;
@@ -108,6 +109,11 @@ namespace WPFUI
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/stop", (int id, int listId) => StopCowList(services, id, listId));
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/search", (int id, int listId, SearchBody body) => SearchOasis(services, id, listId, body));
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/search/apply", (int id, int listId, ApplySearchBody body) => ApplyOasis(services, id, listId, body));
+            app.MapPost("/api/accounts/{id:int}/farming/game/refresh", (int id) => RefreshGameFarms(services, id));
+            app.MapPost("/api/accounts/{id:int}/farming/game/start", (int id) => StartGameFarms(services, id));
+            app.MapPost("/api/accounts/{id:int}/farming/game/stop", (int id) => StopGameFarms(services, id));
+            app.MapPost("/api/accounts/{id:int}/farming/game/{farmId:int}/active", (int id, int farmId) => ToggleGameFarm(services, id, farmId));
+            app.MapPut("/api/accounts/{id:int}/farming/game/options", (int id, GameFarmBody body) => SaveGameFarmOptions(services, id, body));
 
             app.MapGet("/api/accounts/{id:int}/hero", (int id) => GetHero(services, id));
 
@@ -376,9 +382,12 @@ namespace WPFUI
 
             var accountId = new AccountId(id);
             using var context = Context(services);
+            var wasGold = context.BooleanByName(accountId, AccountSettingEnums.Gold);
             var saved = input.Get();
             context.SaveAccountSetting(accountId, saved);
             context.TriggerTask(services.GetRequiredService<TaskManager>(), accountId, saved);
+            var isGold = saved.GetValueOrDefault(AccountSettingEnums.Gold) == 1;
+            if (wasGold != isGold) SwitchFarmMode(services, id, isGold);
             return Ok("Ajustes guardados.");
         }
 
@@ -657,8 +666,31 @@ namespace WPFUI
                         y = coordY,
                     };
                 }).ToList();
-            var task = services.GetRequiredService<TaskManager>().GetTaskList(new AccountId(accountId)).OfType<RaidCowListTask.Task>().FirstOrDefault();
-            return Ok("", new { villages, lists, cows, countdown = FormatCountdown(task) });
+            var account = new AccountId(accountId);
+            var gold = context.BooleanByName(account, AccountSettingEnums.Gold);
+            var gameLists = context.FarmLists.Where(x => x.AccountId == accountId).OrderBy(x => x.Name)
+                .Select(x => new { id = x.Id, name = x.Name, active = x.IsActive })
+                .ToList();
+            var interval = context.AccountsSetting
+                .Where(x => x.AccountId == accountId && (x.Setting == AccountSettingEnums.FarmIntervalMin || x.Setting == AccountSettingEnums.FarmIntervalMax))
+                .ToList();
+            var manager = services.GetRequiredService<TaskManager>();
+            var task = manager.GetTaskList(account).OfType<RaidCowListTask.Task>().FirstOrDefault();
+            var gameTask = manager.GetTaskList(account).OfType<StartFarmListTask.Task>().FirstOrDefault();
+            return Ok("", new
+            {
+                villages,
+                lists,
+                cows,
+                countdown = FormatCountdown(task),
+                gold,
+                gameLists,
+                useStartAll = context.BooleanByName(account, AccountSettingEnums.UseStartAllButton),
+                farmIntervalMin = interval.FirstOrDefault(x => x.Setting == AccountSettingEnums.FarmIntervalMin)?.Value ?? 540,
+                farmIntervalMax = interval.FirstOrDefault(x => x.Setting == AccountSettingEnums.FarmIntervalMax)?.Value ?? 660,
+                gameRunning = gameTask is not null,
+                gameCountdown = FormatCountdown(gameTask),
+            });
         }
 
         private static IResult CreateCowList(IServiceProvider services, int accountId, CowListBody body)
@@ -941,8 +973,94 @@ namespace WPFUI
             return Ok("Aldea borrada.");
         }
 
+        private static IResult RefreshGameFarms(IServiceProvider services, int accountId)
+        {
+            if (!IsGold(services, accountId)) return Fail("Esta cuenta no está marcada como Gold.");
+            services.GetRequiredService<TaskManager>().AddOrUpdate(new UpdateFarmListTask.Task(new AccountId(accountId)));
+            return Ok("Se van a leer las listas de vacas del juego.");
+        }
+
+        private static IResult StartGameFarms(IServiceProvider services, int accountId)
+        {
+            if (!IsGold(services, accountId)) return Fail("Esta cuenta no está marcada como Gold.");
+            var account = new AccountId(accountId);
+            using var context = Context(services);
+            if (!context.BooleanByName(account, AccountSettingEnums.UseStartAllButton) && !context.FarmLists.Any(x => x.AccountId == accountId && x.IsActive))
+                return Fail("No hay ninguna lista activa. Activa una, o encendé Iniciar todas.");
+            services.GetRequiredService<TaskManager>().AddOrUpdate(new StartFarmListTask.Task(account));
+            return Ok("Empieza a iniciar las listas del juego.");
+        }
+
+        private static IResult StopGameFarms(IServiceProvider services, int accountId)
+        {
+            var account = new AccountId(accountId);
+            var tasks = services.GetRequiredService<TaskManager>();
+            if (tasks.GetCurrentTask(account) is StartFarmListTask.Task)
+                tasks.CancelIfCurrent<StartFarmListTask.Task>(account);
+            tasks.Remove<StartFarmListTask.Task>(account);
+            return Ok("Se detuvo el inicio de las listas del juego.");
+        }
+
+        private static IResult ToggleGameFarm(IServiceProvider services, int accountId, int farmId)
+        {
+            using var context = Context(services);
+            var updated = context.FarmLists.Where(x => x.Id == farmId && x.AccountId == accountId)
+                .ExecuteUpdate(x => x.SetProperty(farm => farm.IsActive, farm => !farm.IsActive));
+            if (updated == 0) return Fail("No se encontró la lista del juego.");
+            return Ok("Lista actualizada.");
+        }
+
+        private static IResult SaveGameFarmOptions(IServiceProvider services, int accountId, GameFarmBody body)
+        {
+            if (body.IntervalMin < 0 || body.IntervalMax < body.IntervalMin) return Fail("El intervalo mínimo tiene que ser menor o igual que el máximo.");
+            using var context = Context(services);
+            if (!context.Accounts.Any(x => x.Id == accountId)) return Fail("No se encontró la cuenta.");
+            WriteSetting(context, accountId, AccountSettingEnums.UseStartAllButton, body.UseStartAll ? 1 : 0);
+            WriteSetting(context, accountId, AccountSettingEnums.FarmIntervalMin, body.IntervalMin);
+            WriteSetting(context, accountId, AccountSettingEnums.FarmIntervalMax, body.IntervalMax);
+            return Ok("Opciones de las listas del juego guardadas.");
+        }
+
+        private static bool IsGold(IServiceProvider services, int accountId)
+        {
+            using var context = Context(services);
+            return context.BooleanByName(new AccountId(accountId), AccountSettingEnums.Gold);
+        }
+
+        private static void SwitchFarmMode(IServiceProvider services, int accountId, bool gold)
+        {
+            var account = new AccountId(accountId);
+            var tasks = services.GetRequiredService<TaskManager>();
+            if (gold)
+            {
+                foreach (var raid in tasks.GetTaskList(account).OfType<RaidCowListTask.Task>().ToList())
+                {
+                    raid.KeepRepeating = false;
+                    if (ReferenceEquals(tasks.GetCurrentTask(account), raid))
+                        tasks.CancelIfCurrent<RaidCowListTask.Task>(account);
+                    else
+                        tasks.Remove(account, raid);
+                }
+                return;
+            }
+
+            if (tasks.GetCurrentTask(account) is StartFarmListTask.Task)
+                tasks.CancelIfCurrent<StartFarmListTask.Task>(account);
+            tasks.Remove<StartFarmListTask.Task>(account);
+        }
+
+        private static void WriteSetting(AppDbContext context, int accountId, AccountSettingEnums setting, int value)
+        {
+            var updated = context.AccountsSetting.Where(x => x.AccountId == accountId && x.Setting == setting)
+                .ExecuteUpdate(x => x.SetProperty(row => row.Value, value));
+            if (updated > 0) return;
+            context.AccountsSetting.Add(new AccountSetting { AccountId = accountId, Setting = setting, Value = value });
+            context.SaveChanges();
+        }
+
         private static IResult StartCowList(IServiceProvider services, int accountId, int listId, CowListBody body)
         {
+            if (IsGold(services, accountId)) return Fail("Esta cuenta es Gold. Farming usa las listas del juego.");
             if (body.MinMinutes < 1 || body.RepeatMinutes < 1) return Fail("Para iniciar, el mínimo por aldea y la revisión de la lista tienen que ser de 1 minuto o más.");
             var account = new AccountId(accountId);
             var tasks = services.GetRequiredService<TaskManager>();
@@ -1451,7 +1569,7 @@ namespace WPFUI
             return string.IsNullOrWhiteSpace(skipReason) ? "sin atacar" : skipReason;
         }
 
-        private static string FormatCountdown(RaidCowListTask.Task task)
+        private static string FormatCountdown(BaseTask task)
         {
             if (task is null) return "";
             if (task.Stage == StageEnums.Executing) return "Atacando";
@@ -1580,6 +1698,13 @@ namespace WPFUI
         public string Name { get; set; }
         public string Url { get; set; }
         public string Troops { get; set; }
+    }
+
+    public sealed class GameFarmBody
+    {
+        public bool UseStartAll { get; set; }
+        public int IntervalMin { get; set; }
+        public int IntervalMax { get; set; }
     }
 
     public sealed class SearchBody

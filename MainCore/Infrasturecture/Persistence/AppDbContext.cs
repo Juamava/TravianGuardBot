@@ -53,6 +53,7 @@ namespace MainCore.Infrasturecture.Persistence
             {AccountSettingEnums.EnableAutoStartAdventure, 0 },
             {AccountSettingEnums.EnableAutoClaimDailyQuest, 0 },
             {AccountSettingEnums.EnableAutoSetHeroPoint, 0 },
+            {AccountSettingEnums.Gold, 0 },
         }.ToImmutableDictionary();
 
         private List<AccountSettingEnums> GetMissingAccountSettings()
