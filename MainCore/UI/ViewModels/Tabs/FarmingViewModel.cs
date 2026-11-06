@@ -114,28 +114,33 @@ namespace MainCore.UI.ViewModels.Tabs
         {
             using var context = _contextFactory.CreateDbContext();
 
-            var useStartAllButton = context.BooleanByName(AccountId, AccountSettingEnums.UseStartAllButton);
-            if (!useStartAllButton)
+            var active = context.FarmLists
+                .Where(x => x.AccountId == AccountId.Value && x.IsActive)
+                .Select(x => x.Id)
+                .ToList();
+            if (active.Count == 0)
             {
-                var count = context.FarmLists
-                    .Where(x => x.AccountId == AccountId.Value)
-                    .Count(x => x.IsActive);
-
-                if (count == 0)
-                {
-                    await _dialogService.SendMessage("Information", "There is no active farm or use start all button is disable");
-                    return;
-                }
+                await _dialogService.SendMessage("Information", "There is no active farm");
+                return;
             }
-            _taskManager.AddOrUpdate<StartFarmListTask.Task>(new(AccountId));
-            await _dialogService.SendMessage("Information", "Added start farm list task");
+
+            var running = _taskManager.GetTaskList(AccountId).OfType<StartFarmListTask.Task>().Select(x => x.FarmId).ToHashSet();
+            var started = 0;
+            foreach (var farmId in active)
+            {
+                if (!running.Add(farmId)) continue;
+                _taskManager.Add(new StartFarmListTask.Task(AccountId, farmId));
+                started++;
+            }
+            await _dialogService.SendMessage("Information", started == 0 ? "Those lists are already running" : $"Added {started} farm list tasks");
         }
 
         [ReactiveCommand(RunInBackground = true)]
         private async Task Stop()
         {
-            _taskManager.Remove<StartFarmListTask.Task>(AccountId);
-            await _dialogService.SendMessage("Information", "Removed start farm list task");
+            foreach (var task in _taskManager.GetTaskList(AccountId).OfType<StartFarmListTask.Task>().ToList())
+                _taskManager.Remove(AccountId, task);
+            await _dialogService.SendMessage("Information", "Removed start farm list tasks");
         }
 
         [ReactiveCommand(RunInBackground = true)]
