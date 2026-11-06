@@ -11,68 +11,48 @@ namespace MainCore.Tasks
         ToFarmListPageCommand.Handler toFarmListPageCommand
         )
     {
-        public sealed class Task(AccountId accountId) : AccountTask(accountId)
+        public sealed class Task(AccountId accountId, int farmId) : AccountTask(accountId)
         {
-            protected override string TaskName => "Start farm list";
+            public int FarmId { get; } = farmId;
+            public override string Key => $"{AccountId}-farm-{FarmId}";
+            protected override string TaskName => $"Start farm list #{FarmId}";
         }
 
         private async ValueTask<Result> HandleAsync(
             Task task,
             CancellationToken cancellationToken)
         {
-            Result result;
-            result = await toFarmListPageCommand.HandleAsync(new(task.AccountId), cancellationToken);
+            var farm = LoadFarm(task.AccountId, task.FarmId);
+            if (farm is null || !farm.Active)
+                return Skip.Error.WithError("Farm list is inactive");
+
+            var result = await toFarmListPageCommand.HandleAsync(new(task.AccountId), cancellationToken);
             if (result.IsFailed) return result;
 
-            if (UseStartAllButton(task.AccountId))
-            {
-                result = await browser.Click(FarmListParser.GetStartAllButton(browser.CurrentPage));
-                if (result.IsFailed) return result;
-            }
-            else
-            {
-                var farmLists = GetActiveFarms(task.AccountId);
-                if (farmLists.Count == 0) return Skip.Error.WithError("No farmlist is active");
+            result = await browser.Click(FarmListParser.GetStartButton(browser.CurrentPage, new FarmId(task.FarmId)));
+            if (result.IsFailed) return result;
 
-                foreach (var farmList in farmLists)
-                {
-                    result = await browser.Click(FarmListParser.GetStartButton(browser.CurrentPage, farmList));
-                    if (result.IsFailed) return result;
-                }
-            }
-
-            task.ExecuteAt = GetNextExecuteTime(task.AccountId);
+            task.ExecuteAt = DateTime.Now.AddSeconds(NextSeconds(farm.Min, farm.Max));
             return Result.Ok();
         }
 
-        private bool UseStartAllButton(AccountId accountId)
+        private FarmPace? LoadFarm(AccountId accountId, int farmId)
         {
             using var context = contextFactory.CreateDbContext();
-            var useStartAllButton = context.BooleanByName(accountId, AccountSettingEnums.UseStartAllButton);
-            return useStartAllButton;
+            var row = context.FarmLists
+                .Where(x => x.Id == farmId && x.AccountId == accountId.Value)
+                .Select(x => new { x.IsActive, x.IntervalMin, x.IntervalMax })
+                .FirstOrDefault();
+            return row is null ? null : new FarmPace(row.IsActive, row.IntervalMin, row.IntervalMax);
         }
 
-        private DateTime GetNextExecuteTime(AccountId accountId)
+        private static int NextSeconds(int min, int max)
         {
-            using var context = contextFactory.CreateDbContext();
-
-            var seconds = context.ByName(
-                accountId,
-                AccountSettingEnums.FarmIntervalMin,
-                AccountSettingEnums.FarmIntervalMax);
-            var nextExecute = DateTime.Now.AddSeconds(seconds);
-            return nextExecute;
+            if (min < 1) min = 9;
+            if (max < min) max = min;
+            return GetSettingsExtension.Normal(min, max) * 60;
         }
 
-        private List<FarmId> GetActiveFarms(AccountId accountId)
-        {
-            using var context = contextFactory.CreateDbContext();
-            var farmLists = context.FarmLists
-                .Where(x => x.AccountId == accountId.Value)
-                .Where(x => x.IsActive)
-                .Select(x => new FarmId(x.Id))
-                .ToList();
-            return farmLists;
-        }
+        private sealed record FarmPace(bool Active, int Min, int Max);
     }
 }

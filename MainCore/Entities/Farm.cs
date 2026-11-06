@@ -11,6 +11,9 @@ namespace MainCore.Entities
         public int AccountId { get; set; }
         public string Name { get; set; }
         public bool IsActive { get; set; }
+        public int IntervalMin { get; set; } = 9;
+        public int IntervalMax { get; set; } = 11;
+        public int IntervalsInMinutes { get; set; } = 1;
     }
 
     [StronglyTypedId]
