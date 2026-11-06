@@ -114,6 +114,7 @@ namespace WPFUI
             app.MapPost("/api/accounts/{id:int}/farming/game/stop", (int id) => StopGameFarms(services, id));
             app.MapPost("/api/accounts/{id:int}/farming/game/{farmId:int}/active", (int id, int farmId) => ToggleGameFarm(services, id, farmId));
             app.MapPut("/api/accounts/{id:int}/farming/game/options", (int id, GameFarmBody body) => SaveGameFarmOptions(services, id, body));
+            app.MapPut("/api/accounts/{id:int}/farming/game/{farmId:int}/interval", (int id, int farmId, GameIntervalBody body) => SaveGameFarmInterval(services, id, farmId, body));
 
             app.MapGet("/api/accounts/{id:int}/hero", (int id) => GetHero(services, id));
 
@@ -686,13 +687,27 @@ namespace WPFUI
                 }).ToList();
             var account = new AccountId(accountId);
             var gold = context.BooleanByName(account, AccountSettingEnums.Gold);
+            var gameTasks = services.GetRequiredService<TaskManager>().GetTaskList(account).OfType<StartFarmListTask.Task>().ToList();
             var gameLists = context.FarmLists.Where(x => x.AccountId == accountId).OrderBy(x => x.Name)
-                .Select(x => new { id = x.Id, name = x.Name, active = x.IsActive })
+                .Select(x => new { x.Id, x.Name, x.IsActive, x.IntervalMin, x.IntervalMax })
+                .AsEnumerable()
+                .Select(x =>
+                {
+                    var task = gameTasks.FirstOrDefault(item => item.FarmId == x.Id);
+                    var min = x.IntervalMin < 1 ? 540 : x.IntervalMin;
+                    var max = x.IntervalMax < min ? min : x.IntervalMax;
+                    return new
+                    {
+                        id = x.Id,
+                        name = x.Name,
+                        active = x.IsActive,
+                        intervalMin = min,
+                        intervalMax = max,
+                        running = task is not null,
+                        countdown = FormatGameWait(task),
+                    };
+                })
                 .ToList();
-            var interval = context.AccountsSetting
-                .Where(x => x.AccountId == accountId && (x.Setting == AccountSettingEnums.FarmIntervalMin || x.Setting == AccountSettingEnums.FarmIntervalMax))
-                .ToList();
-            var gameTask = services.GetRequiredService<TaskManager>().GetTaskList(account).OfType<StartFarmListTask.Task>().FirstOrDefault();
             return Ok("", new
             {
                 villages,
@@ -701,11 +716,7 @@ namespace WPFUI
                 countdown = "",
                 gold,
                 gameLists,
-                useStartAll = context.BooleanByName(account, AccountSettingEnums.UseStartAllButton),
-                farmIntervalMin = interval.FirstOrDefault(x => x.Setting == AccountSettingEnums.FarmIntervalMin)?.Value ?? 540,
-                farmIntervalMax = interval.FirstOrDefault(x => x.Setting == AccountSettingEnums.FarmIntervalMax)?.Value ?? 660,
-                gameRunning = gameTask is not null,
-                gameCountdown = FormatCountdown(gameTask),
+                gameRunning = gameTasks.Count > 0,
             });
         }
 
@@ -1002,14 +1013,22 @@ namespace WPFUI
             if (!IsGold(services, accountId)) return Fail("Esta cuenta no está marcada como Gold.");
             var account = new AccountId(accountId);
             using var context = Context(services);
-            if (!context.BooleanByName(account, AccountSettingEnums.UseStartAllButton) && !context.FarmLists.Any(x => x.AccountId == accountId && x.IsActive))
-                return Fail("No hay ninguna lista activa. Activa una, o encendé Iniciar todas.");
+            var active = context.FarmLists.Where(x => x.AccountId == accountId && x.IsActive).Select(x => x.Id).ToList();
+            if (active.Count == 0) return Fail("No hay ninguna lista activa.");
             var tasks = services.GetRequiredService<TaskManager>();
             var waiting = BrowserBusy(tasks, account);
-            tasks.AddOrUpdate(new StartFarmListTask.Task(account));
+            var running = tasks.GetTaskList(account).OfType<StartFarmListTask.Task>().Select(x => x.FarmId).ToHashSet();
+            var started = 0;
+            foreach (var farmId in active)
+            {
+                if (!running.Add(farmId)) continue;
+                tasks.Add(new StartFarmListTask.Task(account, farmId));
+                started++;
+            }
+            if (started == 0) return Fail("Esas listas ya están en curso.");
             return Ok(waiting
-                ? "Empieza cuando termine lo que está usando el navegador."
-                : "Empieza a iniciar las listas del juego.");
+                ? $"Empiezan {started} cuando termine lo que está usando el navegador. Cada una sigue con su frecuencia."
+                : $"Empiezan {started} listas. Cada una se vuelve a iniciar con su propia frecuencia.");
         }
 
         private static bool BrowserBusy(TaskManager tasks, AccountId account)
@@ -1025,7 +1044,8 @@ namespace WPFUI
             var tasks = services.GetRequiredService<TaskManager>();
             if (tasks.GetCurrentTask(account) is StartFarmListTask.Task)
                 tasks.CancelIfCurrent<StartFarmListTask.Task>(account);
-            tasks.Remove<StartFarmListTask.Task>(account);
+            foreach (var task in tasks.GetTaskList(account).OfType<StartFarmListTask.Task>().ToList())
+                tasks.Remove(account, task);
             return Ok("Se detuvo el inicio de las listas del juego.");
         }
 
@@ -1036,6 +1056,18 @@ namespace WPFUI
                 .ExecuteUpdate(x => x.SetProperty(farm => farm.IsActive, farm => !farm.IsActive));
             if (updated == 0) return Fail("No se encontró la lista del juego.");
             return Ok("Lista actualizada.");
+        }
+
+        private static IResult SaveGameFarmInterval(IServiceProvider services, int accountId, int farmId, GameIntervalBody body)
+        {
+            if (body.IntervalMin < 1 || body.IntervalMax < body.IntervalMin || body.IntervalMax > 604800) return Fail("El mínimo tiene que ser de 1 segundo o más, no puede pasar el máximo, y el máximo es de 7 días.");
+            using var context = Context(services);
+            var updated = context.FarmLists.Where(x => x.Id == farmId && x.AccountId == accountId)
+                .ExecuteUpdate(x => x
+                    .SetProperty(farm => farm.IntervalMin, body.IntervalMin)
+                    .SetProperty(farm => farm.IntervalMax, body.IntervalMax));
+            if (updated == 0) return Fail("No se encontró la lista del juego.");
+            return Ok("Frecuencia guardada. Se usa la próxima vez que esa lista vuelva a iniciar.");
         }
 
         private static IResult SaveGameFarmOptions(IServiceProvider services, int accountId, GameFarmBody body)
@@ -1583,6 +1615,18 @@ namespace WPFUI
             return string.IsNullOrWhiteSpace(skipReason) ? "sin atacar" : skipReason;
         }
 
+        private static string FormatGameWait(BaseTask task)
+        {
+            if (task is null) return "";
+            if (task.Stage == StageEnums.Executing) return "Iniciando";
+            var remaining = task.ExecuteAt - DateTime.Now;
+            if (remaining <= TimeSpan.Zero) return "En espera";
+            var text = remaining.TotalHours >= 1
+                ? $"{(int)remaining.TotalHours}:{remaining.Minutes:00}:{remaining.Seconds:00}"
+                : $"{(int)remaining.TotalMinutes:00}:{remaining.Seconds:00}";
+            return $"Próximo inicio en {text}";
+        }
+
         private static string FormatCountdown(BaseTask task)
         {
             if (task is null) return "";
@@ -1717,6 +1761,12 @@ namespace WPFUI
     public sealed class GameFarmBody
     {
         public bool UseStartAll { get; set; }
+        public int IntervalMin { get; set; }
+        public int IntervalMax { get; set; }
+    }
+
+    public sealed class GameIntervalBody
+    {
         public int IntervalMin { get; set; }
         public int IntervalMax { get; set; }
     }
