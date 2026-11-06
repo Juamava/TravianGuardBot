@@ -30,6 +30,7 @@ export type AccountRow = {
   host: string
   status: string
   pause: string
+  gold?: boolean
 }
 
 export type Overview = {

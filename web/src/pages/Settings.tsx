@@ -27,7 +27,7 @@ const accountFields: { title: string; fields: Field[] }[] = [
     { kind: 'bool', label: 'Empezar aventuras', key: 'EnableAutoStartAdventure', hint: 'Manda al héroe a las aventuras que aparezcan.' },
     { kind: 'bool', label: 'Reclamar la misión diaria', key: 'EnableAutoClaimDailyQuest', hint: 'Reclama la recompensa de la misión diaria.' },
     { kind: 'bool', label: 'Repartir puntos del héroe (1 poder, 3 recursos)', key: 'EnableAutoSetHeroPoint', hint: 'Cuando el héroe sube de nivel, pone 1 punto en poder y 3 en recursos.' },
-    { kind: 'bool', label: 'Cuenta Gold', key: 'Gold', hint: 'Con Gold, Farming usa las listas de vacas del juego. Sin Gold, usa las listas propias del bot.' },
+    { kind: 'bool', label: 'Cuenta Gold', key: 'Gold', hint: 'Con Gold, Farming muestra las listas propias y las del juego. Se usan de a una, porque hay un solo navegador.' },
     { kind: 'tribe', label: 'Tribu', hint: 'La tribu de la cuenta. Define qué tropas se pueden entrenar.' },
   ]},
   { title: 'Chrome', fields: [
