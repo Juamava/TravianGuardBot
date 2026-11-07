@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, Link, MenuItem, Stack, Switch, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import GpsFixedIcon from '@mui/icons-material/GpsFixed'
+import ScheduleIcon from '@mui/icons-material/Schedule'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd'
@@ -33,6 +36,7 @@ type Target = {
   danger: number
   label: string
   why: string
+  attack: Attack | null
   wood: number
   clay: number
   iron: number
@@ -50,6 +54,30 @@ type OwnList = { id: number; name: string; sameVillage: boolean }
 type ScoutingData = { villages: Village[]; lists: ScoutList[]; targets: Target[]; ownLists: OwnList[]; scoutPlan: string; server: string }
 type Filter = 'todas' | 'gorda' | 'flaca' | 'peligro' | 'sin'
 type HomeTroop = { letter: string; index: number; name: string; available: number }
+type Attack = { state: 'cola' | 'enviando' | 'enviado' | 'error'; plan: string; raid: boolean; at: string | null; message: string }
+
+const attackLook: Record<Attack['state'], { label: string; bg: string; fg: string }> = {
+  cola: { label: 'En cola', bg: '#35373c', fg: '#dbdee1' },
+  enviando: { label: 'Enviando', bg: '#1e2a4a', fg: '#8ea1f7' },
+  enviado: { label: 'Enviado', bg: '#1f3b2b', fg: '#3ba55d' },
+  error: { label: 'No se envió', bg: '#3a2426', fg: '#ed4245' },
+}
+
+function AttackChip({ attack }: { attack: Attack }) {
+  const look = attackLook[attack.state] ?? attackLook.error
+  const icon = attack.state === 'enviando'
+    ? <CircularProgress size={12} sx={{ color: look.fg, ml: '6px !important' }} />
+    : attack.state === 'enviado'
+      ? <CheckCircleOutlineIcon sx={{ fontSize: 14, color: `${look.fg} !important` }} />
+      : attack.state === 'error'
+        ? <ErrorOutlineIcon sx={{ fontSize: 14, color: `${look.fg} !important` }} />
+        : <ScheduleIcon sx={{ fontSize: 14, color: `${look.fg} !important` }} />
+  return (
+    <Tooltip title={`${attack.raid ? 'Asalto' : 'Ataque normal'} con ${attack.plan}${attack.at ? ` · ${new Date(attack.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : ''}\n${attack.message}`} slotProps={{ tooltip: { sx: { whiteSpace: 'pre-line', fontSize: 13 } } }}>
+      <Chip size="small" icon={icon} label={`${look.label} ${attack.plan}`} sx={{ bgcolor: look.bg, color: look.fg, fontWeight: 600, height: 22, maxWidth: '100%' }} />
+    </Tooltip>
+  )
+}
 
 const columns = '34px minmax(150px, 1.4fr) 120px minmax(150px, 1fr) 70px 64px 110px 120px 34px 34px'
 const tipSx = { tooltip: { sx: { maxWidth: 360, fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-line' as const } } }
@@ -98,6 +126,7 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
   const ui = useUi()
   const [villageId, setVillageId] = useState(0)
   const [data, setData] = useState<ScoutingData | null>(null)
+  const busy = (data?.targets ?? []).some(target => target.attack?.state === 'cola' || target.attack?.state === 'enviando')
   const [listId, setListId] = useState(0)
   const [filter, setFilter] = useState<Filter>('todas')
   const [selected, setSelected] = useState<number[]>([])
@@ -127,9 +156,9 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
   useEffect(() => {
     if (!villageId) return
     load(villageId).catch((error: Error) => notify(error.message))
-    const timer = window.setInterval(() => load(villageId).catch(() => undefined), 4000)
+    const timer = window.setInterval(() => load(villageId).catch(() => undefined), busy ? 1500 : 4000)
     return () => window.clearInterval(timer)
-  }, [villageId])
+  }, [villageId, busy])
 
   const list = data?.lists.find(item => item.id === listId) ?? null
   useEffect(() => {
@@ -259,6 +288,11 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
 
   if (data && data.villages.length === 0) return <Empty title="Todavía no hay aldeas" text="Conectá la cuenta. Cuando el juego cargue las aldeas, vas a poder espiar desde acá." />
 
+  const recentAttacks = (data?.targets ?? [])
+    .filter(target => target.listId === listId && target.attack && (target.attack.state === 'cola' || target.attack.state === 'enviando' || (target.attack.at && Date.now() - new Date(target.attack.at).getTime() < 6 * 3600 * 1000)))
+    .sort((a, b) => new Date(b.attack!.at ?? Date.now()).getTime() - new Date(a.attack!.at ?? Date.now()).getTime())
+    .slice(0, 8)
+
   const allChecked = targets.length > 0 && targets.every(target => selected.includes(target.id))
 
   return (
@@ -312,6 +346,24 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
           <Typography variant="caption" color="text.secondary">
             Cada vuelta primero lee los reportes de espionaje y visita el perfil de los dueños, después manda espías a las aldeas que toca. Se alterna con tus otras listas en el mismo navegador.
           </Typography>
+        </Stack>
+      )}
+
+      {recentAttacks.length > 0 && (
+        <Stack spacing={0.5} sx={{ ...panel, p: 1.5 }}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <GpsFixedIcon sx={{ fontSize: 18, color: '#f0b232' }} />
+            <Typography sx={{ fontWeight: 700 }}>Ataques</Typography>
+            <Typography variant="caption" color="text.secondary">últimas 6 horas</Typography>
+          </Stack>
+          {recentAttacks.map(target => (
+            <Stack key={target.id} direction="row" spacing={1} alignItems="center" sx={{ px: 0.5, py: 0.25, borderRadius: 1, '&:hover': { bgcolor: '#35373c' } }}>
+              <Box sx={{ width: 190, flexShrink: 0 }}><AttackChip attack={target.attack!} /></Box>
+              <Typography sx={{ fontSize: 13, fontWeight: 600, minWidth: 0 }} noWrap>{target.name}{target.x != null ? ` (${target.x}|${target.y})` : ''}</Typography>
+              <Typography sx={{ fontSize: 12, color: target.attack!.state === 'error' ? '#ed4245' : '#949ba4', flex: 1, minWidth: 0 }} noWrap title={target.attack!.message}>{target.attack!.message}</Typography>
+              <Typography sx={{ fontSize: 12, color: '#949ba4', flexShrink: 0 }}>{target.attack!.at ? ago(target.attack!.at) : ''}</Typography>
+            </Stack>
+          ))}
         </Stack>
       )}
 
@@ -386,11 +438,13 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
                   <Typography sx={{ fontSize: 13, color: '#b5bac1' }} noWrap>{target.playerPopulation >= 0 ? `${target.playerPopulation} hab · ${target.playerVillages} ald.` : '—'}</Typography>
                 </Tooltip>
                 <Box sx={{ minWidth: 0 }}>
-                  <Typography sx={{ fontSize: 12 }} noWrap>{target.status}</Typography>
+                  {target.attack && (target.attack.state === 'cola' || target.attack.state === 'enviando' || (target.attack.at && Date.now() - new Date(target.attack.at).getTime() < 6 * 3600 * 1000))
+                    ? <AttackChip attack={target.attack} />
+                    : <Typography sx={{ fontSize: 12 }} noWrap>{target.status}</Typography>}
                   {target.scoutedAt && <Typography sx={{ fontSize: 11, color: '#949ba4' }} noWrap>espiada {ago(target.scoutedAt)}</Typography>}
                 </Box>
                 <Tooltip title="Atacar">
-                  <IconButton size="small" sx={{ color: '#f0b232' }} onClick={() => openAttack(target)}><GpsFixedIcon fontSize="small" /></IconButton>
+                  <span><IconButton size="small" sx={{ color: '#f0b232' }} disabled={target.attack?.state === 'cola' || target.attack?.state === 'enviando'} onClick={() => openAttack(target)}><GpsFixedIcon fontSize="small" /></IconButton></span>
                 </Tooltip>
                 <Tooltip title="Quitar de la lista">
                   <IconButton size="small" sx={{ color: '#ed4245' }} onClick={async () => { if (await ui.confirm(`¿Quitar ${target.name} de la lista?`)) run(() => del(`/api/accounts/${accountId}/farming/villages/${target.id}`)) }}><DeleteOutlineIcon fontSize="small" /></IconButton>

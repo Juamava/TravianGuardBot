@@ -898,6 +898,7 @@ namespace WPFUI
                 .Where(x => context.CowVillages.Any(village => village.Id == x.CowVillageId && listIds.Contains(village.CowListId)))
                 .ToDictionary(x => x.CowVillageId);
             var thresholds = context.CowLists.Where(x => listIds.Contains(x.Id)).ToDictionary(x => x.Id, x => x.FullThreshold);
+            var attackTasks = services.GetRequiredService<TaskManager>().GetTaskList(account).OfType<AttackVillageTask.Task>().ToList();
             var populationsByList = context.CowVillages.Where(x => listIds.Contains(x.CowListId)).Select(x => new { x.Id, x.CowListId }).AsEnumerable()
                 .GroupBy(x => x.CowListId)
                 .ToDictionary(group => group.Key, group => (IReadOnlyCollection<int>)group.Select(x => results.TryGetValue(x.Id, out var item) && item.ScoutedAt != null ? item.PlayerPopulation : -1).ToList());
@@ -958,6 +959,7 @@ namespace WPFUI
                         danger = scouted ? result.Danger : 0,
                         label = scouted ? ScoutRules.Label(result.Class, result.Danger) : "",
                         why,
+                        attack = AttackStatus(result, attackTasks.FirstOrDefault(task => task.CowVillageId == x.Id)),
                         wood = result?.Wood ?? -1,
                         clay = result?.Clay ?? -1,
                         iron = result?.Iron ?? -1,
@@ -1035,12 +1037,49 @@ namespace WPFUI
             var status = tasks.GetStatus(account);
             if (status is not (StatusEnums.Online or StatusEnums.Paused)) return Fail("Conectá la cuenta para atacar.");
 
+            if (tasks.GetTaskList(account).OfType<AttackVillageTask.Task>().Any(x => x.CowVillageId == target.Id))
+                return Fail("Ya hay un ataque en cola para esta aldea. Esperá a que salga.");
+
             tasks.Add(new AttackVillageTask.Task(account, target.Id, target.Url, plan, body.Raid));
-            context.CowVillages.Where(x => x.Id == target.Id).ExecuteUpdate(x => x.SetProperty(village => village.LastSkipReason, $"Ataque en cola {plan}"));
+            AttackVillageTask.SaveState(context, target.Id, ScoutResult.AttackQueued, plan, body.Raid, status == StatusEnums.Paused ? "En cola: el bot está en pausa" : "En cola: espera su turno en el navegador");
             var mission = body.Raid ? "asalto" : "ataque normal";
             return Ok(status == StatusEnums.Paused
                 ? $"{mission} a {VillageLabel(target.Name)} con {plan} en cola. El bot está en pausa: sale cuando lo reanudes."
                 : $"{mission} a {VillageLabel(target.Name)} con {plan} en cola: sale en el próximo turno del navegador.");
+        }
+
+        /// <summary>
+        /// Attack status of one target. The queue wins over the saved state: a task still in the queue is
+        /// "cola", or "enviando" while it has the browser.
+        /// </summary>
+        private static object AttackStatus(ScoutResult result, AttackVillageTask.Task task)
+        {
+            if (task is not null)
+            {
+                var sending = task.Stage == StageEnums.Executing;
+                var queuedAhead = Math.Max(0, (int)Math.Ceiling((task.ExecuteAt - DateTime.Now).TotalSeconds));
+                return new
+                {
+                    state = sending ? ScoutResult.AttackSending : ScoutResult.AttackQueued,
+                    plan = task.TroopPlan,
+                    raid = task.Raid,
+                    at = result?.AttackAt,
+                    message = sending ? (string.IsNullOrWhiteSpace(result?.AttackMessage) ? "Enviando" : result.AttackMessage) : queuedAhead > 0 ? $"En cola, sale en {queuedAhead} s" : "En cola: espera su turno en el navegador",
+                };
+            }
+
+            if (result is null || string.IsNullOrWhiteSpace(result.AttackState)) return null;
+
+            // A task that vanished while "cola" or "enviando" (bot restarted) did not send anything.
+            var state = result.AttackState;
+            var message = result.AttackMessage;
+            if (state is ScoutResult.AttackQueued or ScoutResult.AttackSending)
+            {
+                state = ScoutResult.AttackFailed;
+                message = "No se envió: el bot se reinició o se pausó antes de su turno";
+            }
+
+            return new { state, plan = result.AttackPlan, raid = result.AttackRaid, at = result.AttackAt, message };
         }
 
         private static IResult CreateScoutList(IServiceProvider services, int accountId, CowListBody body)

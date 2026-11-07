@@ -27,6 +27,7 @@ namespace MainCore.Tasks
         private async ValueTask<Result> HandleAsync(Task task, CancellationToken cancellationToken)
         {
             if (!CowTroopPlan.TryParse(task.TroopPlan, out var slots, out var planError)) return Stop(task, planError);
+            SetState(task, ScoutResult.AttackSending, "Abriendo la aldea en el navegador");
 
             try
             {
@@ -95,24 +96,47 @@ namespace MainCore.Tasks
             }
 
             logger.Information("Attack sent to {Url} with {Plan} ({Mission})", task.Url, task.TroopPlan, task.Raid ? "raid" : "normal");
-            MarkStatus(task, $"Ataque enviado {task.TroopPlan}");
+            SetState(task, ScoutResult.AttackSent, $"{(task.Raid ? "Asalto" : "Ataque normal")} con {task.TroopPlan} confirmado en el juego");
             return Result.Ok();
         }
 
         private Result Stop(Task task, string reason)
         {
             logger.Warning("Attack to {Url} was not sent: {Reason}", task.Url, reason);
-            MarkStatus(task, "Ataque no enviado: " + reason);
+            SetState(task, ScoutResult.AttackFailed, "No se envió: " + reason);
             return Skip.Error.WithError("Attack was not sent: " + reason);
         }
 
-        private void MarkStatus(Task task, string status)
+        /// <summary>Saves where the attack is, for the Scouting screen.</summary>
+        public static void SaveState(AppDbContext context, int cowVillageId, string state, string plan, bool raid, string message)
         {
-            using var context = contextFactory.CreateDbContext();
-            var updated = context.CowVillages
-                .Where(x => x.Id == task.CowVillageId)
-                .ExecuteUpdate(x => x.SetProperty(village => village.LastSkipReason, status));
-            if (updated > 0) rxQueue.Enqueue(new CowVillagesModified(task.AccountId));
+            var row = context.ScoutResults.FirstOrDefault(x => x.CowVillageId == cowVillageId);
+            if (row is null)
+            {
+                row = new ScoutResult { CowVillageId = cowVillageId };
+                context.ScoutResults.Add(row);
+            }
+
+            row.AttackState = state;
+            row.AttackPlan = plan;
+            row.AttackRaid = raid;
+            row.AttackAt = DateTime.Now;
+            row.AttackMessage = message;
+            context.SaveChanges();
+        }
+
+        private void SetState(Task task, string state, string message)
+        {
+            try
+            {
+                using var context = contextFactory.CreateDbContext();
+                SaveState(context, task.CowVillageId, state, task.TroopPlan, task.Raid, message);
+                rxQueue.Enqueue(new CowVillagesModified(task.AccountId));
+            }
+            catch (Exception ex)
+            {
+                logger.Warning(ex, "Could not save the attack status: {Message}", ex.Message);
+            }
         }
     }
 }

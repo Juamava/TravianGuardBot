@@ -324,9 +324,20 @@ namespace MainCore.Infrasturecture.Persistence
                     "DaysPlaying" INTEGER NOT NULL DEFAULT -1,
                     "HeroLevel" INTEGER NOT NULL DEFAULT -1,
                     "ProfileAt" TEXT NULL,
+                    "AttackState" TEXT NOT NULL DEFAULT '',
+                    "AttackPlan" TEXT NOT NULL DEFAULT '',
+                    "AttackRaid" INTEGER NOT NULL DEFAULT 0,
+                    "AttackAt" TEXT NULL,
+                    "AttackMessage" TEXT NOT NULL DEFAULT '',
                     CONSTRAINT "FK_ScoutResults_CowVillages_CowVillageId" FOREIGN KEY ("CowVillageId") REFERENCES "CowVillages" ("Id") ON DELETE CASCADE
                 );
                 """);
+
+            EnsureColumn("ScoutResults", "AttackState", "TEXT NOT NULL DEFAULT ''");
+            EnsureColumn("ScoutResults", "AttackPlan", "TEXT NOT NULL DEFAULT ''");
+            EnsureColumn("ScoutResults", "AttackRaid", "INTEGER NOT NULL DEFAULT 0");
+            EnsureColumn("ScoutResults", "AttackAt", "TEXT NULL");
+            EnsureColumn("ScoutResults", "AttackMessage", "TEXT NOT NULL DEFAULT ''");
         }
 
         public void EnsureVillageColumns()

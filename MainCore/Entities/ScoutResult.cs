@@ -51,5 +51,22 @@ namespace MainCore.Entities
         public int DaysPlaying { get; set; } = -1;
         public int HeroLevel { get; set; } = -1;
         public DateTime? ProfileAt { get; set; }
+
+        /// <summary>Last attack asked from the Scouting screen: cola, enviando, enviado or error.</summary>
+        public string AttackState { get; set; } = "";
+
+        public string AttackPlan { get; set; } = "";
+        public bool AttackRaid { get; set; }
+
+        /// <summary>When AttackState last changed.</summary>
+        public DateTime? AttackAt { get; set; }
+
+        /// <summary>Why it failed, or what was sent.</summary>
+        public string AttackMessage { get; set; } = "";
+
+        public const string AttackQueued = "cola";
+        public const string AttackSending = "enviando";
+        public const string AttackSent = "enviado";
+        public const string AttackFailed = "error";
     }
 }
