@@ -9,6 +9,7 @@ import { type RealtimeChannel } from '@supabase/supabase-js'
 import { useEffect, useRef, useState, type ClipboardEvent } from 'react'
 import { api, post } from '../api'
 import { useUi } from '../ui'
+import { attachClients, detachClients, notePresence, readPresence, type Order } from '../admin/orders'
 import { clanChat as supabase, parseClanCommand, roomOf } from './commands'
 
 const emojis = ['😀', '😁', '😂', '😉', '😎', '😭', '👍', '🙏', '🔥', '💪', '🎉', '✅', '⚔️', '🛡️', '🏰', '🌾', '🐎', '🏹']
@@ -192,36 +193,6 @@ function ChatLink({ part, onAttack }: { part: ChatPart; onAttack: (target: Attac
   )
 }
 
-const helpText = [
-  '/stop Nombre razón',
-  'Pausa todo el bot de esa persona.',
-  '/resume Nombre razón',
-  'Vuelve a poner el bot en marcha.',
-  '',
-  '/stop farming Nombre razón',
-  'Detiene el farming: listas propias, listas del juego y ataques en cola.',
-  '/resume farming Nombre razón',
-  'Vuelve a iniciar las listas con tiempos y aldeas, y las listas activas del juego.',
-  '',
-  '/stop building Nombre razón',
-  'Detiene la construcción de las aldeas. aldeas es lo mismo que building.',
-  '/resume building Nombre razón',
-  'Vuelve a poner en cola las aldeas que tienen trabajos.',
-  '',
-  'La razón es obligatoria. /help, /stop y /resume solos muestran esta ayuda.',
-].join('\n')
-
-const updateHelp = [
-  '/update Nombre',
-  'Descarga la versión nueva en el cliente de esa persona y lo reinicia.',
-  '/update all',
-  'Hace lo mismo en todos los clientes de este clan.',
-].join('\n')
-
-function commandHelp(debug: boolean) {
-  return debug ? `${helpText}\n\n${updateHelp}` : helpText
-}
-
 function sameName(left: string, right: string) {
   return left.trim().localeCompare(right.trim(), 'es', { sensitivity: 'accent' }) === 0
 }
@@ -248,7 +219,7 @@ function readMark(room: string) {
   return Number.isFinite(stored) ? stored : 0
 }
 
-export function ClanChat({ username, host, clan, page, accountId, debug = false }: { username: string; host: string; clan: string; page: string; accountId: number; debug?: boolean }) {
+export function ClanChat({ username, host, clan, page, accountId }: { username: string; host: string; clan: string; page: string; accountId: number }) {
   const ui = useUi()
   const room = roomOf(host, clan)
   const [open, setOpen] = useState(false)
@@ -273,8 +244,6 @@ export function ClanChat({ username, host, clan, page, accountId, debug = false 
   const [logs, setLogs] = useState<{ id: string; at: string; text: string }[]>([])
   const [logOpen, setLogOpen] = useState(false)
   const handled = useRef(new Set<string>())
-  const debugRef = useRef(debug)
-  debugRef.current = debug
   const logBox = useRef<HTMLDivElement | null>(null)
   const [readAt, setReadAt] = useState(() => readMark(room))
   const pageRef = useRef(page)
@@ -304,36 +273,12 @@ export function ClanChat({ username, host, clan, page, accountId, debug = false 
         const message = payload.new as ChatMessage
         if (message.room !== room) return
         if (!isFresh(message, Date.now())) return
-        setMessages(current => current.some(item => item.id === message.id) ? current : [...current, message])
         const body = message.body ?? ''
+        if (parseClanCommand(body)) return
+        setMessages(current => current.some(item => item.id === message.id) ? current : [...current, message])
         const author = (message.username ?? '').trim()
         const joinNotice = body.trimEnd().endsWith(' se ha conectado.')
         if (author !== username.trim() && !joinNotice) playIncoming()
-        const command = parseClanCommand(body)
-        if (command && message.id && !handled.current.has(message.id)) {
-          handled.current.add(message.id)
-          const mine = author.localeCompare(username.trim(), 'es', { sensitivity: 'accent' }) === 0
-          const note = (text: string, at?: string) => {
-            setLogs(current => [...current, { id: `${message.id}-${current.length}`, at: clock(at), text }])
-            setLogOpen(true)
-          }
-          if (command.kind === 'help' && mine) note(commandHelp(debugRef.current), message.created_at)
-          if (command.kind === 'need-reason' && mine) note(`Falta la razón.\n\n${commandHelp(debugRef.current)}`, message.created_at)
-          if (command.kind === 'update-usage' && mine) note(commandHelp(true), message.created_at)
-          if (command.kind === 'update' && (sameName(command.target, 'all') || sameName(command.target, username))) {
-            const everyone = sameName(command.target, 'all')
-            note(everyone ? `${author} pidió actualizar todos los clientes.` : `${author} pidió actualizar este cliente.`, message.created_at)
-            void post('/api/update')
-              .then(result => note(result.message || 'Actualización en marcha.'))
-              .catch((reason: unknown) => note(reason instanceof Error ? reason.message : 'No se pudo actualizar.'))
-          }
-          if (command.kind === 'action' && sameName(command.target, username)) {
-            note(`${author} te ${actionLabel(command.action, command.feature)}. Razón: ${command.reason}`, message.created_at)
-            void post(`/api/accounts/${accountId}/remote-stop`, { action: command.action, feature: command.feature })
-              .then(result => note(result.message || 'Listo.'))
-              .catch((reason: unknown) => note(reason instanceof Error ? reason.message : 'No se pudo completar el comando.'))
-          }
-        }
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, payload => {
         const id = (payload.old as { id?: string }).id
@@ -362,11 +307,39 @@ export function ClanChat({ username, host, clan, page, accountId, debug = false 
         if (status === 'SUBSCRIBED') void channel.track({ username })
       })
 
+    const clients = supabase.channel('guard:clients', { config: { presence: { key: `${host}|${username}` }, broadcast: { self: true } } })
+    attachClients(clients)
+    clients
+      .on('broadcast', { event: 'order' }, ({ payload }) => {
+        const order = payload as Order
+        if (!order?.id || handled.current.has(order.id)) return
+        if (!sameName(order.username, username) || order.host.trim().toLowerCase() !== host.trim().toLowerCase()) return
+        handled.current.add(order.id)
+        const text = order.action === 'update'
+          ? `Administración pidió actualizar este cliente. Razón: ${order.reason}`
+          : `Administración te ${actionLabel(order.action, order.feature)}. Razón: ${order.reason}`
+        const note = (line: string) => {
+          setLogs(current => [...current, { id: `${order.id}-${current.length}`, at: clock(), text: line }])
+          setLogOpen(true)
+        }
+        note(text)
+        const request = order.action === 'update'
+          ? post('/api/update')
+          : post(`/api/accounts/${accountId}/remote-stop`, { action: order.action, feature: order.feature })
+        void request
+          .then(result => note(result.message || 'Listo.'))
+          .catch((reason: unknown) => note(reason instanceof Error ? reason.message : 'No se pudo completar la orden.'))
+      })
+      .on('presence', { event: 'sync' }, () => notePresence(readPresence(clients)))
+      .subscribe(status => {
+        if (status === 'SUBSCRIBED') void clients.track({ username, host, clan })
+      })
+
     const since = new Date(Date.now() - dayMs).toISOString()
     supabase.from('messages').select('id,room,username,body,image_path,created_at').eq('room', room).gte('created_at', since).order('created_at', { ascending: false }).limit(80)
       .then(({ data }) => {
         if (!alive || !data) return
-        setMessages([...data].reverse() as ChatMessage[])
+        setMessages(([...data].reverse() as ChatMessage[]).filter(item => !parseClanCommand(item.body ?? '')))
       })
     supabase.from('message_reads').select('room,username,read_at').eq('room', room)
       .then(({ data }) => {
@@ -385,9 +358,11 @@ export function ClanChat({ username, host, clan, page, accountId, debug = false 
 
     return () => {
       alive = false
+      detachClients(clients)
       void supabase.removeChannel(channel)
+      void supabase.removeChannel(clients)
     }
-  }, [room, username, accountId])
+  }, [room, username, host, clan, accountId])
 
   useEffect(() => {
     const box = logBox.current
@@ -439,23 +414,15 @@ export function ClanChat({ username, host, clan, page, accountId, debug = false 
     setFile(image)
   }
 
-  const visible = messages.filter(message => isFresh(message, now))
+  const visible = messages.filter(message => isFresh(message, now) && !parseClanCommand(message.body ?? ''))
   const unread = open ? 0 : visible.filter(message => message.username !== username && (Date.parse(message.created_at) || 0) > readAt).length
 
   async function send() {
     const text = draft.trim()
     if ((!text && !file) || sending) return
-    const command = parseClanCommand(text)
-    if (command?.kind === 'update' || command?.kind === 'update-usage') {
-      if (!debug) {
-        setError('Activá Debug con Ctrl+D para usar /update.')
-        return
-      }
-      if (command.kind === 'update-usage') {
-        setLogs(current => [...current, { id: `update-help-${Date.now()}`, at: clock(), text: commandHelp(true) }])
-        setLogOpen(true)
-        return
-      }
+    if (text && parseClanCommand(text)) {
+      setError('Eso ya no se manda por el chat.')
+      return
     }
     if (file && (!imageTypes.has(file.type) || file.size > 1.5 * 1024 * 1024)) {
       setError('La imagen tiene que ser jpg, png, webp o gif, de hasta 1,5 MB.')
@@ -624,7 +591,7 @@ export function ClanChat({ username, host, clan, page, accountId, debug = false 
         )}
       </Box>
       <Dialog open={logOpen} onClose={() => setLogOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Comandos</DialogTitle>
+        <DialogTitle>Aviso</DialogTitle>
         <DialogContent>
           <Box ref={logBox} sx={{ maxHeight: 360, overflow: 'auto', fontFamily: 'ui-monospace, Consolas, monospace' }}>
             {logs.map(entry => (
