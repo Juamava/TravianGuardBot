@@ -11,12 +11,12 @@ import { Empty, panel, useUi } from '../ui'
 
 type Village = { id: number; name: string; x: number; y: number }
 type CowList = { id: number; name: string; minMinutes: number; repeatMinutes: number; levelHero: boolean; autoStart: boolean; running: boolean; countdown: string }
-type Cow = { id: number; listId: number; name: string; url: string; troops: string; status: string; kind: string; owner: string; tribe: string; alliance: string; population: number; distance: number; x: number | null; y: number | null }
+type Cow = { id: number; listId: number; name: string; url: string; troops: string; status: string; kind: string; owner: string; tribe: string; alliance: string; population: number; distance: number; x: number | null; y: number | null; active: boolean }
 type GameFarm = { id: number; name: string; active: boolean; intervalMin: number; intervalMax: number; minAttackMinutes?: number; running: boolean; countdown: string }
 type FarmingData = { villages: Village[]; lists: CowList[]; cows: Cow[]; countdown: string; gold: boolean; gameLists: GameFarm[]; gameRunning: boolean; gameAutoStart: boolean }
 type SearchResult = { count: number; villageName: string; originX: number; originY: number; troopPlan: string; hits: { x: number; y: number; distance: number }[] }
 
-const cowColumns = 'minmax(160px, 1.6fr) 72px minmax(100px, 1fr) 88px 88px 110px minmax(120px, 1fr)'
+const cowColumns = '64px minmax(160px, 1.6fr) 72px minmax(100px, 1fr) 88px 88px 110px minmax(120px, 1fr)'
 
 function listTitle(list: CowList) {
   const marks = [list.running ? 'en curso' : '', list.autoStart ? 'auto' : ''].filter(Boolean)
@@ -622,14 +622,23 @@ export function Farming({ accountId, notify, mode }: { accountId: number; notify
             <Box sx={{ overflowX: 'auto' }}>
               <Box sx={{ minWidth: 860 }}>
                 <Box sx={{ display: 'grid', gridTemplateColumns: cowColumns, gap: 1.5, px: 1.5, py: 0.5 }}>
-                  {['Aldea', 'Tipo', 'Dueño', 'Población', 'Distancia', 'Tropas', 'Estado'].map(label => (
+                  {['Activa', 'Aldea', 'Tipo', 'Dueño', 'Población', 'Distancia', 'Tropas', 'Estado'].map(label => (
                     <Typography key={label} variant="caption" color="text.secondary">{label}</Typography>
                   ))}
                 </Box>
                 {shown.map(cow => {
                   const live = cow.status === 'Analizando' || cow.status === 'Atacando'
                   return (
-                    <Box id={`cow-${cow.id}`} key={cow.id} onClick={() => selectCow(cow)} sx={{ display: 'grid', gridTemplateColumns: cowColumns, gap: 1.5, alignItems: 'center', px: 1.5, py: 1.25, borderRadius: 1, cursor: 'pointer', bgcolor: live ? '#d9e7b8' : cow.id === cowId ? '#e2cf9a' : 'transparent', boxShadow: live ? 'inset 3px 0 0 #4f7a12' : 'none', '&:hover': { bgcolor: live ? '#d9e7b8' : cow.id === cowId ? '#e2cf9a' : '#f1e5c2' } }}>
+                    <Box id={`cow-${cow.id}`} key={cow.id} onClick={() => selectCow(cow)} sx={{ display: 'grid', gridTemplateColumns: cowColumns, gap: 1.5, alignItems: 'center', px: 1.5, py: 1.25, borderRadius: 1, cursor: 'pointer', opacity: cow.active ? 1 : 0.55, bgcolor: live ? '#d9e7b8' : cow.id === cowId ? '#e2cf9a' : 'transparent', boxShadow: live ? 'inset 3px 0 0 #4f7a12' : 'none', '&:hover': { bgcolor: live ? '#d9e7b8' : cow.id === cowId ? '#e2cf9a' : '#f1e5c2' } }}>
+                      <Switch size="small" checked={cow.active} onClick={event => event.stopPropagation()} onChange={async event => {
+                        event.stopPropagation()
+                        try {
+                          notify((await post(`/api/accounts/${accountId}/farming/villages/${cow.id}/active`)).message)
+                          await load()
+                        } catch (error) {
+                          notify(error instanceof Error ? error.message : 'No se pudo cambiar la aldea')
+                        }
+                      }} />
                       <Box sx={{ minWidth: 0 }}>
                         <Typography sx={{ fontWeight: 600, fontSize: 15, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{cow.name}</Typography>
                         {cow.x != null && cow.y != null && <Typography variant="caption" color="text.secondary">({cow.x}|{cow.y}){cow.tribe ? ` · ${cow.tribe}` : ''}{cow.alliance ? ` · ${cow.alliance}` : ''}</Typography>}

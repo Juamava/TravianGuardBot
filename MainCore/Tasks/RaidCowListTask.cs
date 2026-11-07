@@ -44,7 +44,12 @@ namespace MainCore.Tasks
             if (!task.KeepRepeating) return Result.Ok();
 
             var targets = GetTargets(task);
-            if (targets.Count == 0) return Skip.Error.WithError("Cow list has no villages");
+            if (targets.Count == 0)
+            {
+                if (!HasAnyVillage(task)) return Skip.Error.WithError("Cow list has no villages");
+                if (task.KeepRepeating) ScheduleNext(task);
+                return Result.Ok();
+            }
             var hero = GetHeroOptions(task);
 
             // Scouting: the reports of the last pass are read first, as a turn of their own.
@@ -209,8 +214,8 @@ namespace MainCore.Tasks
 
             if (!tile.IsUnoccupied)
             {
-                logger.Information("Skipping {Url}: oasis is occupied", target.Url);
-                MarkSkipped(target.Id, "Ocupado");
+                logger.Information("Deactivating {Url}: oasis is occupied", target.Url);
+                Deactivate(target.Id, "Ocupado");
                 return Result.Ok();
             }
 
@@ -218,8 +223,8 @@ namespace MainCore.Tasks
             {
                 if (hero.LevelHero) return await HuntWithHero(task, target, hero, cancellationToken);
 
-                logger.Information("Skipping {Url}: oasis troop cell does not say none", target.Url);
-                MarkSkipped(target.Id, "Hay tropas");
+                logger.Information("Deactivating {Url}: oasis has troops", target.Url);
+                Deactivate(target.Id, "Hay tropas");
                 return Result.Ok();
             }
 
@@ -321,8 +326,8 @@ namespace MainCore.Tasks
             var animals = await CowOasisParser.ReadAnimalCount(browser.CurrentPage);
             if (animals is null or <= 0)
             {
-                logger.Information("Skipping {Url}: oasis has troops but the animals could not be counted", target.Url);
-                MarkSkipped(target.Id, HeroLevelingRules.StatusTroops);
+                logger.Information("Deactivating {Url}: oasis has troops but the animals could not be counted", target.Url);
+                Deactivate(target.Id, HeroLevelingRules.StatusTroops);
                 return Result.Ok();
             }
 
@@ -503,15 +508,26 @@ namespace MainCore.Tasks
             rxQueue.Enqueue(new CowVillagesModified(browser.AccountId));
         }
 
-        private void MarkSkipped(int cowVillageId, string reason)
+        private void MarkSkipped(int cowVillageId, string reason) => SetStatus(cowVillageId, reason, deactivate: false);
+
+        private void Deactivate(int cowVillageId, string reason) => SetStatus(cowVillageId, reason, deactivate: true);
+
+        private void SetStatus(int cowVillageId, string reason, bool deactivate)
         {
             using var context = contextFactory.CreateDbContext();
-            var updated = context.CowVillages
-                .Where(x => x.Id == cowVillageId)
-                .ExecuteUpdate(x => x.SetProperty(village => village.LastSkipReason, reason));
+            var rows = context.CowVillages.Where(x => x.Id == cowVillageId);
+            var updated = deactivate
+                ? rows.ExecuteUpdate(x => x.SetProperty(village => village.LastSkipReason, reason).SetProperty(village => village.IsActive, false))
+                : rows.ExecuteUpdate(x => x.SetProperty(village => village.LastSkipReason, reason));
             if (updated == 0 || browser.AccountId == AccountId.Empty) return;
 
             rxQueue.Enqueue(new CowVillagesModified(browser.AccountId));
+        }
+
+        private bool HasAnyVillage(Task task)
+        {
+            using var context = contextFactory.CreateDbContext();
+            return context.CowVillages.Any(x => x.CowListId == task.CowListId && x.CowList.AccountId == task.AccountId.Value);
         }
 
         private List<CowTarget> GetTargets(Task task)
@@ -520,6 +536,7 @@ namespace MainCore.Tasks
             return context.CowVillages
                 .Where(x => x.CowListId == task.CowListId)
                 .Where(x => x.CowList.AccountId == task.AccountId.Value)
+                .Where(x => x.IsActive)
                 .OrderBy(x => x.Id)
                 .Select(x => new { x.Id, x.Url, x.Name, x.TroopPlan, x.TroopCount, x.LastAttackedAt, x.CowList.MinAttackMinutes })
                 .AsEnumerable()
