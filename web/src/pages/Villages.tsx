@@ -156,7 +156,7 @@ export function Villages({ accountId, meta, notify, tab }: { accountId: number; 
               <Stack sx={{ ...panel, p: 1, maxHeight: '34%', minHeight: 112, overflow: 'hidden' }}>
                 <Typography sx={{ px: 1, py: 0.75, fontWeight: 700 }}>En construcción</Typography>
                 <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-                  {build.queue.length === 0 && <Typography sx={{ px: 1, py: 0.5, color: '#949ba4', fontSize: 13 }}>Nada construyéndose.</Typography>}
+                  {build.queue.length === 0 && <Typography sx={{ px: 1, py: 0.5, color: '#5c4529', fontSize: 13 }}>Nada construyéndose.</Typography>}
                   {build.queue.map(item => (
                     <Typography key={item.id} sx={{ px: 1, py: 0.6, fontSize: 14 }}>{item.text}</Typography>
                   ))}
@@ -168,7 +168,7 @@ export function Villages({ accountId, meta, notify, tab }: { accountId: number; 
                   <Typography sx={{ fontWeight: 700 }}>Trabajos</Typography>
                   <Stack direction="row" spacing={0.25}>
                     <Tooltip title="Importar">
-                      <IconButton component="label" size="small" sx={{ color: '#dbdee1' }}>
+                      <IconButton component="label" size="small" sx={{ color: '#3b2a17' }}>
                         <FileUploadOutlinedIcon fontSize="small" />
                         <input hidden type="file" accept="application/json" onChange={async event => {
                           const file = event.target.files?.[0]
@@ -185,7 +185,7 @@ export function Villages({ accountId, meta, notify, tab }: { accountId: number; 
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Exportar">
-                      <IconButton size="small" sx={{ color: '#dbdee1' }} onClick={async () => {
+                      <IconButton size="small" sx={{ color: '#3b2a17' }} onClick={async () => {
                         const result = await api<{ type: string; content: string }[]>(`/api/accounts/${accountId}/villages/${villageId}/jobs/export`)
                         const blob = new Blob([JSON.stringify(result.data, null, 2)], { type: 'application/json' })
                         const link = document.createElement('a')
@@ -197,16 +197,16 @@ export function Villages({ accountId, meta, notify, tab }: { accountId: number; 
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Borrar todos">
-                      <IconButton size="small" sx={{ color: '#ed4245' }} onClick={async () => { if (await ui.confirm('¿Borrar todos los trabajos de esta aldea?')) run(() => del(`/api/accounts/${accountId}/villages/${villageId}/jobs`)) }}>
+                      <IconButton size="small" sx={{ color: '#b8281d' }} onClick={async () => { if (await ui.confirm('¿Borrar todos los trabajos de esta aldea?')) run(() => del(`/api/accounts/${accountId}/villages/${villageId}/jobs`)) }}>
                         <DeleteOutlineIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
                   </Stack>
                 </Stack>
                 <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-                  {build.jobs.length === 0 && <Typography sx={{ px: 1, py: 0.5, color: '#949ba4', fontSize: 13 }}>Todavía no hay trabajos. Elegí un edificio y agregalo.</Typography>}
+                  {build.jobs.length === 0 && <Typography sx={{ px: 1, py: 0.5, color: '#5c4529', fontSize: 13 }}>Todavía no hay trabajos. Elegí un edificio y agregalo.</Typography>}
                   {build.jobs.map(job => (
-                    <Stack key={job.id} direction="row" spacing={0.5} alignItems="center" sx={{ px: 1, py: 0.4, borderRadius: 1, '&:hover': { bgcolor: '#35373c' } }}>
+                    <Stack key={job.id} direction="row" spacing={0.5} alignItems="center" sx={{ px: 1, py: 0.4, borderRadius: 1, '&:hover': { bgcolor: '#f1e5c2' } }}>
                       <Typography sx={{ flex: 1, fontSize: 14, overflowWrap: 'anywhere' }}>{job.text}</Typography>
                       <MoveButton title="Al inicio" onClick={() => run(() => post(`/api/accounts/${accountId}/villages/${villageId}/jobs/${job.id}/move`, { direction: 'top' }))}><VerticalAlignTopIcon fontSize="small" /></MoveButton>
                       <MoveButton title="Subir" onClick={() => run(() => post(`/api/accounts/${accountId}/villages/${villageId}/jobs/${job.id}/move`, { direction: 'up' }))}><KeyboardArrowUpIcon fontSize="small" /></MoveButton>
@@ -234,8 +234,8 @@ export function Villages({ accountId, meta, notify, tab }: { accountId: number; 
 function ReloadTile({ icon, label, hint, onClick }: { icon: ReactNode; label: string; hint: string; onClick: () => void }) {
   return (
     <Tooltip title={hint}>
-      <Button onClick={onClick} sx={{ height: 48, color: '#dbdee1', bgcolor: '#2b2d31', display: 'flex', gap: 1, '&:hover': { bgcolor: '#35373c' } }}>
-        <Box sx={{ color: '#5865f2', display: 'flex' }}>{icon}</Box>
+      <Button onClick={onClick} sx={{ height: 48, color: '#3b2a17', bgcolor: '#fdf9ec', display: 'flex', gap: 1, '&:hover': { bgcolor: '#f1e5c2' } }}>
+        <Box sx={{ color: '#4f7a12', display: 'flex' }}>{icon}</Box>
         {label}
       </Button>
     </Tooltip>
@@ -246,19 +246,19 @@ function BuildingGroup({ title, buildings, location, onChoose }: { title: string
   if (buildings.length === 0) return null
   return (
     <Box sx={{ mb: 1 }}>
-      <Typography sx={{ position: 'sticky', top: 0, zIndex: 1, px: 1, py: 0.5, bgcolor: '#2b2d31', color: '#949ba4', fontSize: 12, fontWeight: 700 }}>{title}</Typography>
+      <Typography sx={{ position: 'sticky', top: 0, zIndex: 1, px: 1, py: 0.5, bgcolor: '#fdf9ec', color: '#5c4529', fontSize: 13, fontWeight: 700 }}>{title}</Typography>
       {buildings.map(building => {
         const selected = location === building.location
         return (
-          <Box key={building.id} onClick={() => onChoose(building.location)} sx={{ display: 'grid', gridTemplateColumns: '28px minmax(0, 1fr) auto', gap: 1, alignItems: 'center', px: 1, py: 0.8, borderRadius: 1, cursor: 'pointer', bgcolor: selected ? '#404249' : 'transparent', boxShadow: selected ? 'inset 3px 0 0 #5865f2' : 'none', '&:hover': { bgcolor: selected ? '#404249' : '#35373c' } }}>
-            <Typography sx={{ color: '#949ba4', fontSize: 12 }}>{building.location}</Typography>
+          <Box key={building.id} onClick={() => onChoose(building.location)} sx={{ display: 'grid', gridTemplateColumns: '28px minmax(0, 1fr) auto', gap: 1, alignItems: 'center', px: 1, py: 0.8, borderRadius: 1, cursor: 'pointer', bgcolor: selected ? '#e2cf9a' : 'transparent', boxShadow: selected ? 'inset 3px 0 0 #4f7a12' : 'none', '&:hover': { bgcolor: selected ? '#e2cf9a' : '#f1e5c2' } }}>
+            <Typography sx={{ color: '#5c4529', fontSize: 13 }}>{building.location}</Typography>
             <Box sx={{ minWidth: 0 }}>
               <Typography sx={{ fontWeight: 600, fontSize: 14, overflowWrap: 'anywhere' }}>{building.name}</Typography>
               {(building.queueLevel > 0 || building.jobLevel > building.level) && (
-                <Typography sx={{ fontSize: 12, color: '#b5bac1' }}>
-                  {building.queueLevel > 0 && <Box component="span" sx={{ color: '#f0b232' }}>cola {building.queueLevel}</Box>}
+                <Typography sx={{ fontSize: 13, color: '#4a3820' }}>
+                  {building.queueLevel > 0 && <Box component="span" sx={{ color: '#a86f08' }}>cola {building.queueLevel}</Box>}
                   {building.queueLevel > 0 && building.jobLevel > building.level && ' · '}
-                  {building.jobLevel > building.level && <Box component="span" sx={{ color: '#5865f2' }}>plan {building.jobLevel}</Box>}
+                  {building.jobLevel > building.level && <Box component="span" sx={{ color: '#4f7a12' }}>plan {building.jobLevel}</Box>}
                 </Typography>
               )}
             </Box>
@@ -273,7 +273,7 @@ function BuildingGroup({ title, buildings, location, onChoose }: { title: string
 function MoveButton({ title, tone = 'normal', onClick, children }: { title: string; tone?: 'normal' | 'danger'; onClick: () => void; children: ReactNode }) {
   return (
     <Tooltip title={title}>
-      <IconButton size="small" onClick={onClick} sx={{ color: tone === 'danger' ? '#ed4245' : '#b5bac1' }}>
+      <IconButton size="small" onClick={onClick} sx={{ color: tone === 'danger' ? '#b8281d' : '#4a3820' }}>
         {children}
       </IconButton>
     </Tooltip>

@@ -20,12 +20,12 @@ function Value({ value }: { value: string }) {
 function Facts({ title, rows }: { title: string; rows: { label: string; value: string }[] }) {
   return (
     <Box sx={{ ...panel, minWidth: 0 }}>
-      <Typography variant="h6" sx={{ color: '#f2f3f5', textTransform: 'none', mb: 1.5 }}>{title}</Typography>
+      <Typography variant="h6" sx={{ color: '#3b2a17', textTransform: 'none', mb: 1.5 }}>{title}</Typography>
       <Stack spacing={1.25} sx={{ minWidth: 0 }}>
         {rows.map(row => (
           <Box key={row.label} sx={{ minWidth: 0 }}>
-            <Typography variant="overline" sx={{ color: '#949ba4', letterSpacing: '0.08em' }}>{row.label}</Typography>
-            <Typography sx={{ color: '#f2f3f5', minWidth: 0, overflowWrap: 'anywhere' }}><Value value={row.value} /></Typography>
+            <Typography variant="overline" sx={{ color: '#8a7350', letterSpacing: '0.08em' }}>{row.label}</Typography>
+            <Typography sx={{ color: '#3b2a17', minWidth: 0, overflowWrap: 'anywhere' }}><Value value={row.value} /></Typography>
           </Box>
         ))}
       </Stack>
