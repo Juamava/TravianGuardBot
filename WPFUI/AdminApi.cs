@@ -105,6 +105,7 @@ namespace WPFUI
             app.MapPost("/api/accounts/{id:int}/login", (int id) => Login(services, id));
             app.MapPost("/api/accounts/{id:int}/logout", (int id) => Logout(services, id));
             app.MapPost("/api/accounts/{id:int}/pause", (int id) => Pause(services, id));
+            app.MapPost("/api/accounts/{id:int}/remote-stop", (int id, RemoteStopBody body) => RemoteStop(services, id, body));
             app.MapPost("/api/accounts/{id:int}/restart", (int id) => Restart(services, id));
 
             app.MapGet("/api/accounts/{id:int}/settings", (int id) => GetAccountSettings(services, id));
@@ -471,6 +472,73 @@ namespace WPFUI
             tasks.SetStatus(accountId, StatusEnums.Offline);
             ClanNames.TryRemove(id, out _);
             return Ok("Sesión cerrada.");
+        }
+
+        private static async Task<IResult> RemoteStop(IServiceProvider services, int accountId, RemoteStopBody body)
+        {
+            var feature = (body.Feature ?? "").Trim().ToLowerInvariant();
+            var account = new AccountId(accountId);
+            var tasks = services.GetRequiredService<TaskManager>();
+            switch (feature)
+            {
+                case "all":
+                    var status = tasks.GetStatus(account);
+                    if (status == StatusEnums.Online)
+                    {
+                        await tasks.StopCurrentTask(account);
+                        return Ok("En pausa.");
+                    }
+                    if (status == StatusEnums.Paused) return Ok("Ya estaba en pausa.");
+                    return Ok($"La cuenta está {status}.");
+                case "farming":
+                    StopFarming(services, accountId);
+                    return Ok("Farming detenido.");
+                case "building":
+                    StopBuilding(services, accountId);
+                    return Ok("Construcción detenida.");
+                default:
+                    return Fail("No se reconoce qué hay que detener.");
+            }
+        }
+
+        private static void StopFarming(IServiceProvider services, int accountId)
+        {
+            var account = new AccountId(accountId);
+            var tasks = services.GetRequiredService<TaskManager>();
+            List<int> listIds;
+            using (var context = Context(services))
+                listIds = context.CowLists.Where(x => x.AccountId == accountId).Select(x => x.Id).ToList();
+
+            foreach (var listId in listIds)
+            {
+                var running = tasks.GetTaskList(account).OfType<RaidCowListTask.Task>().FirstOrDefault(x => x.CowListId == listId);
+                if (running is null) continue;
+                running.KeepRepeating = false;
+                if (ReferenceEquals(tasks.GetCurrentTask(account), running))
+                    tasks.CancelIfCurrent<RaidCowListTask.Task>(account);
+                else
+                    tasks.Remove(account, running);
+            }
+
+            if (tasks.GetCurrentTask(account) is StartFarmListTask.Task)
+                tasks.CancelIfCurrent<StartFarmListTask.Task>(account);
+            foreach (var task in tasks.GetTaskList(account).OfType<StartFarmListTask.Task>().ToList())
+                if (!ReferenceEquals(task, tasks.GetCurrentTask(account))) tasks.Remove(account, task);
+
+            if (tasks.GetCurrentTask(account) is AttackVillageTask.Task)
+                tasks.CancelIfCurrent<AttackVillageTask.Task>(account);
+            foreach (var task in tasks.GetTaskList(account).OfType<AttackVillageTask.Task>().ToList())
+                if (!ReferenceEquals(task, tasks.GetCurrentTask(account))) tasks.Remove(account, task);
+        }
+
+        private static void StopBuilding(IServiceProvider services, int accountId)
+        {
+            var account = new AccountId(accountId);
+            var tasks = services.GetRequiredService<TaskManager>();
+            if (tasks.GetCurrentTask(account) is UpgradeBuildingTask.Task)
+                tasks.CancelIfCurrent<UpgradeBuildingTask.Task>(account);
+            foreach (var task in tasks.GetTaskList(account).OfType<UpgradeBuildingTask.Task>().ToList())
+                if (!ReferenceEquals(task, tasks.GetCurrentTask(account))) tasks.Remove(account, task);
         }
 
         private static async Task<IResult> Pause(IServiceProvider services, int id)
@@ -2335,6 +2403,11 @@ namespace WPFUI
         public bool AutoStart { get; set; }
         public int FullThreshold { get; set; }
         public int KeepScouts { get; set; }
+    }
+
+    public sealed class RemoteStopBody
+    {
+        public string Feature { get; set; }
     }
 
     public sealed class AttackBody
