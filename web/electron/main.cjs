@@ -1,4 +1,5 @@
 const { app, BrowserWindow, session, shell } = require('electron')
+const { spawn, execFileSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
 
@@ -7,6 +8,46 @@ const logDir = process.env.TBS_LOG_DIR || path.join(appRoot, 'logs')
 const logFile = path.join(logDir, 'electron.log')
 
 app.setPath('userData', path.join(appRoot, 'Data', 'electron'))
+
+function isGameLink(target) {
+  return /^https?:\/\//i.test(target) && !/^https?:\/\/(127\.0\.0\.1|localhost)([:/]|$)/i.test(target)
+}
+
+let chromePath = ''
+let chromeLooked = false
+
+function chromeExecutable() {
+  if (chromeLooked) return chromePath
+  chromeLooked = true
+  const candidates = [
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    process.env.PROGRAMFILES && path.join(process.env.PROGRAMFILES, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    process.env['PROGRAMFILES(X86)'] && path.join(process.env['PROGRAMFILES(X86)'], 'Google', 'Chrome', 'Application', 'chrome.exe'),
+  ].filter(Boolean)
+  for (const key of ['HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe', 'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe']) {
+    try {
+      const output = execFileSync('reg', ['query', key, '/ve'], { encoding: 'utf8', windowsHide: true })
+      const match = output.match(/REG_SZ\s+(\S.*)/)
+      if (match) candidates.unshift(match[1].trim())
+    } catch {
+      // Chrome can still be in one of the usual folders.
+    }
+  }
+  chromePath = candidates.find(candidate => fs.existsSync(candidate)) || ''
+  return chromePath
+}
+
+function openInChrome(target) {
+  if (!isGameLink(target)) return
+  const chrome = chromeExecutable()
+  log((chrome ? 'abre en chrome ' : 'abre con el navegador del sistema ') + target)
+  if (!chrome) {
+    shell.openExternal(target)
+    return
+  }
+  const child = spawn(chrome, [target], { detached: true, stdio: 'ignore', windowsHide: true })
+  child.unref()
+}
 
 function log(message) {
   try {
@@ -47,19 +88,30 @@ app.whenReady().then(() => {
     show: false,
   })
 
+  window.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || input.isAutoRepeat) return
+    if (!input.control || input.alt || input.meta || input.shift) return
+    if (input.code !== 'KeyD' && String(input.key || '').toLowerCase() !== 'd') return
+    event.preventDefault()
+    window.webContents.executeJavaScript('window.dispatchEvent(new Event("travian-toggle-debug"))').catch(() => undefined)
+  })
+
   window.once('ready-to-show', () => {
     log('lista para mostrar')
     window.maximize()
     window.show()
   })
 
-  // Links to the game (target=_blank) open in the person's own browser, where they are signed in.
+  // Game links open in the person's Chrome, where they are signed in.
+  // A new Electron window, and the bot's Playwright browser, stay out of it.
   window.webContents.setWindowOpenHandler(({ url: target }) => {
-    if (/^https?:\/\//i.test(target) && !/^https?:\/\/(127\.0\.0\.1|localhost)/i.test(target)) {
-      log('abre afuera ' + target)
-      shell.openExternal(target)
-    }
+    openInChrome(target)
     return { action: 'deny' }
+  })
+  window.webContents.on('will-navigate', (event, target) => {
+    if (!isGameLink(target)) return
+    event.preventDefault()
+    openInChrome(target)
   })
 
   window.webContents.on('did-fail-load', (_event, code, description, failedUrl, isMainFrame) => {

@@ -180,6 +180,8 @@ function Shell() {
   const [meta, setMeta] = useState<Meta | null>(null)
   const [accountId, setAccountId] = useState<number | null>(null)
   const [page, setPage] = useState<Page>('farming')
+  const [showDebug, setShowDebug] = useState(false)
+  const debugToggleAt = useRef(0)
   const [update, setUpdate] = useState<{ current: string; latest: string; available: boolean; mandatory: boolean; publishedAt: string; detail: string; phase?: string; percent?: number; progress?: string } | null>(null)
   const [updateDue, setUpdateDue] = useState(false)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
@@ -188,6 +190,31 @@ function Shell() {
   useEffect(() => () => {
     if (updatePoll.current !== null) window.clearInterval(updatePoll.current)
   }, [])
+
+  useEffect(() => {
+    const toggle = () => {
+      const at = Date.now()
+      if (at - debugToggleAt.current < 80) return
+      debugToggleAt.current = at
+      setShowDebug(visible => !visible)
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.repeat || event.altKey || event.metaKey || event.shiftKey || !event.ctrlKey) return
+      if (event.code !== 'KeyD' && event.key.toLowerCase() !== 'd') return
+      event.preventDefault()
+      toggle()
+    }
+    window.addEventListener('keydown', onKey, true)
+    window.addEventListener('travian-toggle-debug', toggle)
+    return () => {
+      window.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('travian-toggle-debug', toggle)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!showDebug && page === 'debug') setPage('farming')
+  }, [showDebug, page])
 
   async function refresh(selectId?: number) {
     const result = await api<Overview>('/api/overview')
@@ -388,7 +415,7 @@ function Shell() {
           </Button>
         </Box>
         <Stack spacing={0.3} sx={{ px: 1, pt: 1, overflow: 'auto', flex: 1 }}>
-          {pages.map(item => {
+          {pages.filter(item => showDebug || item.id !== 'debug').map(item => {
             if (item.id === 'aldeas') {
               return (
                 <Stack key="aldeas" spacing={0.15}>
@@ -435,7 +462,7 @@ function Shell() {
             {(page === 'aldeas' || page === 'aldeas-tropas' || page === 'aldeas-comercio') && <Villages key={accountId} accountId={accountId} meta={meta} notify={ui.notify} tab={page === 'aldeas-tropas' ? 'troops' : page === 'aldeas-comercio' ? 'trade' : 'build'} />}
             {(page === 'farming' || page === 'farming-juego') && <Farming key={`${accountId}-${page}`} accountId={accountId} notify={ui.notify} mode={page === 'farming-juego' ? 'game' : 'bot'} />}
             {page === 'farming-scout' && <Scouting key={accountId} accountId={accountId} notify={ui.notify} />}
-            {page === 'debug' && <Debug key={accountId} accountId={accountId} notify={ui.notify} />}
+            {showDebug && page === 'debug' && <Debug key={accountId} accountId={accountId} notify={ui.notify} />}
           </>
         )}
         {page !== 'cuentas' && page !== 'ajustes' && page !== 'alianza' && !connected && (
@@ -447,7 +474,7 @@ function Shell() {
           />
         )}
       </Box>
-      {account?.clan && account.host && <ClanChat username={account.username} host={account.host} clan={account.clan} page={page} />}
+      {account?.clan && account.host && <ClanChat username={account.username} host={account.host} clan={account.clan} page={page} accountId={account.id} />}
       {mandatory && update && (
         <Box sx={{ position: 'fixed', inset: 0, zIndex: 30, bgcolor: 'rgba(0,0,0,.72)', display: 'grid', placeItems: 'center', p: 3 }}>
           <Stack spacing={2} sx={{ width: 420, maxWidth: '100%', bgcolor: '#2b2d31', borderRadius: 2, p: 3 }}>
