@@ -344,7 +344,7 @@ function Shell() {
       <Stack sx={{ bgcolor: '#3a2513', backgroundImage: `linear-gradient(90deg, rgba(0,0,0,.25), rgba(0,0,0,0) 12%, rgba(0,0,0,0) 88%, rgba(0,0,0,.3)), ${woodTexture}`, backgroundSize: 'auto, 400px 240px', minHeight: 0 }}>
         <Box sx={{ px: 2, py: 1.5, background: 'linear-gradient(#4a2e15, #2e1c0b)', borderBottom: '2px solid #a07a44', boxShadow: '0 2px 6px rgba(0,0,0,.45)' }}>
           <Typography sx={{ fontWeight: 700, color: '#f6ead0', textTransform: 'none' }} noWrap>{account?.username ?? 'Travian Guard'}</Typography>
-          <Typography component="div" variant="caption" color="text.secondary" sx={{ mt: 0.25, lineHeight: 1.45 }}>
+          <Typography component="div" variant="caption" sx={{ mt: 0.25, lineHeight: 1.45, color: '#e6d3a8', fontSize: 12.5 }}>
             {account && <Box sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{account.host}</Box>}
             <Box>
               {account ? `${account.status} · ${overview?.version ?? ''}` : `Versión ${overview?.version ?? ''}`}
@@ -422,7 +422,9 @@ function Shell() {
         </Stack>
       </Stack>
 
-      <Box sx={{ overflow: 'auto', p: 3, minHeight: 0, display: 'flex', flexDirection: 'column', color: '#3b2a17', bgcolor: '#f4ecd6', backgroundImage: `linear-gradient(rgba(244,236,214,0) 70px, rgba(244,236,214,.85) 150px, #f4ecd6 190px), ${landscape}, ${parchmentTexture}`, backgroundSize: '100% 190px, 100% 190px, 300px 300px', backgroundRepeat: 'no-repeat, no-repeat, repeat', backgroundAttachment: 'local, local, local', pt: '110px', borderLeft: '6px solid #6b4423', boxShadow: 'inset 0 0 0 2px #a07a44, inset 0 0 40px rgba(110,74,36,.25)' }}>
+      <Box sx={{ overflow: 'auto', p: 3, minHeight: 0, display: 'flex', flexDirection: 'column', color: '#3b2a17', bgcolor: '#f4ecd6', backgroundImage: `linear-gradient(rgba(244,236,214,0) 70px, rgba(244,236,214,.85) 150px, #f4ecd6 190px), ${landscape}, ${parchmentTexture}`, backgroundSize: '100% 190px, 100% 190px, 300px 300px', backgroundRepeat: 'no-repeat, no-repeat, repeat', backgroundAttachment: 'local, local, local', position: 'relative', isolation: 'isolate', pt: '110px', borderLeft: '6px solid #6b4423', boxShadow: 'inset 0 0 0 2px #a07a44, inset 0 0 40px rgba(110,74,36,.25)' }}>
+        {/* Own header picture: put a hero.jpg next to index.html and it covers the drawn countryside. */}
+        <Box aria-hidden sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 190, zIndex: -1, pointerEvents: 'none', backgroundImage: 'linear-gradient(rgba(244,236,214,0) 60px, rgba(244,236,214,.85) 150px, #f4ecd6 190px), url(hero.jpg)', backgroundSize: '100% 100%, cover', backgroundPosition: 'top, center 35%', backgroundRepeat: 'no-repeat' }} />
         {page === 'cuentas' && (
           <Stack spacing={3}>
             <Accounts notify={ui.notify} refresh={id => { void refresh(id).catch((error: Error) => ui.notify(error.message)) }} />

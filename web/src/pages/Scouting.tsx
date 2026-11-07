@@ -74,8 +74,8 @@ type AttackReport = {
 
 const attackLook: Record<Attack['state'], { label: string; bg: string; fg: string }> = {
   cola: { label: 'En cola', bg: '#f1e5c2', fg: '#3b2a17' },
-  enviando: { label: 'Enviando', bg: '#1e2a4a', fg: '#8ea1f7' },
-  enviado: { label: 'En camino', bg: '#1e2a4a', fg: '#8ea1f7' },
+  enviando: { label: 'Enviando', bg: '#fbe7b5', fg: '#7a4a05' },
+  enviado: { label: 'En camino', bg: '#d6e6f2', fg: '#1f4e79' },
   llego: { label: 'Llegó', bg: '#dcecc0', fg: '#4f8a10' },
   error: { label: 'No se envió', bg: '#f6d5cf', fg: '#b8281d' },
 }
@@ -410,7 +410,7 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
             {data.lists.map(item => <MenuItem key={item.id} value={item.id}>{item.name}{item.running ? ' · en curso' : ''}</MenuItem>)}
           </TextField>
         )}
-        <Button startIcon={<AddIcon />} onClick={createList} disabled={!villageId}>Nueva lista</Button>
+        <Button variant="outlined" startIcon={<AddIcon />} onClick={createList} disabled={!villageId}>Nueva lista</Button>
       </Stack>
 
       {data && data.lists.length === 0 && (
