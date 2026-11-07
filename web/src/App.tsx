@@ -23,6 +23,7 @@ import { ClanChat } from './chat/ClanChat'
 import { Debug } from './pages/Debug'
 import { Hero } from './pages/Hero'
 import { Empty, UiProvider, useUi } from './ui'
+import { crest, landscape, parchmentTexture, woodTexture } from './art'
 
 type Page = 'aldeas' | 'aldeas-tropas' | 'aldeas-comercio' | 'farming' | 'farming-juego' | 'farming-scout' | 'hero' | 'debug' | 'ajustes' | 'cuentas'
 
@@ -115,6 +116,7 @@ function NavItem({ selected, disabled, icon: Icon, label, onClick, tone = 'norma
         px: 1.25,
         color,
         bgcolor: selected ? '#6e4a24' : 'transparent',
+        ...(selected ? { background: 'linear-gradient(90deg, rgba(226,191,110,.35), rgba(160,122,68,.15))', boxShadow: 'inset 3px 0 0 #e2bf6e, inset 0 0 0 1px rgba(226,191,110,.35)', textShadow: '0 1px 2px rgba(0,0,0,.6)' } : {}),
         '&:hover': { bgcolor: tone === 'danger' ? '#5a1f14' : '#5a3b1f', color: tone === 'danger' ? '#e0563f' : '#eadbb8' },
         '& .MuiButton-startIcon': { color: 'inherit', mr: 1 },
       }}
@@ -144,6 +146,7 @@ function SubNav({ selected, disabled, label, onClick, live = false, count = '' }
         fontWeight: selected ? 600 : 500,
         color: selected ? '#fff' : '#c8b088',
         bgcolor: selected ? '#6e4a24' : 'transparent',
+        ...(selected ? { background: 'linear-gradient(90deg, rgba(226,191,110,.35), rgba(160,122,68,.15))', boxShadow: 'inset 3px 0 0 #e2bf6e, inset 0 0 0 1px rgba(226,191,110,.35)', textShadow: '0 1px 2px rgba(0,0,0,.6)' } : {}),
         '&:hover': { bgcolor: '#5a3b1f', color: '#eadbb8' },
       }}
     >
@@ -299,7 +302,11 @@ function Shell() {
 
   return (
     <Box sx={{ height: '100vh', display: 'grid', gridTemplateColumns: '72px 240px 1fr', overflow: 'hidden' }}>
-      <Stack spacing={1.2} alignItems="center" sx={{ bgcolor: '#241609', py: 1.5, overflow: 'auto' }}>
+      <Stack spacing={1.2} alignItems="center" sx={{ bgcolor: '#241609', backgroundImage: `linear-gradient(rgba(20,10,3,.55), rgba(20,10,3,.55)), ${woodTexture}`, backgroundSize: 'auto, 400px 240px', borderRight: '2px solid #a07a44', py: 1.5, overflow: 'auto' }}>
+        <Tooltip title="Travian Guard" placement="right">
+          <Box component="img" src={crest} alt="" sx={{ width: 46, height: 46, filter: 'drop-shadow(0 2px 3px rgba(0,0,0,.6))', mb: 0.5 }} />
+        </Tooltip>
+        <Box sx={{ width: 36, height: 2, bgcolor: '#a07a44', borderRadius: 1, opacity: .6 }} />
         {(overview?.accounts ?? []).map((item: AccountRow) => {
           const selected = item.id === accountId
           return (
@@ -334,8 +341,8 @@ function Shell() {
         </Tooltip>
       </Stack>
 
-      <Stack sx={{ bgcolor: '#3a2513', minHeight: 0 }}>
-        <Box sx={{ px: 2, py: 1.5, boxShadow: '0 1px 0 rgba(0,0,0,.2)' }}>
+      <Stack sx={{ bgcolor: '#3a2513', backgroundImage: `linear-gradient(90deg, rgba(0,0,0,.25), rgba(0,0,0,0) 12%, rgba(0,0,0,0) 88%, rgba(0,0,0,.3)), ${woodTexture}`, backgroundSize: 'auto, 400px 240px', minHeight: 0 }}>
+        <Box sx={{ px: 2, py: 1.5, background: 'linear-gradient(#4a2e15, #2e1c0b)', borderBottom: '2px solid #a07a44', boxShadow: '0 2px 6px rgba(0,0,0,.45)' }}>
           <Typography sx={{ fontWeight: 700, color: '#f6ead0', textTransform: 'none' }} noWrap>{account?.username ?? 'Travian Guard'}</Typography>
           <Typography component="div" variant="caption" color="text.secondary" sx={{ mt: 0.25, lineHeight: 1.45 }}>
             {account && <Box sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{account.host}</Box>}
@@ -415,7 +422,7 @@ function Shell() {
         </Stack>
       </Stack>
 
-      <Box sx={{ overflow: 'auto', p: 3, minHeight: 0, display: 'flex', flexDirection: 'column', color: '#3b2a17', bgcolor: '#efe4c6', backgroundImage: 'radial-gradient(ellipse at top, rgba(255,250,232,.9), rgba(239,228,198,0) 60%), repeating-linear-gradient(0deg, rgba(120,90,40,.025) 0 2px, transparent 2px 4px)', borderLeft: '6px solid #6b4423', boxShadow: 'inset 0 0 0 2px #a07a44, inset 0 0 40px rgba(110,74,36,.25)' }}>
+      <Box sx={{ overflow: 'auto', p: 3, minHeight: 0, display: 'flex', flexDirection: 'column', color: '#3b2a17', bgcolor: '#efe4c6', backgroundImage: `linear-gradient(rgba(239,228,198,0) 70px, rgba(239,228,198,.85) 150px, #efe4c6 190px), ${landscape}, ${parchmentTexture}`, backgroundSize: '100% 190px, 100% 190px, 300px 300px', backgroundRepeat: 'no-repeat, no-repeat, repeat', backgroundAttachment: 'local, local, local', pt: '110px', borderLeft: '6px solid #6b4423', boxShadow: 'inset 0 0 0 2px #a07a44, inset 0 0 40px rgba(110,74,36,.25)' }}>
         {page === 'cuentas' && (
           <Stack spacing={3}>
             <Accounts notify={ui.notify} refresh={id => { void refresh(id).catch((error: Error) => ui.notify(error.message)) }} />

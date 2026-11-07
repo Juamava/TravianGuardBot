@@ -1,4 +1,5 @@
 import { createTheme } from '@mui/material/styles'
+import { divider, parchmentTexture, woodTexture } from './art'
 
 // Inspired by the Travian Legends interface: parchment panels, wood frames, serif titles and green buttons.
 const ink = '#3b2a17'
@@ -23,7 +24,7 @@ export const theme = createTheme({
   typography: {
     fontFamily: 'Arial, Helvetica, Verdana, sans-serif',
     fontSize: 13,
-    h4: { fontFamily: '"Noto Serif", Georgia, serif', fontWeight: 700, color: wood, textShadow: '0 1px 0 rgba(255,255,255,.6)' },
+    h4: { fontFamily: '"Noto Serif", Georgia, serif', fontWeight: 700, color: '#4a2e15', textShadow: '0 1px 0 rgba(255,250,232,.9), 0 0 12px rgba(255,250,232,.8)', paddingBottom: 18, backgroundImage: divider, backgroundRepeat: 'no-repeat', backgroundPosition: 'left bottom', backgroundSize: '240px 14px' },
     h5: { fontFamily: '"Noto Serif", Georgia, serif', fontWeight: 700, color: wood },
     h6: { fontFamily: '"Noto Serif", Georgia, serif', fontWeight: 700, fontSize: '1rem', color: wood },
     button: { fontWeight: 700, textTransform: 'none' },
@@ -57,7 +58,7 @@ export const theme = createTheme({
     },
     MuiPaper: {
       styleOverrides: {
-        root: { backgroundImage: 'none', backgroundColor: parchment, color: ink },
+        root: { backgroundImage: parchmentTexture, backgroundColor: parchment, color: ink },
       },
     },
     MuiDialog: {
@@ -71,7 +72,7 @@ export const theme = createTheme({
           fontFamily: '"Noto Serif", Georgia, serif',
           fontWeight: 700,
           color: '#f6ead0',
-          background: `linear-gradient(${wood}, #4a2e15)`,
+          background: `linear-gradient(rgba(74,46,21,.35), rgba(30,16,5,.6)), ${woodTexture}`,
           borderBottom: `2px solid ${woodLight}`,
           textShadow: '0 1px 2px rgba(0,0,0,.5)',
           marginBottom: 12,
@@ -97,7 +98,7 @@ export const theme = createTheme({
     MuiToggleButtonGroup: {
       styleOverrides: {
         root: {
-          background: `linear-gradient(#8a5a2b, ${wood}) !important`,
+          background: `linear-gradient(rgba(138,90,43,.3), rgba(60,34,12,.5)), ${woodTexture} !important`,
           border: '1px solid #4a2e15',
           padding: 3,
           '& .MuiToggleButton-root': {

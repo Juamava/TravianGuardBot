@@ -1,3 +1,4 @@
+import { framedCorners, crest } from './art'
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Snackbar, TextField, Typography } from '@mui/material'
 
@@ -65,7 +66,8 @@ export function UiProvider({ children }: { children: ReactNode }) {
 
 export function Empty({ title, text }: { title: string; text: string }) {
   return (
-    <Box sx={{ p: 4, borderRadius: 1.5, bgcolor: '#fbf5e2', border: '1px solid #c9b27c', boxShadow: 'inset 0 0 0 1px #fffaf0, 0 1px 3px rgba(91,58,27,.25)', textAlign: 'center' }}>
+    <Box sx={{ ...panel, p: 5, textAlign: 'center', maxWidth: 640, mx: 'auto', mt: 2 }}>
+      <Box component="img" src={crest} alt="" sx={{ width: 72, height: 72, mb: 1, filter: 'drop-shadow(0 3px 4px rgba(91,58,27,.4))' }} />
       <Typography variant="h5" sx={{ textTransform: 'none', color: '#3b2a17' }}>{title}</Typography>
       <Typography color="text.secondary" sx={{ mt: 1 }}>{text}</Typography>
     </Box>
@@ -77,5 +79,6 @@ export const panel = {
   borderRadius: 1.5,
   bgcolor: '#fbf5e2',
   border: '1px solid #c9b27c',
-  boxShadow: 'inset 0 0 0 1px #fffaf0, 0 1px 3px rgba(91,58,27,.25)',
+  boxShadow: 'inset 0 0 0 1px #fffaf0, inset 0 0 0 4px rgba(201,178,124,.35), 0 2px 6px rgba(91,58,27,.3)',
+  ...framedCorners,
 } as const
