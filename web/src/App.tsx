@@ -25,6 +25,9 @@ import { Hero } from './pages/Hero'
 import { Empty, UiProvider, useUi } from './ui'
 import { crest, landscape, parchmentTexture, woodTexture } from './art'
 
+// Inside the Electron window the native title bar is hidden and this app draws its own.
+const inElectron = /Electron/i.test(navigator.userAgent)
+
 type Page = 'aldeas' | 'aldeas-tropas' | 'aldeas-comercio' | 'farming' | 'farming-juego' | 'farming-scout' | 'hero' | 'debug' | 'ajustes' | 'cuentas'
 
 const pages: { id: Page; label: string; icon: SvgIconComponent }[] = [
@@ -301,7 +304,13 @@ function Shell() {
   }
 
   return (
-    <Box sx={{ height: '100vh', display: 'grid', gridTemplateColumns: '72px 240px 1fr', overflow: 'hidden' }}>
+    <Box sx={{ height: '100vh', display: 'grid', gridTemplateColumns: '72px 240px 1fr', gridTemplateRows: inElectron ? '34px minmax(0, 1fr)' : 'minmax(0, 1fr)', overflow: 'hidden' }}>
+      {inElectron && (
+        <Box sx={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 1, pl: 1.5, background: `linear-gradient(rgba(60,34,12,.55), rgba(30,16,5,.75)), ${woodTexture}`, backgroundSize: 'auto, 400px 240px', borderBottom: '2px solid #a07a44', WebkitAppRegion: 'drag', userSelect: 'none' }}>
+          <Box component="img" src={crest} alt="" sx={{ width: 20, height: 20 }} />
+          <Typography sx={{ fontFamily: '"Noto Serif", Georgia, serif', fontWeight: 700, fontSize: 13, color: '#f1e1b8', textShadow: '0 1px 2px rgba(0,0,0,.6)' }}>Travian Guard</Typography>
+        </Box>
+      )}
       <Stack spacing={1.2} alignItems="center" sx={{ bgcolor: '#241609', backgroundImage: `linear-gradient(rgba(20,10,3,.55), rgba(20,10,3,.55)), ${woodTexture}`, backgroundSize: 'auto, 400px 240px', borderRight: '2px solid #a07a44', py: 1.5, overflow: 'auto' }}>
         <Tooltip title="Travian Guard" placement="right">
           <Box component="img" src={crest} alt="" sx={{ width: 46, height: 46, filter: 'drop-shadow(0 2px 3px rgba(0,0,0,.6))', mb: 0.5 }} />

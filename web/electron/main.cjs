@@ -48,6 +48,9 @@ app.whenReady().then(() => {
     title: 'Travian Guard',
     ...(icon ? { icon } : {}),
     autoHideMenuBar: true,
+    // Wood title bar drawn by the page; Windows keeps its own minimize, maximize and close buttons.
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#2e1c0b', symbolColor: '#f1e1b8', height: 34 },
     show: false,
   })
 
