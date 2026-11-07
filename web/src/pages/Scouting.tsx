@@ -470,7 +470,7 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
 
       {list && (
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-          <ToggleButtonGroup exclusive size="small" value={filter} onChange={(_, value) => value && setFilter(value)} sx={{ bgcolor: '#fdf9ec', p: 0.5, borderRadius: 1, '& .MuiToggleButton-root': { border: 0, borderRadius: 1, px: 1.5, color: '#4a3820', textTransform: 'none', fontWeight: 600, '&.Mui-selected': { bgcolor: '#e2cf9a', color: '#2b1d0e' } } }}>
+          <ToggleButtonGroup exclusive size="small" value={filter} onChange={(_, value) => value && setFilter(value)} sx={{ bgcolor: 'var(--tg-panel)', p: 0.5, borderRadius: 1, '& .MuiToggleButton-root': { border: 0, borderRadius: 1, px: 1.5, color: '#4a3820', textTransform: 'none', fontWeight: 600, '&.Mui-selected': { bgcolor: '#e2cf9a', color: '#2b1d0e' } } }}>
             <ToggleButton value="todas">Todas {counts.todas}</ToggleButton>
             <ToggleButton value="gorda">Vaca gorda {counts.gorda}</ToggleButton>
             <ToggleButton value="flaca">Vaca flaca {counts.flaca}</ToggleButton>
@@ -487,7 +487,7 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
 
       {list && (
         <Box sx={{ ...panel, p: 0, flex: 1, minHeight: 0, overflow: 'auto' }}>
-          <Box sx={{ display: 'grid', gridTemplateColumns: columns, gap: 1, alignItems: 'center', px: 1, py: 0.75, position: 'sticky', top: 0, zIndex: 1, bgcolor: '#fdf9ec', color: '#5c4529', fontSize: 13, fontWeight: 700, minWidth: 900 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: columns, gap: 1, alignItems: 'center', px: 1, py: 0.75, position: 'sticky', top: 0, zIndex: 1, bgcolor: 'var(--tg-panel)', color: '#5c4529', fontSize: 13, fontWeight: 700, minWidth: 900 }}>
             <Checkbox size="small" checked={allChecked} indeterminate={!allChecked && targets.some(target => selected.includes(target.id))} onChange={event => setSelected(event.target.checked ? targets.map(target => target.id) : [])} />
             <Box>Aldea · dueño</Box>
             <Box>Clasificación</Box>

@@ -91,12 +91,12 @@ export function AccountEditor({ accountId, notify, refresh }: EditorProps) {
   return (
     <Stack spacing={2}>
       <Typography color="text.secondary">{editing ? 'Nombre, servidor y los accesos para entrar. El proxy y el user agent son opcionales.' : 'Completá los datos y apretá Guardar. Recién ahí Conectar se pone en verde.'}</Typography>
-      <Stack spacing={1.5} sx={{ p: 2, borderRadius: 2, bgcolor: '#fdf9ec' }}>
+      <Stack spacing={1.5} sx={{ p: 2, borderRadius: 2, bgcolor: 'var(--tg-panel)' }}>
         <TextField label="Nombre" value={username} onChange={event => { setUsername(event.target.value); draft.current = { ...draft.current, username: event.target.value } }} onBlur={commit} />
         <TextField label="Servidor" placeholder="https://ts1.x1.international.travian.com" value={server} onChange={event => { setServer(event.target.value); draft.current = { ...draft.current, server: event.target.value } }} onBlur={commit} />
       </Stack>
       {accesses.map((access, index) => (
-        <Box key={index} sx={{ p: 2, borderRadius: 2, bgcolor: '#fdf9ec' }}>
+        <Box key={index} sx={{ p: 2, borderRadius: 2, bgcolor: 'var(--tg-panel)' }}>
           <Stack spacing={1.5}>
             <Stack direction="row" alignItems="center" justifyContent="space-between">
               <Typography fontWeight={700}>Acceso {index + 1}</Typography>

@@ -29,13 +29,42 @@ import { Debug } from './pages/Debug'
 import { Hero } from './pages/Hero'
 import { Alliance } from './pages/Alliance'
 import { Empty, UiProvider, useUi } from './ui'
-import { crest, landscape, parchmentTexture, woodTexture } from './art'
+import { crest, landscape, nightLandscape, parchmentTexture, woodTexture } from './art'
+import { GlobalStyles, IconButton, useMediaQuery } from '@mui/material'
+import MenuIcon from '@mui/icons-material/Menu'
 
 // Inside the Electron window the native title bar is hidden and this app draws its own.
 const inElectron = /Electron/i.test(navigator.userAgent)
 
 type TbsWindow = { minimize: () => void; toggleMaximize: () => void; close: () => void; onMaximized: (callback: (value: boolean) => void) => void }
 const tbsWindow = (window as unknown as { tbsWindow?: TbsWindow }).tbsWindow
+
+function readNight() {
+  try { return localStorage.getItem('tg-night') === '1' } catch { return false }
+}
+
+/** Day or night switch drawn as a wooden track with a sun and a moon medallion. */
+function DayNightToggle({ night, onChange }: { night: boolean; onChange: (value: boolean) => void }) {
+  return (
+    <Box
+      component="button"
+      type="button"
+      title={night ? 'Que salga el sol' : 'Que caiga la noche'}
+      aria-label={night ? 'Modo día' : 'Modo noche'}
+      onClick={() => onChange(!night)}
+      sx={{ position: 'relative', width: 64, height: 24, p: 0, border: '1px solid #a07a44', borderRadius: 99, cursor: 'pointer', WebkitAppRegion: 'no-drag', overflow: 'hidden', background: night ? 'linear-gradient(#0b1530, #2b3a66)' : 'linear-gradient(#8fc3e0, #e8d9a6)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,.5)', transition: 'background .4s' }}
+    >
+      <Box component="svg" viewBox="0 0 64 24" sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: night ? 1 : 0, transition: 'opacity .4s' }}>
+        <circle cx="10" cy="7" r="1" fill="#fff8e0" /><circle cx="18" cy="15" r=".8" fill="#fff8e0" /><circle cx="25" cy="6" r="1.1" fill="#fff8e0" /><circle cx="14" cy="19" r=".7" fill="#fff8e0" />
+      </Box>
+      <Box sx={{ position: 'absolute', top: 1, left: night ? 41 : 1, width: 20, height: 20, borderRadius: '50%', display: 'grid', placeItems: 'center', background: 'radial-gradient(circle at 35% 30%, #f7e3a6, #b88a3e 70%, #6b4423)', border: '1px solid #4a2e15', boxShadow: '0 1px 3px rgba(0,0,0,.6)', transition: 'left .35s cubic-bezier(.5,1.6,.5,1)' }}>
+        {night
+          ? <svg width="14" height="14" viewBox="0 0 24 24"><path d="M15 3a9 9 0 1 0 6 15A8 8 0 0 1 15 3z" fill="#1f2a4d" stroke="#0b1530" /><circle cx="18" cy="6" r="1.2" fill="#1f2a4d" /></svg>
+          : <svg width="16" height="16" viewBox="0 0 24 24"><g stroke="#8a3d0a" strokeWidth="2" strokeLinecap="round">{[0, 45, 90, 135, 180, 225, 270, 315].map(angle => <line key={angle} x1="12" y1="2.5" x2="12" y2="5.5" transform={`rotate(${angle} 12 12)`} />)}</g><circle cx="12" cy="12" r="5" fill="#e86b12" stroke="#8a3d0a" /></svg>}
+      </Box>
+    </Box>
+  )
+}
 
 function WindowButtons() {
   const [maximized, setMaximized] = useState(true)
@@ -207,6 +236,15 @@ function Shell() {
   const [meta, setMeta] = useState<Meta | null>(null)
   const [accountId, setAccountId] = useState<number | null>(null)
   const [page, setPage] = useState<Page>('farming')
+  const narrow = useMediaQuery('(max-width:900px)')
+  const [navOpen, setNavOpen] = useState(false)
+  const [night, setNightState] = useState(readNight)
+  const setNight = (value: boolean) => {
+    setNightState(value)
+    try { localStorage.setItem('tg-night', value ? '1' : '0') } catch { /* the choice just does not persist */ }
+  }
+  const pageColor = night ? '#d6c094' : '#f4ecd6'
+  const pageRgb = night ? '214,192,148' : '244,236,214'
   const [update, setUpdate] = useState<{ current: string; latest: string; available: boolean; mandatory: boolean; publishedAt: string; detail: string; phase?: string; percent?: number; progress?: string } | null>(null)
   const [updateDue, setUpdateDue] = useState(false)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
@@ -328,16 +366,20 @@ function Shell() {
   }
 
   return (
-    <Box sx={{ height: '100vh', display: 'grid', gridTemplateColumns: '72px 240px 1fr', gridTemplateRows: inElectron ? '34px minmax(0, 1fr)' : 'minmax(0, 1fr)', overflow: 'hidden' }}>
-      {inElectron && (
-        <Box sx={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 1, pl: 1.5, height: 34, background: `linear-gradient(rgba(60,34,12,.55), rgba(30,16,5,.75)), ${woodTexture}`, backgroundSize: 'auto, 400px 240px', borderBottom: '2px solid #a07a44', WebkitAppRegion: 'drag', userSelect: 'none' }}>
+    <Box sx={{ height: '100vh', display: 'grid', gridTemplateColumns: narrow ? '60px minmax(0, 1fr)' : '72px 240px 1fr', gridTemplateRows: '34px minmax(0, 1fr)', overflow: 'hidden', position: 'relative' }}>
+      <GlobalStyles styles={{ ':root': night ? { '--tg-panel': '#efe0ba', '--tg-input': '#f7ebcb' } : { '--tg-panel': '#fdf9ec', '--tg-input': '#fffdf4' } }} />
+      {(
+        <Box sx={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 1, pl: narrow ? 0.5 : 1.5, height: 34, background: `linear-gradient(rgba(60,34,12,.55), rgba(30,16,5,.75)), ${woodTexture}`, backgroundSize: 'auto, 400px 240px', borderBottom: '2px solid #a07a44', WebkitAppRegion: 'drag', userSelect: 'none' }}>
+          {narrow && <IconButton size="small" aria-label="Menú" onClick={() => setNavOpen(open => !open)} sx={{ color: '#f1e1b8', WebkitAppRegion: 'no-drag' }}><MenuIcon fontSize="small" /></IconButton>}
           <Box component="img" src={crest} alt="" sx={{ width: 20, height: 20 }} />
           <Typography sx={{ fontFamily: '"Noto Serif", Georgia, serif', fontWeight: 700, fontSize: 13, color: '#f1e1b8', textShadow: '0 1px 2px rgba(0,0,0,.6)' }}>Travian Guard</Typography>
           <Box sx={{ flex: 1 }} />
-          <WindowButtons />
+          <DayNightToggle night={night} onChange={setNight} />
+          <Box sx={{ width: 8 }} />
+          {inElectron && <WindowButtons />}
         </Box>
       )}
-      <Stack spacing={1.2} alignItems="center" sx={{ bgcolor: '#241609', backgroundImage: `linear-gradient(rgba(20,10,3,.55), rgba(20,10,3,.55)), ${woodTexture}`, backgroundSize: 'auto, 400px 240px', borderRight: '2px solid #a07a44', py: 1.5, overflow: 'auto' }}>
+      <Stack spacing={1.2} alignItems="center" sx={{ bgcolor: '#241609', backgroundImage: `linear-gradient(rgba(20,10,3,${night ? '.72' : '.55'}), rgba(20,10,3,${night ? '.72' : '.55'})), ${woodTexture}`, backgroundSize: 'auto, 400px 240px', borderRight: '2px solid #a07a44', py: 1.5, overflow: 'auto' }}>
         <Tooltip title="Travian Guard" placement="right">
           <Box component="img" src={crest} alt="" sx={{ width: 46, height: 46, filter: 'drop-shadow(0 2px 3px rgba(0,0,0,.6))', mb: 0.5 }} />
         </Tooltip>
@@ -376,7 +418,8 @@ function Shell() {
         </Tooltip>
       </Stack>
 
-      <Stack sx={{ bgcolor: '#3a2513', backgroundImage: `linear-gradient(90deg, rgba(0,0,0,.25), rgba(0,0,0,0) 12%, rgba(0,0,0,0) 88%, rgba(0,0,0,.3)), ${woodTexture}`, backgroundSize: 'auto, 400px 240px', minHeight: 0 }}>
+      {narrow && navOpen && <Box onClick={() => setNavOpen(false)} sx={{ position: 'absolute', inset: '34px 0 0 60px', zIndex: 19, bgcolor: 'rgba(20,10,3,.45)' }} />}
+      <Stack onClick={event => { if (narrow && (event.target as HTMLElement).closest('button')) setNavOpen(false) }} sx={{ ...(narrow ? { position: 'absolute', top: 34, bottom: 0, left: 60, width: 250, zIndex: 20, boxShadow: '6px 0 18px rgba(0,0,0,.5)', display: navOpen ? 'flex' : 'none' } : {}), bgcolor: '#3a2513', backgroundImage: `${night ? 'radial-gradient(ellipse at 50% 0%, rgba(255,170,70,.22), rgba(255,170,70,0) 55%), linear-gradient(rgba(8,10,25,.45), rgba(8,10,25,.45)), ' : ''}linear-gradient(90deg, rgba(0,0,0,.25), rgba(0,0,0,0) 12%, rgba(0,0,0,0) 88%, rgba(0,0,0,.3)), ${woodTexture}`, backgroundSize: night ? 'auto, auto, auto, 400px 240px' : 'auto, 400px 240px', minHeight: 0 }}>
         <Box sx={{ px: 2, py: 1.5, background: 'linear-gradient(#4a2e15, #2e1c0b)', borderBottom: '2px solid #a07a44', boxShadow: '0 2px 6px rgba(0,0,0,.45)' }}>
           <Typography sx={{ fontWeight: 700, color: '#f6ead0', textTransform: 'none' }} noWrap>{account?.username ?? 'Travian Guard'}</Typography>
           <Typography component="div" variant="caption" sx={{ mt: 0.25, lineHeight: 1.45, color: '#e6d3a8', fontSize: 12.5 }}>
@@ -457,9 +500,9 @@ function Shell() {
         </Stack>
       </Stack>
 
-      <Box sx={{ overflow: 'auto', p: 3, minHeight: 0, display: 'flex', flexDirection: 'column', color: '#3b2a17', bgcolor: '#f4ecd6', backgroundImage: `linear-gradient(rgba(244,236,214,0) 70px, rgba(244,236,214,.85) 150px, #f4ecd6 190px), ${landscape}, ${parchmentTexture}`, backgroundSize: '100% 190px, 100% 190px, 300px 300px', backgroundRepeat: 'no-repeat, no-repeat, repeat', backgroundAttachment: 'local, local, local', position: 'relative', isolation: 'isolate', pt: '110px', borderLeft: '6px solid #6b4423', boxShadow: 'inset 0 0 0 2px #a07a44, inset 0 0 40px rgba(110,74,36,.25)' }}>
+      <Box sx={{ overflow: 'auto', p: narrow ? 1.5 : 3, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', color: '#3b2a17', bgcolor: pageColor, backgroundImage: `linear-gradient(rgba(${pageRgb},0) 70px, rgba(${pageRgb},.85) 150px, ${pageColor} 190px), ${night ? nightLandscape : landscape}, ${night ? 'radial-gradient(ellipse at 50% 35%, rgba(255,214,140,.35), rgba(60,38,15,.35) 95%), ' : ''}${parchmentTexture}`, backgroundSize: night ? '100% 190px, 100% 190px, 100% 100%, 300px 300px' : '100% 190px, 100% 190px, 300px 300px', backgroundRepeat: night ? 'no-repeat, no-repeat, no-repeat, repeat' : 'no-repeat, no-repeat, repeat', backgroundAttachment: 'local', position: 'relative', isolation: 'isolate', pt: '110px', borderLeft: '6px solid #6b4423', boxShadow: 'inset 0 0 0 2px #a07a44, inset 0 0 40px rgba(110,74,36,.25)' }}>
         {/* Own header picture: put a hero.jpg next to index.html and it covers the drawn countryside. */}
-        <Box aria-hidden sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 190, zIndex: -1, pointerEvents: 'none', backgroundImage: 'linear-gradient(rgba(244,236,214,0) 60px, rgba(244,236,214,.85) 150px, #f4ecd6 190px), url(hero.jpg)', backgroundSize: '100% 100%, cover', backgroundPosition: 'top, center 35%', backgroundRepeat: 'no-repeat' }} />
+        <Box aria-hidden sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 190, zIndex: -1, pointerEvents: 'none', backgroundImage: `linear-gradient(rgba(${pageRgb},0) 60px, rgba(${pageRgb},.85) 150px, ${pageColor} 190px), ${night ? 'linear-gradient(rgba(10,18,50,.6), rgba(10,18,50,.35)), ' : ''}url(hero.jpg)`, backgroundSize: night ? '100% 100%, 100% 100%, cover' : '100% 100%, cover', backgroundPosition: night ? 'top, top, center 35%' : 'top, center 35%', backgroundRepeat: 'no-repeat' }} />
         {page === 'cuentas' && (
           <Stack spacing={3}>
             <Accounts notify={ui.notify} refresh={id => { void refresh(id).catch((error: Error) => ui.notify(error.message)) }} />
