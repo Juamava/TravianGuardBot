@@ -54,5 +54,6 @@
 
   <ItemGroup>
     <Content Include="HtmlFiles\*.html" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Examples HTML\Rally point overview hero home.html" Link="HtmlFiles\RallyPointOverview.html" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

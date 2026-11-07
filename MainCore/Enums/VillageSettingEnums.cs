@@ -61,5 +61,16 @@
         AutoClaimQuestEnable,
 
         CompleteImmediatelyTime,
+
+        // Evade attacks: every troop at home leaves as reinforcement to an ally just before the hit
+        EvadeEnable,
+
+        EvadeTargetX,
+        EvadeTargetY,
+        EvadeLeadSeconds,
+        EvadeTrainGapSeconds,
+        EvadeSafetySeconds,
+        EvadeCheckSeconds,
+        EvadeIncludeHero,
     }
 }

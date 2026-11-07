@@ -94,6 +94,10 @@ namespace MainCore.Services
                     var attackVillageTaskHandler = scope.GetHandler<AttackVillageTask.Task>();
                     return await attackVillageTaskHandler.HandleAsync(attackVillageTask, cancellationToken);
 
+                case EvadeAttackTask.Task evadeAttackTask:
+                    var evadeAttackTaskHandler = scope.GetHandler<EvadeAttackTask.Task>();
+                    return await evadeAttackTaskHandler.HandleAsync(evadeAttackTask, cancellationToken);
+
                 case RaidCowListTask.Task raidCowListTask:
                     var raidCowListTaskHandler = scope.GetHandler<RaidCowListTask.Task>();
                     return await raidCowListTaskHandler.HandleAsync(raidCowListTask, cancellationToken);

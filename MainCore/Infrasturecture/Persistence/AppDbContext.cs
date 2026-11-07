@@ -150,6 +150,15 @@ namespace MainCore.Infrasturecture.Persistence
 
             {VillageSettingEnums.AutoClaimQuestEnable, 0 },
             {VillageSettingEnums.CompleteImmediatelyTime, 20 },
+
+            {VillageSettingEnums.EvadeEnable, 0 },
+            {VillageSettingEnums.EvadeTargetX, 0 },
+            {VillageSettingEnums.EvadeTargetY, 0 },
+            {VillageSettingEnums.EvadeLeadSeconds, 10 },
+            {VillageSettingEnums.EvadeTrainGapSeconds, 60 },
+            {VillageSettingEnums.EvadeSafetySeconds, 5 },
+            {VillageSettingEnums.EvadeCheckSeconds, 90 },
+            {VillageSettingEnums.EvadeIncludeHero, 1 },
         }.ToImmutableDictionary();
 
         private List<VillageSettingEnums> GetMissingVillageSettings()

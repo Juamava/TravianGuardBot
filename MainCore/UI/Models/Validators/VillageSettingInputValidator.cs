@@ -49,6 +49,25 @@ namespace MainCore.UI.Models.Validators
             RuleFor(x => x.WorkshopAmount.Min)
                 .GreaterThanOrEqualTo(0)
                 .WithMessage("Minimum workshop amount troop ({PropertyValue}) should be positive number");
+
+            RuleFor(x => x.EvadeTargetX)
+                .InclusiveBetween(-400, 400)
+                .WithMessage("La X del aliado ({PropertyValue}) tiene que estar entre -400 y 400");
+            RuleFor(x => x.EvadeTargetY)
+                .InclusiveBetween(-400, 400)
+                .WithMessage("La Y del aliado ({PropertyValue}) tiene que estar entre -400 y 400");
+            RuleFor(x => x.EvadeLeadSeconds)
+                .InclusiveBetween(3, 60)
+                .WithMessage("La salida antes del impacto ({PropertyValue}) tiene que estar entre 3 y 60 segundos");
+            RuleFor(x => x.EvadeTrainGapSeconds)
+                .InclusiveBetween(0, 1800)
+                .WithMessage("La separación de un tren ({PropertyValue}) tiene que estar entre 0 y 1800 segundos");
+            RuleFor(x => x.EvadeSafetySeconds)
+                .InclusiveBetween(0, 120)
+                .WithMessage("El margen de vuelta ({PropertyValue}) tiene que estar entre 0 y 120 segundos");
+            RuleFor(x => x.EvadeCheckSeconds)
+                .InclusiveBetween(30, 1800)
+                .WithMessage("La revisión de ataques ({PropertyValue}) tiene que estar entre 30 y 1800 segundos");
         }
     }
 }
