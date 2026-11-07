@@ -38,6 +38,7 @@ export type AccountRow = {
   farms?: boolean
   gameFarms?: boolean
   scouts?: boolean
+  adventures?: boolean
   villageNext?: string | null
   buildNext?: string | null
   troopNext?: string | null
@@ -45,6 +46,7 @@ export type AccountRow = {
   farmNext?: string | null
   gameFarmNext?: string | null
   scoutNext?: string | null
+  adventureNext?: string | null
   clan?: string | null
   accesses?: string[]
 }
