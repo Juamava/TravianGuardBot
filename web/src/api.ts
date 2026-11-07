@@ -34,6 +34,9 @@ export type AccountRow = {
   villages?: boolean
   farms?: boolean
   gameFarms?: boolean
+  villageNext?: string | null
+  farmNext?: string | null
+  gameFarmNext?: string | null
 }
 
 export type Overview = {

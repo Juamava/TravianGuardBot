@@ -160,6 +160,15 @@ namespace WPFUI
             });
         }
 
+        private static string NextAt(IEnumerable<BaseTask> tasks)
+        {
+            var times = tasks.Select(task => task.ExecuteAt).ToList();
+            if (times.Count == 0) return null;
+            var upcoming = times.Where(time => time > DateTime.Now).ToList();
+            var at = upcoming.Count > 0 ? upcoming.Min() : DateTime.Now;
+            return at.ToString("o");
+        }
+
         private static bool IsVillageWork(BaseTask task)
         {
             return task is UpgradeBuildingTask.Task
@@ -194,6 +203,9 @@ namespace WPFUI
                     villages = queued.Any(IsVillageWork),
                     farms = queued.Any(task => task is RaidCowListTask.Task),
                     gameFarms = queued.Any(task => task is StartFarmListTask.Task or UpdateFarmListTask.Task),
+                    villageNext = NextAt(queued.Where(IsVillageWork)),
+                    farmNext = NextAt(queued.Where(task => task is RaidCowListTask.Task)),
+                    gameFarmNext = NextAt(queued.Where(task => task is StartFarmListTask.Task or UpdateFarmListTask.Task)),
                 };
             }).ToList();
 
