@@ -423,6 +423,8 @@ namespace MainCore.Infrasturecture.Persistence
 
         private void EnsureFarmIntervals()
         {
+            EnsureColumn("FarmLists", "MinAttackMinutes", "INTEGER NOT NULL DEFAULT 0");
+            EnsureColumn("FarmLists", "LastAttackedAt", "TEXT NULL");
             var addedMin = EnsureColumn("FarmLists", "IntervalMin", "INTEGER NOT NULL DEFAULT 540");
             var addedMax = EnsureColumn("FarmLists", "IntervalMax", "INTEGER NOT NULL DEFAULT 660");
             if (addedMin || addedMax)

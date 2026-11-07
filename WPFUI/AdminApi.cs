@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -136,6 +137,7 @@ namespace WPFUI
 
             app.MapGet("/api/accounts/{id:int}/farming", (int id, int villageId) => GetFarming(services, id, villageId));
             app.MapGet("/api/accounts/{id:int}/scouting", (int id, int villageId) => GetScouting(services, id, villageId));
+            app.MapGet("/api/accounts/{id:int}/scouting/export", (int id) => ExportScouting(services, id));
             app.MapPost("/api/accounts/{id:int}/scouting/lists", (int id, CowListBody body) => CreateScoutList(services, id, body));
             app.MapPut("/api/accounts/{id:int}/scouting/lists/{listId:int}", (int id, int listId, ScoutListBody body) => UpdateScoutList(services, id, listId, body));
             app.MapPost("/api/accounts/{id:int}/scouting/promote", (int id, PromoteBody body) => PromoteScouted(services, id, body));
@@ -1095,7 +1097,7 @@ namespace WPFUI
             var gold = context.BooleanByName(account, AccountSettingEnums.Gold);
             var gameTasks = services.GetRequiredService<TaskManager>().GetTaskList(account).OfType<StartFarmListTask.Task>().ToList();
             var gameLists = context.FarmLists.Where(x => x.AccountId == accountId).OrderBy(x => x.Name)
-                .Select(x => new { x.Id, x.Name, x.IsActive, x.IntervalMin, x.IntervalMax })
+                .Select(x => new { x.Id, x.Name, x.IsActive, x.IntervalMin, x.IntervalMax, x.MinAttackMinutes })
                 .AsEnumerable()
                 .Select(x =>
                 {
@@ -1109,6 +1111,7 @@ namespace WPFUI
                         active = x.IsActive,
                         intervalMin = min,
                         intervalMax = max,
+                        minAttackMinutes = x.MinAttackMinutes < 0 ? 0 : x.MinAttackMinutes,
                         running = task is not null,
                         countdown = FormatGameWait(task),
                     };
@@ -1256,6 +1259,134 @@ namespace WPFUI
                 scoutPlan = ScoutRules.DefaultScoutPlan(tribe),
                 server = context.Accounts.Where(x => x.Id == accountId).Select(x => x.Server).FirstOrDefault() ?? "",
             });
+        }
+
+        private static IResult ExportScouting(IServiceProvider services, int accountId)
+        {
+            using var context = Context(services);
+            if (!context.Accounts.Any(x => x.Id == accountId)) return Fail("No se encontró la cuenta.");
+            var lists = context.CowLists.Where(x => x.AccountId == accountId && x.Kind == CowList.ScoutKind).ToList();
+            var listIds = lists.Select(x => x.Id).ToList();
+            var listById = lists.ToDictionary(x => x.Id);
+            var homes = context.Villages.Where(x => x.AccountId == accountId).ToDictionary(x => x.Id);
+            var targets = context.CowVillages.Where(x => listIds.Contains(x.CowListId)).ToList();
+            var targetIds = targets.Select(x => x.Id).ToList();
+            var results = context.ScoutResults.Where(x => targetIds.Contains(x.CowVillageId) && x.ScoutedAt != null).ToDictionary(x => x.CowVillageId);
+            var thresholds = lists.ToDictionary(x => x.Id, x => x.FullThreshold);
+            var populationsByList = targets
+                .GroupBy(x => x.CowListId)
+                .ToDictionary(group => group.Key, group => (IReadOnlyCollection<int>)group.Select(x => results.TryGetValue(x.Id, out var item) ? item.PlayerPopulation : -1).ToList());
+
+            var header = new[]
+            {
+                "Lista", "Sale de", "Aldea", "X", "Y", "Enlace", "Distancia", "Dueño", "Tribu", "Alianza", "Población", "Tropas", "Estado",
+                "Espiada", "Hora del reporte", "Clase", "Peligro", "Etiqueta", "Motivo",
+                "Madera", "Barro", "Hierro", "Cereal", "Escondite", "Defensores", "Mató espías",
+                "Población del jugador", "Aldeas del jugador", "Puntos de ataque", "Puntos de defensa", "Días jugando", "Nivel del héroe", "Perfil", "Perfil leído",
+                "Ataque", "Plan de ataque", "Asalto", "Mensaje", "Ataque enviado", "Reporte leído",
+                "Botín madera", "Botín barro", "Botín hierro", "Botín cereal", "Botín total", "Transportado", "Capacidad", "Tropas enviadas", "Tropas perdidas",
+                "Atacante", "Defensor", "Reporte",
+            };
+            var lines = new List<string> { CsvRow(header) };
+            foreach (var target in targets.Where(x => results.ContainsKey(x.Id)).OrderBy(x => listById[x.CowListId].Name).ThenBy(x => x.Name))
+            {
+                var result = results[target.Id];
+                var list = listById[target.CowListId];
+                homes.TryGetValue(list.VillageId, out var home);
+                var x = target.CoordX;
+                var y = target.CoordY;
+                if ((x is null || y is null) && CowOasisParser.TryReadCoordinates(target.Url, out var parsedX, out var parsedY))
+                {
+                    x = parsedX;
+                    y = parsedY;
+                }
+                var distance = target.Distance;
+                if (distance < 0 && x is int targetX && y is int targetY && home is not null)
+                    distance = CowOasisParser.TravelDistance(home.X, home.Y, targetX, targetY);
+                string why;
+                if (result.Class == ScoutRules.Danger)
+                {
+                    var (level, parts) = ScoutRules.DangerBreakdown(new DangerInput(
+                        result.Defenders, result.ScoutsDied, result.PlayerPopulation,
+                        ScoutRules.Percentile(result.PlayerPopulation, populationsByList.TryGetValue(target.CowListId, out var populations) ? populations : []),
+                        result.PlayerVillages, result.AttackPoints, result.DefensePoints,
+                        !string.IsNullOrWhiteSpace(result.Alliance), result.HeroLevel));
+                    why = ScoutRules.Explain(level, parts);
+                }
+                else
+                {
+                    why = ScoutRules.ExplainCow(result.Class, result.Wood, result.Clay, result.Iron, result.Crop, thresholds.TryGetValue(list.Id, out var threshold) ? threshold : 0);
+                }
+                AttackReport report = null;
+                if (!string.IsNullOrWhiteSpace(result.AttackDetails))
+                {
+                    try { report = JsonSerializer.Deserialize<AttackReport>(result.AttackDetails); }
+                    catch (JsonException) { report = null; }
+                }
+                lines.Add(CsvRow(
+                [
+                    list.Name,
+                    home is null ? "" : $"{home.Name} ({home.X}|{home.Y})",
+                    VillageLabel(ScoutRules.CleanVillageName(target.Name)),
+                    x?.ToString(CultureInfo.InvariantCulture) ?? "",
+                    y?.ToString(CultureInfo.InvariantCulture) ?? "",
+                    target.Url ?? "",
+                    distance < 0 ? "" : distance.ToString(CultureInfo.InvariantCulture),
+                    target.Owner ?? "",
+                    target.Tribe ?? "",
+                    string.IsNullOrWhiteSpace(result.Alliance) ? target.Alliance ?? "" : result.Alliance,
+                    target.Population < 0 ? "" : target.Population.ToString(CultureInfo.InvariantCulture),
+                    CowTroopPlan.Describe(target.TroopPlan, target.TroopCount),
+                    FormatStatus(target.LastAttackedAt, target.LastSkipReason),
+                    When(result.ScoutedAt),
+                    result.ReportTime ?? "",
+                    result.Class ?? "",
+                    result.Danger > 0 ? result.Danger.ToString(CultureInfo.InvariantCulture) : "",
+                    ScoutRules.Label(result.Class, result.Danger),
+                    why,
+                    Count(result.Wood), Count(result.Clay), Count(result.Iron), Count(result.Crop), Count(result.Cranny), Count(result.Defenders),
+                    result.ScoutsDied ? "Sí" : "No",
+                    Count(result.PlayerPopulation), Count(result.PlayerVillages), Count(result.AttackPoints), Count(result.DefensePoints), Count(result.DaysPlaying), Count(result.HeroLevel),
+                    result.PlayerUrl ?? "",
+                    When(result.ProfileAt),
+                    result.AttackState ?? "",
+                    result.AttackPlan ?? "",
+                    string.IsNullOrWhiteSpace(result.AttackState) ? "" : result.AttackRaid ? "Sí" : "No",
+                    result.AttackMessage ?? "",
+                    When(result.AttackSentUtc),
+                    When(result.AttackReportAt),
+                    report is null ? "" : Count(report.BountyWood),
+                    report is null ? "" : Count(report.BountyClay),
+                    report is null ? "" : Count(report.BountyIron),
+                    report is null ? "" : Count(report.BountyCrop),
+                    report is null ? "" : report.Bounty.ToString(CultureInfo.InvariantCulture),
+                    report is null ? "" : Count(report.Carried),
+                    report is null ? "" : Count(report.Capacity),
+                    report is null ? "" : report.Sent.ToString(CultureInfo.InvariantCulture),
+                    report is null ? "" : report.Lost.ToString(CultureInfo.InvariantCulture),
+                    report is null ? "" : string.Join("; ", report.Attacker.Select(unit => $"{unit.Name}: {unit.Sent} enviados, {unit.Dead} muertos")),
+                    report is null ? "" : string.Join("; ", report.Defender.Select(unit => $"{unit.Name}: {unit.Sent} presentes, {unit.Dead} muertos")),
+                    result.AttackDetails ?? "",
+                ]));
+            }
+
+            var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(string.Join("\r\n", lines))).ToArray();
+            return Results.File(bytes, "text/csv; charset=utf-8", "scouting.csv");
+        }
+
+        private static string Count(int value) => value < 0 ? "" : value.ToString(CultureInfo.InvariantCulture);
+
+        private static string When(DateTime? value) => value is null ? "" : value.Value.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+
+        private static string CsvRow(IEnumerable<string> cells) => string.Join(";", cells.Select(CsvCell));
+
+        private static string CsvCell(string value)
+        {
+            value ??= "";
+            if (value.Length > 0 && "=+-@".Contains(value[0])) value = "'" + value;
+            if (value.Contains(';') || value.Contains('"') || value.Contains('\n') || value.Contains('\r'))
+                return "\"" + value.Replace("\"", "\"\"") + "\"";
+            return value;
         }
 
         private static async Task<IResult> GetHomeTroops(IServiceProvider services, int accountId, int villageId, CancellationToken cancellationToken)
@@ -1880,12 +2011,14 @@ namespace WPFUI
         private static IResult SaveGameFarmInterval(IServiceProvider services, int accountId, int farmId, GameIntervalBody body)
         {
             if (body.IntervalMin < 1 || body.IntervalMax < body.IntervalMin || body.IntervalMax > 10080) return Fail("El mínimo tiene que ser de 1 minuto o más, no puede pasar el máximo, y el máximo es de 7 días.");
+            if (body.MinAttackMinutes < 0 || body.MinAttackMinutes > 10080) return Fail("El mínimo entre ataques es de 0 a 7 días. 0 lo deja sin ese límite.");
             using var context = Context(services);
             var updated = context.FarmLists.Where(x => x.Id == farmId && x.AccountId == accountId)
                 .ExecuteUpdate(x => x
                     .SetProperty(farm => farm.IntervalMin, body.IntervalMin)
                     .SetProperty(farm => farm.IntervalMax, body.IntervalMax)
-                    .SetProperty(farm => farm.IntervalsInMinutes, 1));
+                    .SetProperty(farm => farm.IntervalsInMinutes, 1)
+                    .SetProperty(farm => farm.MinAttackMinutes, body.MinAttackMinutes));
             if (updated == 0) return Fail("No se encontró la lista del juego.");
             return Ok("Frecuencia guardada. Se usa la próxima vez que esa lista vuelva a iniciar.");
         }
@@ -2650,6 +2783,7 @@ namespace WPFUI
     {
         public int IntervalMin { get; set; }
         public int IntervalMax { get; set; }
+        public int MinAttackMinutes { get; set; }
     }
 
     public sealed class SearchBody
