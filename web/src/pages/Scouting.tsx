@@ -9,6 +9,7 @@ import DirectionsRunIcon from '@mui/icons-material/DirectionsRun'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import GpsFixedIcon from '@mui/icons-material/GpsFixed'
 import ScheduleIcon from '@mui/icons-material/Schedule'
+import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd'
@@ -280,6 +281,26 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
     }
   }
 
+  async function exportCsv() {
+    try {
+      const response = await fetch(`/api/accounts/${accountId}/scouting/export`)
+      const type = response.headers.get('content-type') ?? ''
+      if (!response.ok || type.includes('application/json')) {
+        const body = await response.json().catch(() => null) as { message?: string } | null
+        notify(body?.message || 'No se pudo exportar')
+        return
+      }
+      const blob = await response.blob()
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = 'scouting.csv'
+      link.click()
+      URL.revokeObjectURL(link.href)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo exportar')
+    }
+  }
+
   async function createList() {
     const name = await ui.prompt('Nombre de la lista de scouting', 'Vecinos')
     if (!name) return
@@ -411,6 +432,7 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
           </TextField>
         )}
         <Button variant="outlined" startIcon={<AddIcon />} onClick={createList} disabled={!villageId}>Nueva lista</Button>
+        <Button variant="outlined" startIcon={<FileDownloadOutlinedIcon />} disabled={!data} onClick={() => { void exportCsv() }}>Exportar</Button>
       </Stack>
 
       {data && data.lists.length === 0 && (

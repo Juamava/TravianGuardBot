@@ -30,12 +30,16 @@ namespace MainCore.DTO
         [MapperIgnoreTarget(nameof(Farm.IntervalMin))]
         [MapperIgnoreTarget(nameof(Farm.IntervalMax))]
         [MapperIgnoreTarget(nameof(Farm.IntervalsInMinutes))]
+        [MapperIgnoreTarget(nameof(Farm.MinAttackMinutes))]
+        [MapperIgnoreTarget(nameof(Farm.LastAttackedAt))]
         public static partial void To(this FarmDto dto, Farm entity);
 
         [MapperIgnoreTarget(nameof(Farm.AccountId))]
         [MapperIgnoreTarget(nameof(Farm.IntervalMin))]
         [MapperIgnoreTarget(nameof(Farm.IntervalMax))]
         [MapperIgnoreTarget(nameof(Farm.IntervalsInMinutes))]
+        [MapperIgnoreTarget(nameof(Farm.MinAttackMinutes))]
+        [MapperIgnoreTarget(nameof(Farm.LastAttackedAt))]
         private static partial Farm ToEntity(this FarmDto dto);
 
         private static int ToInt(this FarmId farmId) => farmId.Value;

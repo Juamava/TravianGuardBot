@@ -14,6 +14,8 @@ namespace MainCore.Entities
         public int IntervalMin { get; set; } = 9;
         public int IntervalMax { get; set; } = 11;
         public int IntervalsInMinutes { get; set; } = 1;
+        public int MinAttackMinutes { get; set; }
+        public DateTime? LastAttackedAt { get; set; }
     }
 
     [StronglyTypedId]

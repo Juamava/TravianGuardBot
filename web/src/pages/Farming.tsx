@@ -12,7 +12,7 @@ import { Empty, panel, useUi } from '../ui'
 type Village = { id: number; name: string; x: number; y: number }
 type CowList = { id: number; name: string; minMinutes: number; repeatMinutes: number; levelHero: boolean; autoStart: boolean; running: boolean; countdown: string }
 type Cow = { id: number; listId: number; name: string; url: string; troops: string; status: string; kind: string; owner: string; tribe: string; alliance: string; population: number; distance: number; x: number | null; y: number | null }
-type GameFarm = { id: number; name: string; active: boolean; intervalMin: number; intervalMax: number; running: boolean; countdown: string }
+type GameFarm = { id: number; name: string; active: boolean; intervalMin: number; intervalMax: number; minAttackMinutes?: number; running: boolean; countdown: string }
 type FarmingData = { villages: Village[]; lists: CowList[]; cows: Cow[]; countdown: string; gold: boolean; gameLists: GameFarm[]; gameRunning: boolean; gameAutoStart: boolean }
 type SearchResult = { count: number; villageName: string; originX: number; originY: number; troopPlan: string; hits: { x: number; y: number; distance: number }[] }
 
@@ -128,27 +128,36 @@ function GameFarming({ accountId, data, notify, reload }: { accountId: number; d
 function GameFarmRow({ accountId, list, disabled, notify, reload }: { accountId: number; list: GameFarm; disabled: boolean; notify: (message: string) => void; reload: () => Promise<FarmingData | undefined> }) {
   const [min, setMin] = useState(String(list.intervalMin))
   const [max, setMax] = useState(String(list.intervalMax))
+  const [gap, setGap] = useState(String(list.minAttackMinutes ?? 0))
   const editing = useRef(false)
 
   useEffect(() => {
     if (editing.current) return
     setMin(String(list.intervalMin))
     setMax(String(list.intervalMax))
-  }, [list.intervalMin, list.intervalMax])
+    setGap(String(list.minAttackMinutes ?? 0))
+  }, [list.intervalMin, list.intervalMax, list.minAttackMinutes])
 
   async function save() {
     editing.current = false
     const intervalMin = Number(min)
     const intervalMax = Number(max)
+    const minAttackMinutes = Number(gap)
     if (!Number.isFinite(intervalMin) || !Number.isFinite(intervalMax) || intervalMin < 1 || intervalMax < intervalMin || intervalMax > 10080) {
       notify('El mínimo tiene que ser de 1 minuto o más, no puede pasar el máximo, y el máximo es de 7 días.')
       setMin(String(list.intervalMin))
       setMax(String(list.intervalMax))
+      setGap(String(list.minAttackMinutes ?? 0))
       return
     }
-    if (intervalMin === list.intervalMin && intervalMax === list.intervalMax) return
+    if (!Number.isFinite(minAttackMinutes) || minAttackMinutes < 0 || minAttackMinutes > 10080) {
+      notify('El mínimo entre ataques es de 0 a 7 días. 0 lo deja sin ese límite.')
+      setGap(String(list.minAttackMinutes ?? 0))
+      return
+    }
+    if (intervalMin === list.intervalMin && intervalMax === list.intervalMax && minAttackMinutes === (list.minAttackMinutes ?? 0)) return
     try {
-      notify((await put(`/api/accounts/${accountId}/farming/game/${list.id}/interval`, { intervalMin, intervalMax })).message)
+      notify((await put(`/api/accounts/${accountId}/farming/game/${list.id}/interval`, { intervalMin, intervalMax, minAttackMinutes })).message)
       await reload()
     } catch (error) {
       notify(error instanceof Error ? error.message : 'No se pudo guardar la frecuencia')
@@ -169,9 +178,11 @@ function GameFarmRow({ accountId, list, disabled, notify, reload }: { accountId:
         <Typography sx={{ flex: 1, fontWeight: 600, fontSize: 15 }}>{list.name}</Typography>
         <Typography color="text.secondary" sx={{ fontSize: 13 }}>{list.active ? 'Activa' : 'Inactiva'}</Typography>
       </Stack>
-      <Stack direction="row" spacing={1} alignItems="center" sx={{ pl: 6.5 }}>
+      <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap" sx={{ pl: 6.5 }}>
         <TextField size="small" type="number" label="Desde" value={min} disabled={disabled} onFocus={() => { editing.current = true }} onChange={event => setMin(event.target.value)} onBlur={() => void save()} sx={{ width: 128 }} slotProps={{ input: { endAdornment: <Typography color="text.secondary" sx={{ ml: 0.5, fontSize: 13 }}>min</Typography> } }} />
         <TextField size="small" type="number" label="Hasta" value={max} disabled={disabled} onFocus={() => { editing.current = true }} onChange={event => setMax(event.target.value)} onBlur={() => void save()} sx={{ width: 128 }} slotProps={{ input: { endAdornment: <Typography color="text.secondary" sx={{ ml: 0.5, fontSize: 13 }}>min</Typography> } }} />
+        <TextField size="small" type="number" label="Mínimo entre ataques" value={gap} disabled={disabled} onFocus={() => { editing.current = true }} onChange={event => setGap(event.target.value)} onBlur={() => void save()} sx={{ width: 210 }} slotProps={{ input: { endAdornment: <Typography color="text.secondary" sx={{ ml: 0.5, fontSize: 13 }}>min</Typography> } }} />
+        <Hint text="Si esta lista se inició hace menos minutos que este número, no se vuelve a iniciar y espera a que se cumpla el tiempo. 0 la deja sin ese límite." />
         {list.countdown && <Typography color="error" sx={{ fontSize: 13, fontWeight: 700 }}>{list.countdown}</Typography>}
       </Stack>
     </Stack>
