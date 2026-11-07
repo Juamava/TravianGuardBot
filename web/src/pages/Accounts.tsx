@@ -122,7 +122,7 @@ export function AccountEditor({ accountId, notify, refresh }: EditorProps) {
           </Stack>
         </Box>
       ))}
-      <Stack direction="row" spacing={1} flexWrap="wrap">
+      <Stack direction="row" spacing={2} useFlexGap flexWrap="wrap">
         <Button variant="outlined" onClick={() => {
           const next = [...accesses, emptyAccess()]
           draft.current = { ...draft.current, accesses: next }
