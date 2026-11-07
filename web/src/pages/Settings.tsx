@@ -73,7 +73,7 @@ function Hint({ text }: { text: string }) {
 }
 
 const tabGroup = {
-  bgcolor: '#fdf9ec',
+  bgcolor: 'var(--tg-panel)',
   p: 1,
   gap: 1,
   borderRadius: 2,
@@ -107,7 +107,7 @@ function SettingGroups({ groups, values, set, meta }: { groups: { title: string;
   return (
     <>
       {groups.map(group => (
-        <Stack key={group.title} spacing={1.5} sx={{ p: 2, borderRadius: 2, bgcolor: '#fdf9ec' }}>
+        <Stack key={group.title} spacing={1.5} sx={{ p: 2, borderRadius: 2, bgcolor: 'var(--tg-panel)' }}>
           <Typography variant="h6">{group.title}</Typography>
           {group.fields.map(field => {
             if (field.kind === 'bool') {

@@ -124,3 +124,54 @@ export const divider = url(`
   <path d='M120 1 L128 7 L120 13 L112 7z' fill='#d9ae55' stroke='#7a5222'/>
   <circle cx='106' cy='7' r='2' fill='#a07a44'/><circle cx='134' cy='7' r='2' fill='#a07a44'/>
 </svg>`)
+
+/** The same countryside at night: moon, stars, dark hills and lit windows. */
+export const nightLandscape = url(`
+<svg xmlns='http://www.w3.org/2000/svg' width='1600' height='220' viewBox='0 0 1600 220' preserveAspectRatio='xMidYMax slice'>
+  <defs>
+    <linearGradient id='sky' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#0b1530'/><stop offset='.65' stop-color='#22305a'/><stop offset='1' stop-color='#4a4560'/></linearGradient>
+    <radialGradient id='moonGlow'><stop offset='0' stop-color='#fff6d8' stop-opacity='.55'/><stop offset='1' stop-color='#fff6d8' stop-opacity='0'/></radialGradient>
+    <radialGradient id='lamp'><stop offset='0' stop-color='#ffcf6a' stop-opacity='.9'/><stop offset='1' stop-color='#ff9a2e' stop-opacity='0'/></radialGradient>
+  </defs>
+  <rect width='1600' height='220' fill='url(#sky)'/>
+  <g fill='#fff8e0'>
+    ${Array.from({ length: 70 }, (_, i) => `<circle cx='${(i * 233) % 1600}' cy='${(i * 71) % 110 + 6}' r='${i % 5 === 0 ? 1.6 : 0.9}' opacity='${0.45 + (i % 4) * 0.15}'/>`).join('')}
+  </g>
+  <circle cx='1280' cy='58' r='80' fill='url(#moonGlow)'/>
+  <circle cx='1280' cy='58' r='26' fill='#fbf1cf'/>
+  <circle cx='1292' cy='50' r='24' fill='#22305a' opacity='.92'/>
+  <path d='M0 120 Q120 70 260 105 T560 95 T880 110 T1200 85 T1600 105 V220 H0z' fill='#2b3550'/>
+  <path d='M0 150 Q160 105 340 135 T720 128 T1080 140 T1400 118 T1600 135 V220 H0z' fill='#22331f'/>
+  <path d='M0 185 Q200 150 420 172 T860 168 T1280 178 T1600 160 V220 H0z' fill='#1a2a16'/>
+  <g transform='translate(640 128)'>
+    <g fill='#2e1d10' stroke='#120a04' stroke-width='1'>
+      ${Array.from({ length: 22 }, (_, i) => `<path d='M${i * 7} 30 V8 l3.5 -5 l3.5 5 V30z'/>`).join('')}
+    </g>
+    <g transform='translate(30 -14)'>
+      <rect x='0' y='14' width='40' height='26' fill='#4a3a2a' stroke='#120a04'/>
+      <path d='M-6 16 L20 -4 L46 16z' fill='#3a1a12' stroke='#120a04'/>
+      <rect x='16' y='26' width='8' height='14' fill='#ffc35a'/>
+      <circle cx='20' cy='32' r='22' fill='url(#lamp)' opacity='.6'/>
+    </g>
+    <g transform='translate(88 -6)'>
+      <rect x='0' y='10' width='30' height='22' fill='#4f3e2c' stroke='#120a04'/>
+      <path d='M-5 12 L15 -4 L35 12z' fill='#3d1e12' stroke='#120a04'/>
+      <rect x='11' y='16' width='7' height='7' fill='#ffd27a'/>
+      <circle cx='15' cy='20' r='16' fill='url(#lamp)' opacity='.55'/>
+    </g>
+    <g transform='translate(150 -38)'>
+      <rect x='0' y='12' width='16' height='56' fill='#2e2418' stroke='#120a04'/>
+      <path d='M-6 14 L8 -6 L22 14z' fill='#2a120a' stroke='#120a04'/>
+      <rect x='5' y='24' width='6' height='9' fill='#ffcf6a'/>
+      <circle cx='8' cy='28' r='26' fill='url(#lamp)' opacity='.7'/>
+      <line x1='8' y1='-6' x2='8' y2='-24' stroke='#120a04' stroke-width='1.5'/>
+      <path d='M8 -24 l14 4 l-14 4z' fill='#6a1a14'/>
+    </g>
+  </g>
+  <g fill='#0f1d0c'>
+    <circle cx='90' cy='170' r='16'/><circle cx='112' cy='162' r='20'/>
+    <circle cx='1450' cy='150' r='18'/><circle cx='1475' cy='158' r='14'/>
+    <circle cx='1000' cy='166' r='12'/>
+  </g>
+  <path d='M0 210 Q260 188 560 202 T1100 200 T1600 196 V220 H0z' fill='#0e180b'/>
+</svg>`)

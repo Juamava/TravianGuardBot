@@ -477,7 +477,7 @@ export function Farming({ accountId, notify, mode }: { accountId: number; notify
           {(data?.villages ?? []).map(village => <MenuItem key={village.id} value={village.id}>{village.name} ({village.x}|{village.y})</MenuItem>)}
         </TextField>
       </Stack>
-      <Box sx={{ display: 'grid', gridTemplateColumns: '260px minmax(0, 1fr)', gap: 2, alignItems: 'start' }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: '260px minmax(0, 1fr)' }, gap: 2, alignItems: 'start' }}>
         <Stack spacing={2} sx={{ minWidth: 0 }}>
           <Stack spacing={1}>
             <Typography variant="caption" color="text.secondary">Listas</Typography>
@@ -500,7 +500,7 @@ export function Farming({ accountId, notify, mode }: { accountId: number; notify
               <Button size="small" disabled={!listId || saving || name.trim() === ''} onClick={() => run(() => put(`/api/accounts/${accountId}/farming/lists/${listId}`, { name, minMinutes, repeatMinutes, autoStart: selectedList?.autoStart ?? false }))} sx={{ height: 40, flexShrink: 0 }}>Renombrar</Button>
               <Button size="small" color="error" disabled={!listId || saving} onClick={async () => { if (await ui.confirm('¿Borrar esta lista y todas sus aldeas?')) run(() => del(`/api/accounts/${accountId}/farming/lists/${listId}`)) }} sx={{ height: 40, flexShrink: 0 }}>Borrar</Button>
             </Stack>
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 1 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(3, minmax(0, 1fr))', sm: 'repeat(5, minmax(0, 1fr))' }, gap: 1 }}>
               <Tooltip title={anyRunning ? 'Hay una lista en curso. Detenela para poder sincronizar.' : ''}>
                 <Box sx={{ minWidth: 0, display: 'flex', '& > .MuiButton-root': { flex: 1 } }}>
                   <Tile color="#4f7a12" icon={<SyncIcon />} label={syncing ? 'Sync...' : 'Sync'} disabled={!listId || cows.length === 0 || saving || syncing || anyRunning} onClick={syncNames} />
@@ -522,7 +522,7 @@ export function Farming({ accountId, notify, mode }: { accountId: number; notify
             {countdown && <Typography color="error" fontWeight={800} sx={{ mt: 1.5 }}>{countdown}</Typography>}
           </Box>
 
-          <Box sx={{ ...panel, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, alignItems: 'center' }}>
+          <Box sx={{ ...panel, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1, alignItems: 'center' }}>
             <Stack direction="row" spacing={0.75} alignItems="center">
               <TextField fullWidth required type="number" label="Mínimo por aldea" value={minMinutes || ''} error={listId > 0 && minMinutes < 1} onChange={event => changeMinutes('min', event.target.value)} slotProps={{ input: { endAdornment: <Typography color="text.secondary" sx={{ ml: 1 }}>min</Typography> } }} />
               <Hint text="Minutos que tienen que pasar para volver a atacar la misma aldea. Si todavía no se cumplieron, esa aldea se saltea." />
