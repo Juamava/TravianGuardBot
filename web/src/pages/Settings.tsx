@@ -67,13 +67,13 @@ const villageTrade: { title: string; fields: Field[] }[] = [
 function Hint({ text }: { text: string }) {
   return (
     <Tooltip title={text} placement="top" arrow enterDelay={200} slotProps={{ tooltip: { sx: { maxWidth: 280, fontSize: 13, lineHeight: 1.45 } } }}>
-      <InfoOutlinedIcon sx={{ fontSize: 16, color: '#949ba4', cursor: 'help' }} />
+      <InfoOutlinedIcon sx={{ fontSize: 16, color: '#8a7350', cursor: 'help' }} />
     </Tooltip>
   )
 }
 
 const tabGroup = {
-  bgcolor: '#2b2d31',
+  bgcolor: '#fbf5e2',
   p: 1,
   gap: 1,
   borderRadius: 2,
@@ -94,12 +94,12 @@ const tabGroup = {
     borderRadius: 1,
     px: 2,
     py: 0.75,
-    color: '#b5bac1',
+    color: '#6b5233',
     textTransform: 'none',
     fontWeight: 600,
-    '&.Mui-selected': { bgcolor: '#404249', color: '#fff' },
-    '&.Mui-selected:hover': { bgcolor: '#4e5158' },
-    '&:hover': { bgcolor: '#35373c' },
+    '&.Mui-selected': { bgcolor: '#e2cf9a', color: '#2b1d0e' },
+    '&.Mui-selected:hover': { bgcolor: '#c9b27c' },
+    '&:hover': { bgcolor: '#f1e5c2' },
   },
 } as const
 
@@ -107,7 +107,7 @@ function SettingGroups({ groups, values, set, meta }: { groups: { title: string;
   return (
     <>
       {groups.map(group => (
-        <Stack key={group.title} spacing={1.5} sx={{ p: 2, borderRadius: 2, bgcolor: '#2b2d31' }}>
+        <Stack key={group.title} spacing={1.5} sx={{ p: 2, borderRadius: 2, bgcolor: '#fbf5e2' }}>
           <Typography variant="h6">{group.title}</Typography>
           {group.fields.map(field => {
             if (field.kind === 'bool') {

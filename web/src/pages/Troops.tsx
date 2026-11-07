@@ -21,7 +21,7 @@ const slots: Slot[] = [
 function Hint({ text }: { text: string }) {
   return (
     <Tooltip title={text} placement="top" arrow enterDelay={200} slotProps={{ tooltip: { sx: { maxWidth: 280, fontSize: 13, lineHeight: 1.45 } } }}>
-      <InfoOutlinedIcon sx={{ fontSize: 16, color: '#949ba4', cursor: 'help' }} />
+      <InfoOutlinedIcon sx={{ fontSize: 16, color: '#8a7350', cursor: 'help' }} />
     </Tooltip>
   )
 }
@@ -122,10 +122,10 @@ export function Troops({ accountId, villageId, meta, notify }: { accountId: numb
           const on = troop !== 0
           const built = status ? status.buildings.includes(slot.building) : true
           return (
-            <Stack key={slot.building} spacing={1.25} sx={{ ...panel, p: 2, opacity: on ? 1 : 0.75, boxShadow: on ? 'inset 3px 0 0 #23a559' : 'none' }}>
+            <Stack key={slot.building} spacing={1.25} sx={{ ...panel, p: 2, opacity: on ? 1 : 0.75, boxShadow: on ? 'inset 3px 0 0 #4f8a10' : 'none' }}>
               <Stack direction="row" alignItems="center" spacing={1}>
                 <Typography sx={{ fontWeight: 700, flex: 1 }}>{slot.title}</Typography>
-                {!built && <Chip size="small" label="no construido" sx={{ bgcolor: '#3a2426', color: '#ed4245' }} />}
+                {!built && <Chip size="small" label="no construido" sx={{ bgcolor: '#f6d5cf', color: '#b8281d' }} />}
               </Stack>
               <TextField select label="Tropa" value={troop} onChange={event => settings.set(slot.troop, Number(event.target.value), true)}>
                 <MenuItem value={0}>No entrenar acá</MenuItem>
@@ -153,7 +153,7 @@ export function Troops({ accountId, villageId, meta, notify }: { accountId: numb
 
 function Info({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
-    <Box sx={{ bgcolor: '#313338', borderRadius: 1, px: 1.5, py: 1 }}>
+    <Box sx={{ bgcolor: '#efe4c6', borderRadius: 1, px: 1.5, py: 1 }}>
       <Typography variant="caption" color="text.secondary">{label}</Typography>
       <Typography sx={{ fontWeight: 700 }}>{value}</Typography>
       {detail && <Typography variant="caption" color="text.secondary">{detail}</Typography>}

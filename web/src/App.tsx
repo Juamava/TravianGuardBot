@@ -45,11 +45,11 @@ const actionButton = {
   fontSize: 12,
   lineHeight: 1.2,
   whiteSpace: 'nowrap',
-  color: '#dbdee1',
-  bgcolor: '#313338',
-  '&:hover': { bgcolor: '#35373c' },
-  '&.Mui-disabled': { color: '#6d6f78' },
-  '&.Mui-disabled .MuiSvgIcon-root': { color: '#6d6f78' },
+  color: '#eadbb8',
+  bgcolor: '#4e321a',
+  '&:hover': { bgcolor: '#5a3b1f' },
+  '&.Mui-disabled': { color: '#8c7656' },
+  '&.Mui-disabled .MuiSvgIcon-root': { color: '#8c7656' },
 } as const
 
 function LiveLed() {
@@ -62,7 +62,7 @@ function LiveLed() {
         height: 8,
         flexShrink: 0,
         borderRadius: '50%',
-        bgcolor: '#23a559',
+        bgcolor: '#7cb32a',
         boxShadow: '0 0 0 3px rgba(35,165,89,.18)',
         animation: 'navLed 1.1s ease-in-out infinite',
         '@keyframes navLed': { '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.2 } },
@@ -96,14 +96,14 @@ function sooner(left?: string | null, right?: string | null) {
 function NextCount({ text }: { text: string }) {
   if (!text) return null
   return (
-    <Box component="span" title={`Próxima acción en ${text}`} sx={{ color: '#23a559', fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1, flexShrink: 0 }}>
+    <Box component="span" title={`Próxima acción en ${text}`} sx={{ color: '#7cb32a', fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1, flexShrink: 0 }}>
       {text}
     </Box>
   )
 }
 
 function NavItem({ selected, disabled, icon: Icon, label, onClick, tone = 'normal', live = false, count = '' }: { selected?: boolean; disabled?: boolean; icon: SvgIconComponent; label: string; onClick: () => void; tone?: 'normal' | 'danger'; live?: boolean; count?: string }) {
-  const color = tone === 'danger' ? '#ed4245' : selected ? '#fff' : '#949ba4'
+  const color = tone === 'danger' ? '#e0563f' : selected ? '#fff' : '#c8b088'
   return (
     <Button
       disabled={disabled}
@@ -114,8 +114,8 @@ function NavItem({ selected, disabled, icon: Icon, label, onClick, tone = 'norma
         width: '100%',
         px: 1.25,
         color,
-        bgcolor: selected ? '#404249' : 'transparent',
-        '&:hover': { bgcolor: tone === 'danger' ? '#3a2426' : '#35373c', color: tone === 'danger' ? '#ed4245' : '#dbdee1' },
+        bgcolor: selected ? '#6e4a24' : 'transparent',
+        '&:hover': { bgcolor: tone === 'danger' ? '#5a1f14' : '#5a3b1f', color: tone === 'danger' ? '#e0563f' : '#eadbb8' },
         '& .MuiButton-startIcon': { color: 'inherit', mr: 1 },
       }}
     >
@@ -142,9 +142,9 @@ function SubNav({ selected, disabled, label, onClick, live = false, count = '' }
         pr: 1.25,
         fontSize: 13,
         fontWeight: selected ? 600 : 500,
-        color: selected ? '#fff' : '#949ba4',
-        bgcolor: selected ? '#404249' : 'transparent',
-        '&:hover': { bgcolor: '#35373c', color: '#dbdee1' },
+        color: selected ? '#fff' : '#c8b088',
+        bgcolor: selected ? '#6e4a24' : 'transparent',
+        '&:hover': { bgcolor: '#5a3b1f', color: '#eadbb8' },
       }}
     >
       <Box component="span" sx={{ flex: 1, textAlign: 'left' }}>{label}</Box>
@@ -161,9 +161,9 @@ function isConnected(status: string) {
 }
 
 function statusColor(status: string) {
-  if (status === 'Online') return '#23a559'
-  if (status === 'Paused') return '#f0b232'
-  return '#80848e'
+  if (status === 'Online') return '#7cb32a'
+  if (status === 'Paused') return '#e7b440'
+  return '#8c7656'
 }
 
 function initials(name: string) {
@@ -299,7 +299,7 @@ function Shell() {
 
   return (
     <Box sx={{ height: '100vh', display: 'grid', gridTemplateColumns: '72px 240px 1fr', overflow: 'hidden' }}>
-      <Stack spacing={1.2} alignItems="center" sx={{ bgcolor: '#1e1f22', py: 1.5, overflow: 'auto' }}>
+      <Stack spacing={1.2} alignItems="center" sx={{ bgcolor: '#241609', py: 1.5, overflow: 'auto' }}>
         {(overview?.accounts ?? []).map((item: AccountRow) => {
           const selected = item.id === accountId
           return (
@@ -310,7 +310,7 @@ function Shell() {
                   width: 48,
                   height: 48,
                   borderRadius: selected ? '16px' : '50%',
-                  bgcolor: selected ? '#5865f2' : '#313338',
+                  bgcolor: selected ? '#6c9a1d' : '#4e321a',
                   color: '#fff',
                   display: 'grid',
                   placeItems: 'center',
@@ -318,25 +318,25 @@ function Shell() {
                   cursor: 'pointer',
                   position: 'relative',
                   transition: 'border-radius .15s ease, background-color .15s ease',
-                  '&:hover': { borderRadius: '16px', bgcolor: selected ? '#5865f2' : '#404249' },
+                  '&:hover': { borderRadius: '16px', bgcolor: selected ? '#6c9a1d' : '#6e4a24' },
                 }}
               >
                 {initials(item.username)}
-                <Box sx={{ position: 'absolute', right: -2, bottom: -2, width: 14, height: 14, borderRadius: '50%', bgcolor: statusColor(item.status), border: '3px solid #1e1f22' }} />
+                <Box sx={{ position: 'absolute', right: -2, bottom: -2, width: 14, height: 14, borderRadius: '50%', bgcolor: statusColor(item.status), border: '3px solid #241609' }} />
               </Box>
             </Tooltip>
           )
         })}
         <Tooltip title="Cuentas" placement="right">
-          <Box onClick={() => setPage('cuentas')} sx={{ width: 48, height: 48, borderRadius: page === 'cuentas' ? '16px' : '50%', bgcolor: page === 'cuentas' ? '#23a559' : '#313338', color: page === 'cuentas' ? '#fff' : '#23a559', display: 'grid', placeItems: 'center', cursor: 'pointer', '&:hover': { borderRadius: '16px', color: '#fff', bgcolor: '#23a559' } }}>
+          <Box onClick={() => setPage('cuentas')} sx={{ width: 48, height: 48, borderRadius: page === 'cuentas' ? '16px' : '50%', bgcolor: page === 'cuentas' ? '#7cb32a' : '#4e321a', color: page === 'cuentas' ? '#fff' : '#7cb32a', display: 'grid', placeItems: 'center', cursor: 'pointer', '&:hover': { borderRadius: '16px', color: '#fff', bgcolor: '#7cb32a' } }}>
             <AddIcon />
           </Box>
         </Tooltip>
       </Stack>
 
-      <Stack sx={{ bgcolor: '#2b2d31', minHeight: 0 }}>
+      <Stack sx={{ bgcolor: '#3a2513', minHeight: 0 }}>
         <Box sx={{ px: 2, py: 1.5, boxShadow: '0 1px 0 rgba(0,0,0,.2)' }}>
-          <Typography sx={{ fontWeight: 700, color: '#f2f3f5', textTransform: 'none' }} noWrap>{account?.username ?? 'Travian Guard'}</Typography>
+          <Typography sx={{ fontWeight: 700, color: '#f6ead0', textTransform: 'none' }} noWrap>{account?.username ?? 'Travian Guard'}</Typography>
           <Typography component="div" variant="caption" color="text.secondary" sx={{ mt: 0.25, lineHeight: 1.45 }}>
             {account && <Box sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{account.host}</Box>}
             <Box>
@@ -354,11 +354,11 @@ function Shell() {
                   font: 'inherit',
                   lineHeight: 'inherit',
                   cursor: 'pointer',
-                  color: update?.available && !mandatory ? '#dee0fc' : 'inherit',
+                  color: update?.available && !mandatory ? '#d8f0a6' : 'inherit',
                   textDecoration: 'underline',
                   textUnderlineOffset: '2px',
                   '&:hover': { color: '#fff' },
-                  '&:disabled': { cursor: 'default', color: '#6d6f78', textDecoration: 'none' },
+                  '&:disabled': { cursor: 'default', color: '#8c7656', textDecoration: 'none' },
                 }}
               >
                 {updateLabel}
@@ -367,20 +367,20 @@ function Shell() {
           </Typography>
         </Box>
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.75, px: 1.5, py: 1.25 }}>
-          <Button onClick={() => act('login')} disabled={!canConnect} sx={{ ...actionButton, ...(canConnect ? { color: '#23a559' } : {}) }}>
+          <Button onClick={() => act('login')} disabled={!canConnect} sx={{ ...actionButton, ...(canConnect ? { color: '#7cb32a' } : {}) }}>
             <LinkIcon sx={{ fontSize: 18, color: 'inherit' }} />
             Conectar
           </Button>
           <Button onClick={() => act('pause')} disabled={!connected} sx={actionButton}>
-            {account?.status === 'Paused' ? <PlayArrowIcon sx={{ fontSize: 18, color: '#f0b232' }} /> : <PauseIcon sx={{ fontSize: 18, color: '#f0b232' }} />}
+            {account?.status === 'Paused' ? <PlayArrowIcon sx={{ fontSize: 18, color: '#e7b440' }} /> : <PauseIcon sx={{ fontSize: 18, color: '#e7b440' }} />}
             {account?.pause ?? 'Pausar'}
           </Button>
           <Button onClick={() => act('logout')} disabled={holder?.id !== account?.id} sx={actionButton}>
-            <LogoutIcon sx={{ fontSize: 18, color: '#ed4245' }} />
+            <LogoutIcon sx={{ fontSize: 18, color: '#e0563f' }} />
             Salir
           </Button>
           <Button onClick={() => act('restart')} disabled={!connected} sx={actionButton}>
-            <RestartAltIcon sx={{ fontSize: 18, color: '#dbdee1' }} />
+            <RestartAltIcon sx={{ fontSize: 18, color: '#eadbb8' }} />
             Reiniciar
           </Button>
         </Box>
@@ -415,7 +415,7 @@ function Shell() {
         </Stack>
       </Stack>
 
-      <Box sx={{ overflow: 'auto', p: 3, bgcolor: '#313338', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ overflow: 'auto', p: 3, minHeight: 0, display: 'flex', flexDirection: 'column', color: '#3b2a17', bgcolor: '#efe4c6', backgroundImage: 'radial-gradient(ellipse at top, rgba(255,250,232,.9), rgba(239,228,198,0) 60%), repeating-linear-gradient(0deg, rgba(120,90,40,.025) 0 2px, transparent 2px 4px)', borderLeft: '6px solid #6b4423', boxShadow: 'inset 0 0 0 2px #a07a44, inset 0 0 40px rgba(110,74,36,.25)' }}>
         {page === 'cuentas' && (
           <Stack spacing={3}>
             <Accounts notify={ui.notify} refresh={id => { void refresh(id).catch((error: Error) => ui.notify(error.message)) }} />
@@ -445,7 +445,7 @@ function Shell() {
       {account?.clan && account.host && <ClanChat username={account.username} host={account.host} clan={account.clan} page={page} />}
       {mandatory && update && (
         <Box sx={{ position: 'fixed', inset: 0, zIndex: 30, bgcolor: 'rgba(0,0,0,.72)', display: 'grid', placeItems: 'center', p: 3 }}>
-          <Stack spacing={2} sx={{ width: 420, maxWidth: '100%', bgcolor: '#2b2d31', borderRadius: 2, p: 3 }}>
+          <Stack spacing={2} sx={{ width: 420, maxWidth: '100%', bgcolor: '#3a2513', borderRadius: 2, p: 3 }}>
             <Typography variant="h5">Hay que instalar la versión {update.latest}</Typography>
             <Typography color="text.secondary">Ya pasó un día desde que salió. Se descarga ahora y el bot se cierra unos segundos para instalarla.</Typography>
             <Button variant="contained" disabled={updateBusy} onClick={() => install(true)}>{updateBusy ? (update.progress || 'Descargando...') : 'Actualizar ahora'}</Button>

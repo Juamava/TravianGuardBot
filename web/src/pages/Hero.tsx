@@ -6,8 +6,8 @@ import { panel } from '../ui'
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <Box sx={{ ...panel, flex: 1, minWidth: 0 }}>
-      <Typography variant="overline" sx={{ color: '#949ba4', letterSpacing: '0.12em' }}>{label}</Typography>
-      <Typography variant="h5" sx={{ color: '#f2f3f5', textTransform: 'none' }}>{value}</Typography>
+      <Typography variant="overline" sx={{ color: '#8a7350', letterSpacing: '0.12em' }}>{label}</Typography>
+      <Typography variant="h5" sx={{ color: '#3b2a17', textTransform: 'none' }}>{value}</Typography>
     </Box>
   )
 }
@@ -57,8 +57,8 @@ export function Hero({ accountId, notify }: { accountId: number; notify: (messag
       )}
 
       <Box sx={panel}>
-        <Typography variant="overline" sx={{ color: '#949ba4', letterSpacing: '0.12em' }}>Última acción</Typography>
-        <Typography variant="h6" sx={{ color: '#f2f3f5', textTransform: 'none' }}>{data ? (data.state || 'Todavía nada') : 'Cargando…'}</Typography>
+        <Typography variant="overline" sx={{ color: '#8a7350', letterSpacing: '0.12em' }}>Última acción</Typography>
+        <Typography variant="h6" sx={{ color: '#3b2a17', textTransform: 'none' }}>{data ? (data.state || 'Todavía nada') : 'Cargando…'}</Typography>
         {data?.message && <Typography color="text.secondary" sx={{ mt: 1 }}>{data.message}</Typography>}
         {data?.updatedAt && <Typography variant="caption" color="text.secondary">{data.updatedAt}</Typography>}
       </Box>

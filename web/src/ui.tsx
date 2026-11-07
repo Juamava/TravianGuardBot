@@ -57,7 +57,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
         </DialogActions>
       </Dialog>
       <Snackbar open={Boolean(message)} autoHideDuration={4200} onClose={() => setMessage('')} anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
-        <Alert severity="info" variant="filled" onClose={() => setMessage('')} sx={{ bgcolor: '#111214', color: '#f2f3f5', border: '1px solid #3f4147' }}>{message}</Alert>
+        <Alert severity="info" variant="filled" onClose={() => setMessage('')} sx={{ bgcolor: '#4a2e15', color: '#f6ead0', border: '1px solid #a07a44' }}>{message}</Alert>
       </Snackbar>
     </UiContext.Provider>
   )
@@ -65,8 +65,8 @@ export function UiProvider({ children }: { children: ReactNode }) {
 
 export function Empty({ title, text }: { title: string; text: string }) {
   return (
-    <Box sx={{ p: 4, borderRadius: 2, bgcolor: '#2b2d31', textAlign: 'center' }}>
-      <Typography variant="h5" sx={{ textTransform: 'none', color: '#f2f3f5' }}>{title}</Typography>
+    <Box sx={{ p: 4, borderRadius: 1.5, bgcolor: '#fbf5e2', border: '1px solid #c9b27c', boxShadow: 'inset 0 0 0 1px #fffaf0, 0 1px 3px rgba(91,58,27,.25)', textAlign: 'center' }}>
+      <Typography variant="h5" sx={{ textTransform: 'none', color: '#3b2a17' }}>{title}</Typography>
       <Typography color="text.secondary" sx={{ mt: 1 }}>{text}</Typography>
     </Box>
   )
@@ -74,6 +74,8 @@ export function Empty({ title, text }: { title: string; text: string }) {
 
 export const panel = {
   p: 2,
-  borderRadius: 2,
-  bgcolor: '#2b2d31',
+  borderRadius: 1.5,
+  bgcolor: '#fbf5e2',
+  border: '1px solid #c9b27c',
+  boxShadow: 'inset 0 0 0 1px #fffaf0, 0 1px 3px rgba(91,58,27,.25)',
 } as const

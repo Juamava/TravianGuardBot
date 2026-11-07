@@ -73,11 +73,11 @@ type AttackReport = {
 }
 
 const attackLook: Record<Attack['state'], { label: string; bg: string; fg: string }> = {
-  cola: { label: 'En cola', bg: '#35373c', fg: '#dbdee1' },
+  cola: { label: 'En cola', bg: '#f1e5c2', fg: '#3b2a17' },
   enviando: { label: 'Enviando', bg: '#1e2a4a', fg: '#8ea1f7' },
   enviado: { label: 'En camino', bg: '#1e2a4a', fg: '#8ea1f7' },
-  llego: { label: 'Llegó', bg: '#1f3b2b', fg: '#3ba55d' },
-  error: { label: 'No se envió', bg: '#3a2426', fg: '#ed4245' },
+  llego: { label: 'Llegó', bg: '#dcecc0', fg: '#4f8a10' },
+  error: { label: 'No se envió', bg: '#f6d5cf', fg: '#b8281d' },
 }
 
 function AttackChip({ attack }: { attack: Attack }) {
@@ -104,19 +104,19 @@ const tipSx = { tooltip: { sx: { maxWidth: 360, fontSize: 13, lineHeight: 1.5, w
 function Hint({ text }: { text: string }) {
   return (
     <Tooltip title={text} placement="top" arrow enterDelay={200} slotProps={{ tooltip: { sx: { maxWidth: 300, fontSize: 13, lineHeight: 1.45 } } }}>
-      <InfoOutlinedIcon sx={{ fontSize: 16, color: '#949ba4', cursor: 'help' }} />
+      <InfoOutlinedIcon sx={{ fontSize: 16, color: '#8a7350', cursor: 'help' }} />
     </Tooltip>
   )
 }
 
 function classColor(target: Target) {
-  if (target.scoutClass === 'gorda') return { bg: '#1f3b2b', fg: '#3ba55d' }
-  if (target.scoutClass === 'flaca') return { bg: '#3d3420', fg: '#f0b232' }
+  if (target.scoutClass === 'gorda') return { bg: '#dcecc0', fg: '#4f8a10' }
+  if (target.scoutClass === 'flaca') return { bg: '#f5e3b0', fg: '#a86f08' }
   if (target.scoutClass === 'peligro') {
     const strong = Math.min(1, Math.max(0, (target.danger - 1) / 9))
-    return { bg: `rgba(237,66,69,${0.15 + strong * 0.35})`, fg: strong > 0.4 ? '#fff' : '#f2a3a4' }
+    return { bg: `rgba(237,66,69,${0.15 + strong * 0.35})`, fg: strong > 0.4 ? '#2b1d0e' : '#8a1f16' }
   }
-  return { bg: '#35373c', fg: '#b5bac1' }
+  return { bg: '#f1e5c2', fg: '#6b5233' }
 }
 
 function number(value: number) {
@@ -151,28 +151,28 @@ function AttackDetails({ target, report, onDelete }: { target: Target; report: A
   const percent = report.capacity > 0 ? Math.round(report.carried / report.capacity * 100) : 0
   const cell = { fontSize: 13, py: 0.25 } as const
   return (
-    <Box sx={{ mx: 1, mb: 1, p: 1.5, borderRadius: 1, bgcolor: '#232428', display: 'grid', gap: 2, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', minWidth: 880 }}>
+    <Box sx={{ mx: 1, mb: 1, p: 1.5, borderRadius: 1, bgcolor: '#e8dab3', display: 'grid', gap: 2, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', minWidth: 880 }}>
       <Box>
         <Typography sx={{ fontWeight: 700, mb: 0.5 }}>
           Último ataque {target.attackedAt ? `· ${ago(target.attackedAt)}` : ''}
         </Typography>
-        <Typography sx={{ fontSize: 13, color: report.won ? '#3ba55d' : '#ed4245', fontWeight: 600 }}>
+        <Typography sx={{ fontSize: 13, color: report.won ? '#4f8a10' : '#b8281d', fontWeight: 600 }}>
           {report.won ? 'Ganaste' : 'Perdiste'} · volvieron {report.sent - report.lost} de {report.sent}{report.lost > 0 ? ` (murieron ${report.lost})` : ''}
         </Typography>
-        {report.timeUtc && <Typography sx={{ fontSize: 12, color: '#949ba4' }}>Llegó {new Date(report.timeUtc).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</Typography>}
+        {report.timeUtc && <Typography sx={{ fontSize: 12, color: '#8a7350' }}>Llegó {new Date(report.timeUtc).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</Typography>}
         <Button size="small" color="error" startIcon={<DeleteOutlineIcon />} onClick={onDelete} sx={{ mt: 1, px: 0 }}>Quitar de la lista</Button>
       </Box>
       <Box>
         <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Tus tropas</Typography>
         <Box component="table" sx={{ borderCollapse: 'collapse', width: '100%', '& td, & th': { textAlign: 'right', px: 0.75 }, '& td:first-of-type, & th:first-of-type': { textAlign: 'left', pl: 0 } }}>
-          <thead><tr>{['Tropa', 'Fueron', 'Murieron', 'Volvieron'].map(head => <Box component="th" key={head} sx={{ fontSize: 12, color: '#949ba4', fontWeight: 600 }}>{head}</Box>)}</tr></thead>
+          <thead><tr>{['Tropa', 'Fueron', 'Murieron', 'Volvieron'].map(head => <Box component="th" key={head} sx={{ fontSize: 12, color: '#8a7350', fontWeight: 600 }}>{head}</Box>)}</tr></thead>
           <tbody>
             {report.attacker.map(unit => (
               <tr key={unit.name}>
                 <Box component="td" sx={cell}>{unit.name}</Box>
                 <Box component="td" sx={cell}>{unit.sent}</Box>
-                <Box component="td" sx={{ ...cell, color: unit.dead > 0 ? '#ed4245' : undefined }}>{unit.dead}</Box>
-                <Box component="td" sx={{ ...cell, color: '#3ba55d' }}>{unit.survived}</Box>
+                <Box component="td" sx={{ ...cell, color: unit.dead > 0 ? '#b8281d' : undefined }}>{unit.dead}</Box>
+                <Box component="td" sx={{ ...cell, color: '#4f8a10' }}>{unit.survived}</Box>
               </tr>
             ))}
           </tbody>
@@ -182,15 +182,15 @@ function AttackDetails({ target, report, onDelete }: { target: Target; report: A
         <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Botín</Typography>
         <Typography sx={{ fontSize: 13 }}>Madera {number(report.bounty.wood)} · Barro {number(report.bounty.clay)} · Hierro {number(report.bounty.iron)} · Cereal {number(report.bounty.crop)}</Typography>
         <Typography sx={{ fontSize: 13, fontWeight: 600 }}>Total {number(report.bounty.total)} · capacidad {number(report.carried)}/{number(report.capacity)} ({percent}%)</Typography>
-        <Typography sx={{ fontSize: 12, color: '#949ba4', mt: 0.5 }}>
+        <Typography sx={{ fontSize: 12, color: '#8a7350', mt: 0.5 }}>
           Quedan (estimado): {target.wood < 0 ? '—' : `${number(target.wood)} / ${number(target.clay)} / ${number(target.iron)} / ${number(target.crop)}`}
         </Typography>
-        {percent >= 100 && <Typography sx={{ fontSize: 12, color: '#f0b232' }}>Volvieron llenas: hay más para sacar.</Typography>}
+        {percent >= 100 && <Typography sx={{ fontSize: 12, color: '#a86f08' }}>Volvieron llenas: hay más para sacar.</Typography>}
       </Box>
       <Box>
         <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Defensa</Typography>
         {report.defender.length === 0
-          ? <Typography sx={{ fontSize: 13, color: '#3ba55d' }}>No había tropas.</Typography>
+          ? <Typography sx={{ fontSize: 13, color: '#4f8a10' }}>No había tropas.</Typography>
           : report.defender.map(unit => <Typography key={unit.name} sx={{ fontSize: 13 }}>{unit.name}: {unit.sent}{unit.dead > 0 ? ` (murieron ${unit.dead})` : ''}</Typography>)}
       </Box>
     </Box>
@@ -428,7 +428,7 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
             )}
             {list.running && <Button variant="outlined" color="warning" startIcon={<StopIcon />} onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists/${list.id}/stop`))}>Detener</Button>}
             <Tooltip title="Borrar la lista">
-              <IconButton sx={{ color: '#ed4245' }} onClick={async () => { if (await ui.confirm(`¿Borrar ${list.name} y sus aldeas?`)) run(() => del(`/api/accounts/${accountId}/farming/lists/${list.id}`)) }}><DeleteOutlineIcon /></IconButton>
+              <IconButton sx={{ color: '#b8281d' }} onClick={async () => { if (await ui.confirm(`¿Borrar ${list.name} y sus aldeas?`)) run(() => del(`/api/accounts/${accountId}/farming/lists/${list.id}`)) }}><DeleteOutlineIcon /></IconButton>
             </Tooltip>
           </Stack>
           <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
@@ -453,16 +453,16 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
       {recentAttacks.length > 0 && (
         <Stack spacing={0.5} sx={{ ...panel, p: 1.5 }}>
           <Stack direction="row" alignItems="center" spacing={1}>
-            <GpsFixedIcon sx={{ fontSize: 18, color: '#f0b232' }} />
+            <GpsFixedIcon sx={{ fontSize: 18, color: '#a86f08' }} />
             <Typography sx={{ fontWeight: 700 }}>Ataques</Typography>
             <Typography variant="caption" color="text.secondary">últimas 6 horas</Typography>
           </Stack>
           {recentAttacks.map(target => (
-            <Stack key={target.id} direction="row" spacing={1} alignItems="center" sx={{ px: 0.5, py: 0.25, borderRadius: 1, '&:hover': { bgcolor: '#35373c' } }}>
+            <Stack key={target.id} direction="row" spacing={1} alignItems="center" sx={{ px: 0.5, py: 0.25, borderRadius: 1, '&:hover': { bgcolor: '#f1e5c2' } }}>
               <Box sx={{ width: 190, flexShrink: 0 }}><AttackChip attack={target.attack!} /></Box>
               <Typography sx={{ fontSize: 13, fontWeight: 600, minWidth: 0 }} noWrap>{target.name}{target.x != null ? ` (${target.x}|${target.y})` : ''}</Typography>
-              <Typography sx={{ fontSize: 12, color: target.attack!.state === 'error' ? '#ed4245' : '#949ba4', flex: 1, minWidth: 0 }} noWrap title={target.attack!.message}>{target.attack!.message}</Typography>
-              <Typography sx={{ fontSize: 12, color: '#949ba4', flexShrink: 0 }}>{target.attack!.at ? ago(target.attack!.at) : ''}</Typography>
+              <Typography sx={{ fontSize: 12, color: target.attack!.state === 'error' ? '#b8281d' : '#8a7350', flex: 1, minWidth: 0 }} noWrap title={target.attack!.message}>{target.attack!.message}</Typography>
+              <Typography sx={{ fontSize: 12, color: '#8a7350', flexShrink: 0 }}>{target.attack!.at ? ago(target.attack!.at) : ''}</Typography>
             </Stack>
           ))}
         </Stack>
@@ -470,7 +470,7 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
 
       {list && (
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-          <ToggleButtonGroup exclusive size="small" value={filter} onChange={(_, value) => value && setFilter(value)} sx={{ bgcolor: '#2b2d31', p: 0.5, borderRadius: 1, '& .MuiToggleButton-root': { border: 0, borderRadius: 1, px: 1.5, color: '#b5bac1', textTransform: 'none', fontWeight: 600, '&.Mui-selected': { bgcolor: '#404249', color: '#fff' } } }}>
+          <ToggleButtonGroup exclusive size="small" value={filter} onChange={(_, value) => value && setFilter(value)} sx={{ bgcolor: '#fbf5e2', p: 0.5, borderRadius: 1, '& .MuiToggleButton-root': { border: 0, borderRadius: 1, px: 1.5, color: '#6b5233', textTransform: 'none', fontWeight: 600, '&.Mui-selected': { bgcolor: '#e2cf9a', color: '#2b1d0e' } } }}>
             <ToggleButton value="todas">Todas {counts.todas}</ToggleButton>
             <ToggleButton value="gorda">Vaca gorda {counts.gorda}</ToggleButton>
             <ToggleButton value="flaca">Vaca flaca {counts.flaca}</ToggleButton>
@@ -487,7 +487,7 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
 
       {list && (
         <Box sx={{ ...panel, p: 0, flex: 1, minHeight: 0, overflow: 'auto' }}>
-          <Box sx={{ display: 'grid', gridTemplateColumns: columns, gap: 1, alignItems: 'center', px: 1, py: 0.75, position: 'sticky', top: 0, zIndex: 1, bgcolor: '#2b2d31', color: '#949ba4', fontSize: 12, fontWeight: 700, minWidth: 900 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: columns, gap: 1, alignItems: 'center', px: 1, py: 0.75, position: 'sticky', top: 0, zIndex: 1, bgcolor: '#fbf5e2', color: '#8a7350', fontSize: 12, fontWeight: 700, minWidth: 900 }}>
             <Checkbox size="small" checked={allChecked} indeterminate={!allChecked && targets.some(target => selected.includes(target.id))} onChange={event => setSelected(event.target.checked ? targets.map(target => target.id) : [])} />
             <Box>Aldea · dueño</Box>
             <Box>Clasificación</Box>
@@ -499,13 +499,13 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
             <Box />
             <Box />
           </Box>
-          {targets.length === 0 && <Typography sx={{ p: 2, color: '#949ba4' }}>{counts.todas === 0 ? 'La lista está vacía. Agregá aldeas con su enlace o sus coordenadas.' : 'Ninguna aldea en este filtro.'}</Typography>}
+          {targets.length === 0 && <Typography sx={{ p: 2, color: '#8a7350' }}>{counts.todas === 0 ? 'La lista está vacía. Agregá aldeas con su enlace o sus coordenadas.' : 'Ninguna aldea en este filtro.'}</Typography>}
           {targets.map(target => {
             const color = classColor(target)
             const checked = selected.includes(target.id)
             return (
               <Box key={target.id}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: columns, gap: 1, alignItems: 'center', px: 1, py: 0.6, borderTop: '1px solid #3f4147', minWidth: 900, bgcolor: checked || open.includes(target.id) ? '#35373c' : 'transparent' }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: columns, gap: 1, alignItems: 'center', px: 1, py: 0.6, borderTop: '1px solid #c9b27c', minWidth: 900, bgcolor: checked || open.includes(target.id) ? '#f1e5c2' : 'transparent' }}>
                 <Checkbox size="small" checked={checked} onChange={event => setSelected(current => event.target.checked ? [...current, target.id] : current.filter(id => id !== target.id))} />
                 <Box sx={{ minWidth: 0 }}>
                   <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0 }}>
@@ -517,7 +517,7 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
                       </Link>
                     </Tooltip>
                   </Stack>
-                  <Typography sx={{ fontSize: 12, color: '#949ba4' }} noWrap>{[target.owner, target.alliance && `[${target.alliance}]`, target.population >= 0 && `${target.population} hab.`].filter(Boolean).join(' · ') || '—'}</Typography>
+                  <Typography sx={{ fontSize: 12, color: '#8a7350' }} noWrap>{[target.owner, target.alliance && `[${target.alliance}]`, target.population >= 0 && `${target.population} hab.`].filter(Boolean).join(' · ') || '—'}</Typography>
                 </Box>
                 <Box>
                   {target.label
@@ -526,42 +526,42 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
                         <Chip size="small" label={target.label} sx={{ bgcolor: color.bg, color: color.fg, fontWeight: 700, cursor: 'help' }} />
                       </Tooltip>
                     )
-                    : <Typography sx={{ fontSize: 12, color: '#949ba4' }}>{target.pending ? 'esperando reporte' : 'sin espiar'}</Typography>}
+                    : <Typography sx={{ fontSize: 12, color: '#8a7350' }}>{target.pending ? 'esperando reporte' : 'sin espiar'}</Typography>}
                 </Box>
                 <Typography sx={{ fontSize: 13 }}>
                   {target.wood < 0 ? '—' : `${number(target.wood)} / ${number(target.clay)} / ${number(target.iron)} / ${number(target.crop)}`}
-                  {target.cranny > 0 && <Box component="span" sx={{ color: '#949ba4' }}> · escondite {target.cranny}</Box>}
+                  {target.cranny > 0 && <Box component="span" sx={{ color: '#8a7350' }}> · escondite {target.cranny}</Box>}
                 </Typography>
-                <Typography sx={{ fontSize: 13, color: target.defenders === 0 ? '#3ba55d' : target.defenders < 0 && target.scoutedAt ? '#ed4245' : '#dbdee1' }}>
+                <Typography sx={{ fontSize: 13, color: target.defenders === 0 ? '#4f8a10' : target.defenders < 0 && target.scoutedAt ? '#b8281d' : '#3b2a17' }}>
                   {!target.scoutedAt ? '—' : target.scoutsDied ? 'mató espías' : number(target.defenders)}
                 </Typography>
                 <Typography sx={{ fontSize: 13 }}>{target.distance >= 0 ? target.distance.toFixed(1) : '—'}</Typography>
                 <Tooltip title={target.playerPopulation >= 0 ? `Población ${target.playerPopulation} · ${target.playerVillages} aldeas · ataque ${number(target.attackPoints)} · defensa ${number(target.defensePoints)} · héroe ${number(target.heroLevel)}` : 'Todavía no se leyó el perfil'}>
-                  <Typography sx={{ fontSize: 13, color: '#b5bac1' }} noWrap>{target.playerPopulation >= 0 ? `${target.playerPopulation} hab · ${target.playerVillages} ald.` : '—'}</Typography>
+                  <Typography sx={{ fontSize: 13, color: '#6b5233' }} noWrap>{target.playerPopulation >= 0 ? `${target.playerPopulation} hab · ${target.playerVillages} ald.` : '—'}</Typography>
                 </Tooltip>
                 <Box sx={{ minWidth: 0 }}>
                   {target.attack && target.attack.state !== 'llego' && (target.attack.state === 'cola' || target.attack.state === 'enviando' || target.attack.state === 'enviado' || (target.attack.at && Date.now() - new Date(target.attack.at).getTime() < 6 * 3600 * 1000))
                     ? <AttackChip attack={target.attack} />
                     : attacked(target)
-                      ? <Typography sx={{ fontSize: 12, color: '#3ba55d', fontWeight: 600 }} noWrap>atacada {ago(target.attackedAt)}</Typography>
+                      ? <Typography sx={{ fontSize: 12, color: '#4f8a10', fontWeight: 600 }} noWrap>atacada {ago(target.attackedAt)}</Typography>
                       : <Typography sx={{ fontSize: 12 }} noWrap>{target.scoutedAt ? `espiada ${ago(target.scoutedAt)}` : target.status}</Typography>}
-                  {attacked(target) && target.scoutedAt && <Typography sx={{ fontSize: 11, color: '#949ba4' }} noWrap>espiada {ago(target.scoutedAt)}</Typography>}
-                  {!attacked(target) && target.scoutedAt && target.attack && <Typography sx={{ fontSize: 11, color: '#949ba4' }} noWrap>espiada {ago(target.scoutedAt)}</Typography>}
+                  {attacked(target) && target.scoutedAt && <Typography sx={{ fontSize: 11, color: '#8a7350' }} noWrap>espiada {ago(target.scoutedAt)}</Typography>}
+                  {!attacked(target) && target.scoutedAt && target.attack && <Typography sx={{ fontSize: 11, color: '#8a7350' }} noWrap>espiada {ago(target.scoutedAt)}</Typography>}
                 </Box>
                 <Tooltip title="Atacar">
-                  <span><IconButton size="small" sx={{ color: '#f0b232' }} disabled={target.attack?.state === 'cola' || target.attack?.state === 'enviando'} onClick={() => openAttack(target)}><GpsFixedIcon fontSize="small" /></IconButton></span>
+                  <span><IconButton size="small" sx={{ color: '#a86f08' }} disabled={target.attack?.state === 'cola' || target.attack?.state === 'enviando'} onClick={() => openAttack(target)}><GpsFixedIcon fontSize="small" /></IconButton></span>
                 </Tooltip>
                 {target.attackReport
                   ? (
                     <Tooltip title={open.includes(target.id) ? 'Ocultar el último ataque' : 'Ver el último ataque'}>
-                      <IconButton size="small" sx={{ color: '#dbdee1' }} onClick={() => setOpen(current => current.includes(target.id) ? current.filter(id => id !== target.id) : [...current, target.id])}>
+                      <IconButton size="small" sx={{ color: '#3b2a17' }} onClick={() => setOpen(current => current.includes(target.id) ? current.filter(id => id !== target.id) : [...current, target.id])}>
                         {open.includes(target.id) ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
                       </IconButton>
                     </Tooltip>
                   )
                   : (
                     <Tooltip title="Quitar de la lista">
-                      <IconButton size="small" sx={{ color: '#ed4245' }} onClick={async () => { if (await ui.confirm(`¿Quitar ${target.name} de la lista?`)) run(() => del(`/api/accounts/${accountId}/farming/villages/${target.id}`)) }}><DeleteOutlineIcon fontSize="small" /></IconButton>
+                      <IconButton size="small" sx={{ color: '#b8281d' }} onClick={async () => { if (await ui.confirm(`¿Quitar ${target.name} de la lista?`)) run(() => del(`/api/accounts/${accountId}/farming/villages/${target.id}`)) }}><DeleteOutlineIcon fontSize="small" /></IconButton>
                     </Tooltip>
                   )}
               </Box>
@@ -591,8 +591,8 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
             {adding && (
               <Stack spacing={0.5}>
                 <Typography variant="body2">Agregando {progress.done} de {progress.total} · {progress.added} nuevas{progress.repeated > 0 ? ` · ${progress.repeated} repetidas` : ''}{progress.failed > 0 ? ` · ${progress.failed} con error` : ''}</Typography>
-                <Box sx={{ height: 6, borderRadius: 3, bgcolor: '#1e1f22', overflow: 'hidden' }}>
-                  <Box sx={{ height: '100%', width: `${progress.total ? Math.round(progress.done / progress.total * 100) : 0}%`, bgcolor: '#5865f2', transition: 'width .2s' }} />
+                <Box sx={{ height: 6, borderRadius: 3, bgcolor: '#5b3a1b', overflow: 'hidden' }}>
+                  <Box sx={{ height: '100%', width: `${progress.total ? Math.round(progress.done / progress.total * 100) : 0}%`, bgcolor: '#4f7a12', transition: 'width .2s' }} />
                 </Box>
               </Stack>
             )}
@@ -621,7 +621,7 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
               {homeTroops && homeTroops.length > 0 && (
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
                   {homeTroops.map(troop => (
-                    <Chip key={troop.letter} label={`${troop.letter} · ${troop.name}: ${troop.available}`} disabled={troop.available === 0} onClick={() => addToPlan(troop)} variant={troop.available > 0 ? 'filled' : 'outlined'} sx={{ bgcolor: troop.available > 0 ? '#404249' : 'transparent' }} />
+                    <Chip key={troop.letter} label={`${troop.letter} · ${troop.name}: ${troop.available}`} disabled={troop.available === 0} onClick={() => addToPlan(troop)} variant={troop.available > 0 ? 'filled' : 'outlined'} sx={{ bgcolor: troop.available > 0 ? '#e2cf9a' : 'transparent' }} />
                   ))}
                 </Box>
               )}
