@@ -36,7 +36,36 @@ export const theme = createTheme({
     },
     MuiCssBaseline: {
       styleOverrides: {
-        body: { backgroundColor: '#313338' },
+        html: { colorScheme: 'dark' },
+        body: {
+          backgroundColor: '#313338',
+          '&::-webkit-scrollbar, & *::-webkit-scrollbar': {
+            width: 10,
+            height: 10,
+            backgroundColor: '#1e1f22',
+          },
+          '&::-webkit-scrollbar-track, & *::-webkit-scrollbar-track': {
+            backgroundColor: '#1e1f22',
+          },
+          '&::-webkit-scrollbar-thumb, & *::-webkit-scrollbar-thumb': {
+            backgroundColor: '#3f4147',
+            borderRadius: 8,
+            border: '2px solid #1e1f22',
+            minHeight: 28,
+          },
+          '&::-webkit-scrollbar-thumb:hover, & *::-webkit-scrollbar-thumb:hover': {
+            backgroundColor: '#6d6f78',
+            border: '2px solid #1e1f22',
+          },
+          '&::-webkit-scrollbar-corner, & *::-webkit-scrollbar-corner': {
+            backgroundColor: '#1e1f22',
+          },
+          '&::-webkit-scrollbar-button, & *::-webkit-scrollbar-button': {
+            display: 'none',
+            width: 0,
+            height: 0,
+          },
+        },
       },
     },
   },
