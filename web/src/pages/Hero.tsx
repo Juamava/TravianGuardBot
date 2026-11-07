@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { Alert, Box, LinearProgress, Stack, Typography } from '@mui/material'
-import { api, type HeroStatus } from '../api'
+import { useEffect, useRef, useState } from 'react'
+import { Alert, Box, LinearProgress, Stack, Switch, Typography } from '@mui/material'
+import { api, put, type HeroStatus } from '../api'
 import { panel } from '../ui'
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -14,6 +14,9 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 export function Hero({ accountId, notify }: { accountId: number; notify: (message: string) => void }) {
   const [data, setData] = useState<HeroStatus | null>(null)
+  const [adventures, setAdventures] = useState(false)
+  const [ready, setReady] = useState(false)
+  const settings = useRef<Record<string, number>>({})
 
   async function load() {
     const result = await api<HeroStatus>(`/api/accounts/${accountId}/hero`)
@@ -26,6 +29,33 @@ export function Hero({ accountId, notify }: { accountId: number; notify: (messag
     return () => window.clearInterval(timer)
   }, [accountId])
 
+  useEffect(() => {
+    let alive = true
+    setReady(false)
+    api<Record<string, number>>(`/api/accounts/${accountId}/settings`).then(result => {
+      if (!alive) return
+      settings.current = result.data
+      setAdventures(result.data.EnableAutoStartAdventure === 1)
+      setReady(true)
+    }).catch((error: Error) => { if (alive) notify(error.message) })
+    return () => { alive = false }
+  }, [accountId])
+
+  async function toggleAdventures(on: boolean) {
+    const previous = settings.current
+    const next = { ...previous, EnableAutoStartAdventure: on ? 1 : 0 }
+    settings.current = next
+    setAdventures(on)
+    try {
+      const result = await put(`/api/accounts/${accountId}/settings`, next)
+      notify(result.message)
+    } catch (error) {
+      settings.current = previous
+      setAdventures(previous.EnableAutoStartAdventure === 1)
+      notify(error instanceof Error ? error.message : 'No se pudo guardar')
+    }
+  }
+
   const hp = data?.hpPercent ?? null
   const minHp = data?.minHpPercent ?? 50
   const lists = data?.heroLists ?? []
@@ -33,6 +63,14 @@ export function Hero({ accountId, notify }: { accountId: number; notify: (messag
   return (
     <Stack spacing={2} sx={{ minWidth: 0 }}>
       <Typography variant="h4">Héroe</Typography>
+
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ ...panel, py: 1 }}>
+        <Switch checked={adventures} disabled={!ready} onChange={event => { void toggleAdventures(event.target.checked) }} />
+        <Box sx={{ minWidth: 0 }}>
+          <Typography fontWeight={600}>Empezar aventuras</Typography>
+          <Typography variant="body2" color="text.secondary">Manda al héroe a las aventuras que aparezcan.</Typography>
+        </Box>
+      </Stack>
 
       {data && lists.length === 0 && (
         <Alert severity="info">Activá "Levear héroe" en una lista de Farming. El héroe caza en los oasis con animales de esa lista mientras corre el raid.</Alert>

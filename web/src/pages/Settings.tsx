@@ -24,7 +24,6 @@ const accountFields: { title: string; fields: Field[] }[] = [
   ]},
   { title: 'Funciones', fields: [
     { kind: 'bool', label: 'Cargar los edificios de las aldeas', key: 'EnableAutoLoadVillageBuilding', hint: 'Al conectar, entra a cada aldea y lee los edificios.' },
-    { kind: 'bool', label: 'Empezar aventuras', key: 'EnableAutoStartAdventure', hint: 'Manda al héroe a las aventuras que aparezcan.' },
     { kind: 'bool', label: 'Reclamar la misión diaria', key: 'EnableAutoClaimDailyQuest', hint: 'Reclama la recompensa de la misión diaria.' },
     { kind: 'bool', label: 'Repartir puntos del héroe (1 poder, 3 recursos)', key: 'EnableAutoSetHeroPoint', hint: 'Cuando el héroe sube de nivel, pone 1 punto en poder y 3 en recursos.' },
     { kind: 'bool', label: 'Cuenta Gold', key: 'Gold', hint: 'Con Gold, Farming muestra las listas propias y las del juego. Se usan de a una, porque hay un solo navegador.' },
