@@ -37,6 +37,7 @@ export type AccountRow = {
   villageNext?: string | null
   farmNext?: string | null
   gameFarmNext?: string | null
+  clan?: string | null
 }
 
 export type Overview = {
