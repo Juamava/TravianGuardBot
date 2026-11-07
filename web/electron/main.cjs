@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, session, shell } = require('electron')
 const fs = require('fs')
 const path = require('path')
 
@@ -48,11 +48,22 @@ app.whenReady().then(() => {
     title: 'Travian Guard',
     ...(icon ? { icon } : {}),
     autoHideMenuBar: true,
-    // Wood title bar drawn by the page; Windows keeps its own minimize, maximize and close buttons.
-    titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#2e1c0b', symbolColor: '#f1e1b8', height: 34 },
+    // No Windows title bar: the page draws a wood one with its own buttons.
+    frame: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.cjs') },
     show: false,
   })
+
+  ipcMain.on('window', (_event, action) => {
+    if (!window || window.isDestroyed()) return
+    if (action === 'minimize') window.minimize()
+    else if (action === 'maximize') window.isMaximized() ? window.unmaximize() : window.maximize()
+    else if (action === 'close') window.close()
+  })
+  const sendMaximized = () => { if (!window.isDestroyed()) window.webContents.send('window-maximized', window.isMaximized()) }
+  window.on('maximize', sendMaximized)
+  window.on('unmaximize', sendMaximized)
+  window.webContents.on('did-finish-load', sendMaximized)
 
   window.once('ready-to-show', () => {
     log('lista para mostrar')

@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Box, Button, Stack, Tooltip, Typography } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
+import CloseIcon from '@mui/icons-material/Close'
+import CropSquareIcon from '@mui/icons-material/CropSquare'
+import FilterNoneIcon from '@mui/icons-material/FilterNone'
+import RemoveIcon from '@mui/icons-material/Remove'
 import AgricultureIcon from '@mui/icons-material/Agriculture'
 import BugReportIcon from '@mui/icons-material/BugReport'
 import LinkIcon from '@mui/icons-material/Link'
@@ -27,6 +31,23 @@ import { crest, landscape, parchmentTexture, woodTexture } from './art'
 
 // Inside the Electron window the native title bar is hidden and this app draws its own.
 const inElectron = /Electron/i.test(navigator.userAgent)
+
+type TbsWindow = { minimize: () => void; toggleMaximize: () => void; close: () => void; onMaximized: (callback: (value: boolean) => void) => void }
+const tbsWindow = (window as unknown as { tbsWindow?: TbsWindow }).tbsWindow
+
+function WindowButtons() {
+  const [maximized, setMaximized] = useState(true)
+  useEffect(() => tbsWindow?.onMaximized(setMaximized), [])
+  if (!tbsWindow) return null
+  const button = { width: 46, height: '100%', display: 'grid', placeItems: 'center', color: '#f1e1b8', cursor: 'pointer', WebkitAppRegion: 'no-drag', transition: 'background-color .12s', '&:hover': { bgcolor: 'rgba(241,225,184,.15)' } }
+  return (
+    <Box sx={{ display: 'flex', height: '100%', WebkitAppRegion: 'no-drag' }}>
+      <Box title="Minimizar" onClick={tbsWindow.minimize} sx={button}><RemoveIcon sx={{ fontSize: 18 }} /></Box>
+      <Box title={maximized ? 'Restaurar' : 'Maximizar'} onClick={tbsWindow.toggleMaximize} sx={button}>{maximized ? <FilterNoneIcon sx={{ fontSize: 14 }} /> : <CropSquareIcon sx={{ fontSize: 16 }} />}</Box>
+      <Box title="Cerrar" onClick={tbsWindow.close} sx={{ ...button, '&:hover': { bgcolor: '#b8281d', color: '#fff' } }}><CloseIcon sx={{ fontSize: 18 }} /></Box>
+    </Box>
+  )
+}
 
 type Page = 'aldeas' | 'aldeas-tropas' | 'aldeas-comercio' | 'farming' | 'farming-juego' | 'farming-scout' | 'hero' | 'debug' | 'ajustes' | 'cuentas'
 
@@ -306,9 +327,11 @@ function Shell() {
   return (
     <Box sx={{ height: '100vh', display: 'grid', gridTemplateColumns: '72px 240px 1fr', gridTemplateRows: inElectron ? '34px minmax(0, 1fr)' : 'minmax(0, 1fr)', overflow: 'hidden' }}>
       {inElectron && (
-        <Box sx={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 1, pl: 1.5, background: `linear-gradient(rgba(60,34,12,.55), rgba(30,16,5,.75)), ${woodTexture}`, backgroundSize: 'auto, 400px 240px', borderBottom: '2px solid #a07a44', WebkitAppRegion: 'drag', userSelect: 'none' }}>
+        <Box sx={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 1, pl: 1.5, height: 34, background: `linear-gradient(rgba(60,34,12,.55), rgba(30,16,5,.75)), ${woodTexture}`, backgroundSize: 'auto, 400px 240px', borderBottom: '2px solid #a07a44', WebkitAppRegion: 'drag', userSelect: 'none' }}>
           <Box component="img" src={crest} alt="" sx={{ width: 20, height: 20 }} />
           <Typography sx={{ fontFamily: '"Noto Serif", Georgia, serif', fontWeight: 700, fontSize: 13, color: '#f1e1b8', textShadow: '0 1px 2px rgba(0,0,0,.6)' }}>Travian Guard</Typography>
+          <Box sx={{ flex: 1 }} />
+          <WindowButtons />
         </Box>
       )}
       <Stack spacing={1.2} alignItems="center" sx={{ bgcolor: '#241609', backgroundImage: `linear-gradient(rgba(20,10,3,.55), rgba(20,10,3,.55)), ${woodTexture}`, backgroundSize: 'auto, 400px 240px', borderRight: '2px solid #a07a44', py: 1.5, overflow: 'auto' }}>
