@@ -91,18 +91,32 @@ function Hint({ text }: { text: string }) {
 
 const tabGroup = {
   bgcolor: '#2b2d31',
-  p: 0.5,
-  borderRadius: 1,
+  p: 1,
+  gap: 1,
+  borderRadius: 2,
   flexWrap: 'wrap',
+  width: 'fit-content',
+  maxWidth: '100%',
+  '& .MuiToggleButtonGroup-grouped': {
+    margin: 0,
+    border: 0,
+    borderRadius: 1,
+  },
+  '& .MuiToggleButtonGroup-grouped:not(:first-of-type)': {
+    marginLeft: 0,
+    borderLeft: 0,
+  },
   '& .MuiToggleButton-root': {
     border: 0,
     borderRadius: 1,
     px: 2,
+    py: 0.75,
     color: '#b5bac1',
     textTransform: 'none',
     fontWeight: 600,
     '&.Mui-selected': { bgcolor: '#404249', color: '#fff' },
-    '&.Mui-selected:hover': { bgcolor: '#404249' },
+    '&.Mui-selected:hover': { bgcolor: '#4e5158' },
+    '&:hover': { bgcolor: '#35373c' },
   },
 } as const
 
@@ -258,7 +272,7 @@ function SettingsFiles({ path, values, replace, notify }: { path: string; values
   }
 
   return (
-    <Stack direction="row" spacing={1}>
+    <Stack direction="row" spacing={2} useFlexGap flexWrap="wrap">
       <Button variant="outlined" onClick={download}>Exportar</Button>
       <Button variant="outlined" component="label">Importar
         <input hidden type="file" accept="application/json" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) upload(file) }} />
