@@ -54,20 +54,30 @@ namespace WPFUI
 
             AppLog.Write("arranque", "Administración en " + url);
 
-            if (!Debugger.IsAttached)
+            if (AppUpdate.SkipRemoteCheck)
+            {
+                UpdateSplash.Report("Abriendo la versión " + AppUpdate.CurrentVersion() + "...", 100, "");
+            }
+            else if (!Debugger.IsAttached)
             {
                 try
                 {
-                    UpdateSplash.Report("Comprobando la versión...", -1, "");
+                    var previous = AppUpdate.SkipAutoInstall ? AppUpdate.LastError() : "";
+                    if (!AppUpdate.SkipAutoInstall)
+                        UpdateSplash.Report("Comprobando la versión...", -1, "");
                     var info = await AppUpdate.Check();
-                    if (info.Available)
+                    if (info.Available && !AppUpdate.SkipAutoInstall)
                     {
                         UpdateSplash.Report("Hay una versión " + info.Latest + ".", 5, info.Latest);
-                        await AppUpdate.Apply(services, (status, percent) => UpdateSplash.Report(status, percent, info.Latest));
+                        await AppUpdate.Apply(services, info, (status, percent) => UpdateSplash.Report(status, percent, info.Latest));
                         return;
                     }
 
-                    UpdateSplash.Report("Versión al día.", 100, "");
+                    var status = info.Available
+                        ? "Hay una versión " + info.Latest + ". Podés instalarla desde el programa."
+                        : "Versión al día.";
+                    if (previous.Length > 0) status = previous + " " + status;
+                    UpdateSplash.Report(status, 100, info.Available ? info.Latest : "");
                 }
                 catch (Exception ex)
                 {
@@ -91,7 +101,7 @@ namespace WPFUI
             {
                 AppLog.Write("ventana", "No se pudo abrir Electron.", ex);
                 ShowDesktop("No pude abrir la ventana. " + ex.Message);
-                if (StartedAfterUpdate())
+                if (AppUpdate.SkipRemoteCheck)
                 {
                     UpdateSplash.Report("No se pudo abrir. Se vuelve a la versión anterior.", 0, "");
                     Environment.Exit(1);
@@ -116,17 +126,6 @@ namespace WPFUI
             {
                 // The window may already be closed.
             }
-        }
-
-        private static bool StartedAfterUpdate()
-        {
-            var args = Environment.GetCommandLineArgs();
-            for (var i = 0; i < args.Length; i++)
-            {
-                if (args[i] == "--updated") return true;
-            }
-
-            return false;
         }
 
         private void LaunchWindow(string url)
