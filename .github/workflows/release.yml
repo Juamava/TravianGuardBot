@@ -58,11 +58,23 @@ jobs:
         if: steps.existing.outputs.skip != 'true'
         run: dotnet publish WPFUI/WPFUI.csproj -c Release -r win-x64 --self-contained true -o publish
 
+      - name: Updater
+        if: steps.existing.outputs.skip != 'true'
+        run: dotnet publish Updater/Updater.csproj -c Release -r win-x64 --self-contained true -o publish-updater
+
+      - name: Copy updater
+        if: steps.existing.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'publish-updater\TravianGuardUpdater.exe')) { throw 'El publish no generó TravianGuardUpdater.exe' }
+          Copy-Item 'publish-updater\TravianGuardUpdater.exe' 'publish\TravianGuardUpdater.exe'
+
       - name: Package
         if: steps.existing.outputs.skip != 'true'
         shell: pwsh
         run: |
           if (-not (Test-Path 'publish\TravianBotSharp.exe')) { throw 'El publish no generó TravianBotSharp.exe' }
+          if (-not (Test-Path 'publish\TravianGuardUpdater.exe')) { throw 'El publish no incluye TravianGuardUpdater.exe' }
           if (-not (Test-Path 'publish\electron\electron.exe')) { throw 'El publish no incluye la ventana Electron' }
           if (-not (Test-Path 'publish\.playwright\node\win32_x64\node.exe')) { throw 'El publish no incluye el driver del navegador' }
           $zip = Join-Path $pwd 'TravianGuardBot-win-x64.zip'
@@ -86,6 +98,7 @@ jobs:
           }
           $required = @(
             'TravianBotSharp.exe',
+            'TravianGuardUpdater.exe',
             'e_sqlite3.dll',
             'wwwroot/index.html',
             'electron/electron.exe',
