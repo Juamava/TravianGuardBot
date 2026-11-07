@@ -11,6 +11,64 @@ const supabase = createClient('https://uyzkcejpsjpavghbchoq.supabase.co', 'sb_pu
 const emojis = ['😀', '😁', '😂', '😉', '😎', '😭', '👍', '🙏', '🔥', '💪', '🎉', '✅', '⚔️', '🛡️', '🏰', '🌾', '🐎', '🏹']
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 const announced = new Set<string>()
+let sharedAudio: AudioContext | null = null
+let lastChime = 0
+let chimePending = false
+
+function chimeContext() {
+  const Context = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+  if (!Context) return null
+  sharedAudio ??= new Context()
+  return sharedAudio
+}
+
+function tone(ctx: AudioContext, master: GainNode, freq: number, start: number, duration: number, peak: number) {
+  const osc = ctx.createOscillator()
+  const gain = ctx.createGain()
+  osc.type = 'sine'
+  osc.frequency.setValueAtTime(freq, start)
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.99, start + duration)
+  gain.gain.setValueAtTime(0.0001, start)
+  gain.gain.exponentialRampToValueAtTime(peak, start + 0.018)
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration)
+  osc.connect(gain)
+  gain.connect(master)
+  osc.start(start)
+  osc.stop(start + duration + 0.02)
+}
+
+function ring(ctx: AudioContext) {
+  const master = ctx.createGain()
+  master.gain.value = 0.2
+  master.connect(ctx.destination)
+  const now = ctx.currentTime
+  tone(ctx, master, 784, now, 0.32, 0.4)
+  tone(ctx, master, 1174.66, now + 0.1, 0.42, 0.32)
+  tone(ctx, master, 1567.98, now + 0.1, 0.24, 0.08)
+}
+
+function playIncoming() {
+  const now = Date.now()
+  if (chimePending || now - lastChime < 900) return
+  const ctx = chimeContext()
+  if (!ctx) return
+  chimePending = true
+  const start = () => {
+    chimePending = false
+    if (ctx.state !== 'running') return
+    lastChime = Date.now()
+    ring(ctx)
+  }
+  if (ctx.state === 'suspended') void ctx.resume().then(start).catch(() => { chimePending = false })
+  else start()
+}
+
+function unlockChime() {
+  const ctx = chimeContext()
+  if (ctx?.state === 'suspended') void ctx.resume()
+}
+
+window.addEventListener('pointerdown', unlockChime)
 
 type ChatMessage = {
   id: string
@@ -68,6 +126,10 @@ export function ClanChat({ username, host, clan, page }: { username: string; hos
         const message = payload.new as ChatMessage
         if (message.room !== room) return
         setMessages(current => current.some(item => item.id === message.id) ? current : [...current, message])
+        const body = message.body ?? ''
+        const author = (message.username ?? '').trim()
+        const joinNotice = body.trimEnd().endsWith(' se ha conectado.')
+        if (author !== username.trim() && !joinNotice) playIncoming()
       })
       .on('presence', { event: 'sync' }, () => {
         const names = new Set<string>()

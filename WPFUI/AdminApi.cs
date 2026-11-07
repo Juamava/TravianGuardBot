@@ -6,6 +6,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -42,6 +43,34 @@ namespace WPFUI
     {
         public static void Map(WebApplication app, IServiceProvider services)
         {
+            app.UseStatusCodePages(async status =>
+            {
+                var response = status.HttpContext.Response;
+                if (response.HasStarted) return;
+                response.ContentType = "application/json; charset=utf-8";
+                var accounts = status.HttpContext.Request.Path.StartsWithSegments("/api/accounts");
+                var message = accounts && response.StatusCode == 400
+                    ? "No se pudo leer la cuenta. El servidor puede ir sin https:// y, si usás proxy, el puerto tiene que ser un número."
+                    : "No se pudo completar.";
+                await response.WriteAsync(JsonSerializer.Serialize(new { ok = false, message }));
+            });
+
+            app.Use(async (context, next) =>
+            {
+                try
+                {
+                    await next();
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Write("api", context.Request.Method + " " + context.Request.Path, ex);
+                    if (context.Response.HasStarted) return;
+                    context.Response.StatusCode = 400;
+                    context.Response.ContentType = "application/json; charset=utf-8";
+                    await context.Response.WriteAsync(JsonSerializer.Serialize(new { ok = false, message = PublicError(context.Request.Path, ex) }));
+                }
+            });
+
             app.Use(async (context, next) =>
             {
                 if (NeedsConnection(context.Request.Path, out var accountId))
@@ -121,6 +150,7 @@ namespace WPFUI
             app.MapPost("/api/accounts/{id:int}/farming/game/refresh", (int id) => RefreshGameFarms(services, id));
             app.MapPost("/api/accounts/{id:int}/farming/game/start", (int id) => StartGameFarms(services, id));
             app.MapPost("/api/accounts/{id:int}/farming/game/stop", (int id) => StopGameFarms(services, id));
+            app.MapPut("/api/accounts/{id:int}/farming/game/autostart", (int id, GameAutoStartBody body) => SetGameAutoStart(services, id, body));
             app.MapPost("/api/accounts/{id:int}/farming/game/{farmId:int}/active", (int id, int farmId) => ToggleGameFarm(services, id, farmId));
             app.MapPut("/api/accounts/{id:int}/farming/game/options", (int id, GameFarmBody body) => SaveGameFarmOptions(services, id, body));
             app.MapPut("/api/accounts/{id:int}/farming/game/{farmId:int}/interval", (int id, int farmId, GameIntervalBody body) => SaveGameFarmInterval(services, id, farmId, body));
@@ -830,6 +860,7 @@ namespace WPFUI
                 gold,
                 gameLists,
                 gameRunning = gameTasks.Count > 0,
+                gameAutoStart = context.BooleanByName(account, AccountSettingEnums.EnableAutoStartGameFarms),
             });
         }
 
@@ -1397,10 +1428,42 @@ namespace WPFUI
         private static IResult StartGameFarms(IServiceProvider services, int accountId)
         {
             if (!IsGold(services, accountId)) return Fail("Esta cuenta no está marcada como Gold.");
+            var (started, waiting, activeCount) = QueueActiveGameFarms(services, accountId);
+            if (activeCount == 0) return Fail("No hay ninguna lista activa.");
+            if (started == 0) return Fail("Esas listas ya están en curso.");
+            return Ok(waiting
+                ? $"Empiezan {started} cuando termine lo que está usando el navegador. Cada una sigue con su frecuencia."
+                : $"Empiezan {started} listas. Cada una se vuelve a iniciar con su propia frecuencia.");
+        }
+
+        private static IResult SetGameAutoStart(IServiceProvider services, int accountId, GameAutoStartBody body)
+        {
+            if (!IsGold(services, accountId)) return Fail("Esta cuenta no está marcada como Gold.");
+            using (var context = Context(services))
+            {
+                if (!context.Accounts.Any(x => x.Id == accountId)) return Fail("No se encontró la cuenta.");
+                WriteSetting(context, accountId, AccountSettingEnums.EnableAutoStartGameFarms, body.AutoStart ? 1 : 0);
+            }
+
+            if (!body.AutoStart) return Ok("Inicio automático desactivado.");
+
+            var status = services.GetRequiredService<TaskManager>().GetStatus(new AccountId(accountId));
+            if (status is not (StatusEnums.Online or StatusEnums.Paused))
+                return Ok("Inicio automático activado. Arranca sola al conectar la cuenta.");
+
+            var (started, waiting, activeCount) = QueueActiveGameFarms(services, accountId);
+            if (activeCount == 0) return Ok("Inicio automático activado. No hay listas activas. La próxima vez que conectes, arrancan las que estén activas.");
+            if (started == 0) return Ok("Inicio automático activado. Esas listas ya están en curso.");
+            return Ok(waiting
+                ? $"Inicio automático activado. Empiezan {started} cuando termine lo que está usando el navegador."
+                : $"Inicio automático activado. Empiezan {started} listas.");
+        }
+
+        private static (int Started, bool Waiting, int ActiveCount) QueueActiveGameFarms(IServiceProvider services, int accountId)
+        {
             var account = new AccountId(accountId);
             using var context = Context(services);
             var active = context.FarmLists.Where(x => x.AccountId == accountId && x.IsActive).Select(x => x.Id).ToList();
-            if (active.Count == 0) return Fail("No hay ninguna lista activa.");
             var tasks = services.GetRequiredService<TaskManager>();
             var waiting = BrowserBusy(tasks, account);
             var running = tasks.GetTaskList(account).OfType<StartFarmListTask.Task>().Select(x => x.FarmId).ToHashSet();
@@ -1411,10 +1474,8 @@ namespace WPFUI
                 tasks.Add(new StartFarmListTask.Task(account, farmId));
                 started++;
             }
-            if (started == 0) return Fail("Esas listas ya están en curso.");
-            return Ok(waiting
-                ? $"Empiezan {started} cuando termine lo que está usando el navegador. Cada una sigue con su frecuencia."
-                : $"Empiezan {started} listas. Cada una se vuelve a iniciar con su propia frecuencia.");
+
+            return (started, waiting, active.Count);
         }
 
         private static bool BrowserBusy(TaskManager tasks, AccountId account)
@@ -1785,8 +1846,21 @@ namespace WPFUI
             };
         }
 
+        private static string PublicError(PathString path, Exception exception)
+        {
+            var text = exception.ToString();
+            if (text.Contains("database is locked", StringComparison.OrdinalIgnoreCase))
+                return "La base está ocupada. Esperá un momento y volvé a intentar.";
+            var account = path.StartsWithSegments("/api/accounts") && path.Value?.Contains("/farming") != true && path.Value?.Contains("/villages") != true;
+            if (!account) return "No se pudo completar.";
+            if (text.Contains("no column named", StringComparison.OrdinalIgnoreCase))
+                return "No se pudo guardar la cuenta. Cerrá el programa y volvé a abrirlo.";
+            return "No se pudo guardar la cuenta.";
+        }
+
         private static AccountInput ToInput(AccountBody body)
         {
+            body ??= new AccountBody();
             var input = new AccountInput { Username = body.Username ?? "", Server = body.Server ?? "" };
             foreach (var access in body.Accesses ?? [])
             {
@@ -2072,6 +2146,8 @@ namespace WPFUI
         public string Username { get; set; }
         public string Password { get; set; }
         public string ProxyHost { get; set; }
+
+        [JsonConverter(typeof(LenientIntConverter))]
         public int ProxyPort { get; set; }
         public string ProxyUsername { get; set; }
         public string ProxyPassword { get; set; }
@@ -2179,6 +2255,11 @@ namespace WPFUI
         public int IntervalMax { get; set; }
     }
 
+    public sealed class GameAutoStartBody
+    {
+        public bool AutoStart { get; set; }
+    }
+
     public sealed class GameIntervalBody
     {
         public int IntervalMin { get; set; }
@@ -2202,5 +2283,30 @@ namespace WPFUI
     {
         public int X { get; set; }
         public int Y { get; set; }
+    }
+
+    public sealed class LenientIntConverter : JsonConverter<int>
+    {
+        public override int Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            switch (reader.TokenType)
+            {
+                case JsonTokenType.Number:
+                    return reader.TryGetInt32(out var number) ? number : 0;
+                case JsonTokenType.String:
+                    var text = reader.GetString();
+                    if (string.IsNullOrWhiteSpace(text)) return 0;
+                    return int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
+                case JsonTokenType.Null:
+                    return 0;
+                default:
+                    return 0;
+            }
+        }
+
+        public override void Write(Utf8JsonWriter writer, int value, JsonSerializerOptions options)
+        {
+            writer.WriteNumberValue(value);
+        }
     }
 }

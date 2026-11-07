@@ -13,7 +13,7 @@ type Village = { id: number; name: string; x: number; y: number }
 type CowList = { id: number; name: string; minMinutes: number; repeatMinutes: number; levelHero: boolean; autoStart: boolean; running: boolean; countdown: string }
 type Cow = { id: number; listId: number; name: string; url: string; troops: string; status: string; kind: string; owner: string; tribe: string; alliance: string; population: number; distance: number; x: number | null; y: number | null }
 type GameFarm = { id: number; name: string; active: boolean; intervalMin: number; intervalMax: number; running: boolean; countdown: string }
-type FarmingData = { villages: Village[]; lists: CowList[]; cows: Cow[]; countdown: string; gold: boolean; gameLists: GameFarm[]; gameRunning: boolean }
+type FarmingData = { villages: Village[]; lists: CowList[]; cows: Cow[]; countdown: string; gold: boolean; gameLists: GameFarm[]; gameRunning: boolean; gameAutoStart: boolean }
 type SearchResult = { count: number; villageName: string; originX: number; originY: number; troopPlan: string; hits: { x: number; y: number; distance: number }[] }
 
 const cowColumns = 'minmax(160px, 1.6fr) 72px minmax(100px, 1fr) 88px 88px 110px minmax(120px, 1fr)'
@@ -110,6 +110,11 @@ function GameFarming({ accountId, data, notify, reload }: { accountId: number; d
           <Tile color="#ed4245" icon={<StopIcon />} label="Detener" disabled={busy || !data.gameRunning} onClick={() => act(() => post(`/api/accounts/${accountId}/farming/game/stop`))} />
         </Box>
       </Box>
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ ...panel, py: 1 }}>
+        <Switch checked={!!data.gameAutoStart} disabled={busy} onChange={event => act(() => put(`/api/accounts/${accountId}/farming/game/autostart`, { autoStart: event.target.checked }))} />
+        <Typography fontWeight={600}>Inicio automático</Typography>
+        <Hint text="Al activarlo se presiona Iniciar en las listas activas. También arrancan solas la próxima vez que conectes la cuenta." />
+      </Stack>
       <Stack spacing={1.25} sx={{ ...panel, p: 1.25 }}>
         {data.gameLists.map(list => (
           <GameFarmRow key={list.id} accountId={accountId} list={list} disabled={busy} notify={notify} reload={reload} />

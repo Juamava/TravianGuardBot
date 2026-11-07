@@ -98,6 +98,22 @@ namespace MainCore.Services
                 if (queued.Contains(autoListId)) continue;
                 taskManager.Add(new RaidCowListTask.Task(accountId, autoListId));
             }
+
+            if (context.BooleanByName(accountId, AccountSettingEnums.Gold)
+                && context.BooleanByName(accountId, AccountSettingEnums.EnableAutoStartGameFarms))
+            {
+                var queuedFarms = taskManager.GetTaskList(accountId).OfType<StartFarmListTask.Task>().Select(x => x.FarmId).ToHashSet();
+                var activeFarms = context.FarmLists
+                    .Where(x => x.AccountId == accountId.Value && x.IsActive)
+                    .OrderBy(x => x.Id)
+                    .Select(x => x.Id)
+                    .ToList();
+                foreach (var farmId in activeFarms)
+                {
+                    if (!queuedFarms.Add(farmId)) continue;
+                    taskManager.Add(new StartFarmListTask.Task(accountId, farmId));
+                }
+            }
         }
 
         private static readonly List<JobTypeEnums> _jobTypes = new() {
