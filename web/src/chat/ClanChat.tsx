@@ -182,14 +182,14 @@ function ChatLink({ part, onAttack }: { part: ChatPart; onAttack: (target: Attac
     <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25, maxWidth: '100%', verticalAlign: 'middle' }}>
       {village && (
         <Tooltip title="Atacar">
-          <IconButton size="small" aria-label={`Atacar (${part.x}|${part.y})`} onClick={() => onAttack({ url: part.value, x: part.x as number, y: part.y as number })} sx={{ color: '#f0b232', p: 0.25 }}>
+          <IconButton size="small" aria-label={`Atacar Aldea (${part.x}|${part.y})`} onClick={() => onAttack({ url: part.value, x: part.x as number, y: part.y as number })} sx={{ color: '#f0b232', p: 0.25 }}>
             <GpsFixedIcon sx={{ fontSize: 16 }} />
           </IconButton>
         </Tooltip>
       )}
       <Tooltip title="Abrir en Chrome">
         <Box component="a" href={part.value} target="_blank" rel="noreferrer" sx={{ color: '#00a8fc', display: 'inline-flex', alignItems: 'center', gap: 0.25, minWidth: 0, wordBreak: 'break-all', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
-          {village ? `(${part.x}|${part.y})` : part.value}
+          {village ? `Aldea (${part.x}|${part.y})` : part.value}
           <OpenInNewIcon sx={{ fontSize: 12, flex: 'none' }} />
         </Box>
       </Tooltip>
@@ -536,7 +536,7 @@ export function ClanChat({ username, host, clan, page, accountId }: { username: 
         )}
       </Box>
       <Dialog open={attack != null} onClose={() => !attacking && setAttack(null)} fullWidth maxWidth="sm">
-        <DialogTitle>Atacar {attack ? `(${attack.x}|${attack.y})` : ''}</DialogTitle>
+        <DialogTitle>Atacar {attack ? `Aldea (${attack.x}|${attack.y})` : ''}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <TextField select label="Las tropas salen de" value={fromId || ''} onChange={event => setFromId(Number(event.target.value))} disabled={villages.length === 0}>
