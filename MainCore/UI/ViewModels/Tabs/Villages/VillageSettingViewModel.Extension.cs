@@ -20,6 +20,11 @@ namespace MainCore.UI.ViewModels.Tabs.Villages
                 }
             }
 
+            if (settings.ContainsKey(VillageSettingEnums.EvadeEnable))
+            {
+                EvadeAttackTask.Schedule(context, taskManager, accountId, villageId);
+            }
+
             if (settings.ContainsKey(VillageSettingEnums.TrainTroopEnable))
             {
                 if (settings[VillageSettingEnums.TrainTroopEnable] == 1)

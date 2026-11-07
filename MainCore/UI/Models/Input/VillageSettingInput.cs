@@ -60,6 +60,30 @@ namespace MainCore.UI.Models.Input
         [Reactive]
         private int _completeImmediatelyTime;
 
+        [Reactive]
+        private bool _evadeEnable;
+
+        [Reactive]
+        private bool _evadeIncludeHero;
+
+        [Reactive]
+        private int _evadeTargetX;
+
+        [Reactive]
+        private int _evadeTargetY;
+
+        [Reactive]
+        private int _evadeLeadSeconds;
+
+        [Reactive]
+        private int _evadeTrainGapSeconds;
+
+        [Reactive]
+        private int _evadeSafetySeconds;
+
+        [Reactive]
+        private int _evadeCheckSeconds;
+
         public void Set(Dictionary<VillageSettingEnums, int> settings)
         {
             var tribe = (TribeEnums)settings.GetValueOrDefault(VillageSettingEnums.Tribe);
@@ -117,6 +141,15 @@ namespace MainCore.UI.Models.Input
 
             AutoClaimQuestEnable = settings.GetValueOrDefault(VillageSettingEnums.AutoClaimQuestEnable) == 1;
             CompleteImmediatelyTime = settings.GetValueOrDefault(VillageSettingEnums.CompleteImmediatelyTime);
+
+            EvadeEnable = settings.GetValueOrDefault(VillageSettingEnums.EvadeEnable) == 1;
+            EvadeIncludeHero = settings.GetValueOrDefault(VillageSettingEnums.EvadeIncludeHero) == 1;
+            EvadeTargetX = settings.GetValueOrDefault(VillageSettingEnums.EvadeTargetX);
+            EvadeTargetY = settings.GetValueOrDefault(VillageSettingEnums.EvadeTargetY);
+            EvadeLeadSeconds = settings.GetValueOrDefault(VillageSettingEnums.EvadeLeadSeconds);
+            EvadeTrainGapSeconds = settings.GetValueOrDefault(VillageSettingEnums.EvadeTrainGapSeconds);
+            EvadeSafetySeconds = settings.GetValueOrDefault(VillageSettingEnums.EvadeSafetySeconds);
+            EvadeCheckSeconds = settings.GetValueOrDefault(VillageSettingEnums.EvadeCheckSeconds);
         }
 
         public Dictionary<VillageSettingEnums, int> Get()
@@ -191,6 +224,14 @@ namespace MainCore.UI.Models.Input
                 { VillageSettingEnums.AutoRefreshMax, autoRefreshMax },
                 { VillageSettingEnums.AutoClaimQuestEnable, autoClaimQuestEnable },
                 { VillageSettingEnums.CompleteImmediatelyTime, completeImmediatelyTime },
+                { VillageSettingEnums.EvadeEnable, EvadeEnable ? 1 : 0 },
+                { VillageSettingEnums.EvadeIncludeHero, EvadeIncludeHero ? 1 : 0 },
+                { VillageSettingEnums.EvadeTargetX, EvadeTargetX },
+                { VillageSettingEnums.EvadeTargetY, EvadeTargetY },
+                { VillageSettingEnums.EvadeLeadSeconds, EvadeLeadSeconds },
+                { VillageSettingEnums.EvadeTrainGapSeconds, EvadeTrainGapSeconds },
+                { VillageSettingEnums.EvadeSafetySeconds, EvadeSafetySeconds },
+                { VillageSettingEnums.EvadeCheckSeconds, EvadeCheckSeconds },
             };
             return settings;
         }

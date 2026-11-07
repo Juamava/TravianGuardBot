@@ -65,6 +65,7 @@ namespace MainCore.Services
                 {
                     taskManager.Add(updateVillageTask);
                 }
+                EvadeAttackTask.Schedule(context, taskManager, accountId, village);
                 var trainTroopTask = new TrainTroopTask.Task(accountId, village);
                 if (trainTroopTask.CanStart(context) && !taskManager.IsExist<TrainTroopTask.Task>(accountId, village))
                 {
