@@ -7,7 +7,7 @@ import FilterNoneIcon from '@mui/icons-material/FilterNone'
 import RemoveIcon from '@mui/icons-material/Remove'
 import AgricultureIcon from '@mui/icons-material/Agriculture'
 import GroupsIcon from '@mui/icons-material/Groups'
-import BugReportIcon from '@mui/icons-material/BugReport'
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'
 import LinkIcon from '@mui/icons-material/Link'
 import LocationCityIcon from '@mui/icons-material/LocationCity'
 import LogoutIcon from '@mui/icons-material/Logout'
@@ -26,6 +26,8 @@ import { Farming } from './pages/Farming'
 import { Scouting } from './pages/Scouting'
 import { ClanChat } from './chat/ClanChat'
 import { Debug } from './pages/Debug'
+import { Admin } from './pages/Admin'
+import { isAdminAccess } from './admin/access'
 import { Hero } from './pages/Hero'
 import { Alliance } from './pages/Alliance'
 import { Empty, UiProvider, useUi } from './ui'
@@ -81,14 +83,14 @@ function WindowButtons() {
   )
 }
 
-type Page = 'aldeas' | 'aldeas-tropas' | 'aldeas-comercio' | 'farming' | 'farming-juego' | 'farming-scout' | 'hero' | 'alianza' | 'alianza-comandos' | 'debug' | 'ajustes' | 'cuentas'
+type Page = 'aldeas' | 'aldeas-tropas' | 'aldeas-comercio' | 'farming' | 'farming-juego' | 'farming-scout' | 'hero' | 'alianza' | 'admin' | 'admin-debug' | 'ajustes' | 'cuentas'
 
 const pages: { id: Page; label: string; icon: SvgIconComponent }[] = [
   { id: 'aldeas', label: 'Aldeas', icon: LocationCityIcon },
   { id: 'farming', label: 'Farming', icon: AgricultureIcon },
   { id: 'hero', label: 'Hero', icon: ShieldIcon },
   { id: 'alianza', label: 'Alianza', icon: GroupsIcon },
-  { id: 'debug', label: 'Debug', icon: BugReportIcon },
+  { id: 'admin', label: 'Administración', icon: AdminPanelSettingsIcon },
 ]
 
 const actionButton = {
@@ -246,8 +248,9 @@ function Shell() {
   }
   const pageColor = night ? '#d6c094' : '#f4ecd6'
   const headerMask = 'linear-gradient(to bottom, #000 0px, #000 70px, transparent 190px)'
-  const [showDebug, setShowDebug] = useState(false)
-  const debugToggleAt = useRef(0)
+  const [showAdmin, setShowAdmin] = useState(false)
+  const adminToggleAt = useRef(0)
+  const adminAllowedRef = useRef(false)
   const [update, setUpdate] = useState<{ current: string; latest: string; available: boolean; mandatory: boolean; publishedAt: string; detail: string; phase?: string; percent?: number; progress?: string } | null>(null)
   const [updateDue, setUpdateDue] = useState(false)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
@@ -260,9 +263,10 @@ function Shell() {
   useEffect(() => {
     const toggle = () => {
       const at = Date.now()
-      if (at - debugToggleAt.current < 80) return
-      debugToggleAt.current = at
-      setShowDebug(visible => !visible)
+      if (at - adminToggleAt.current < 80) return
+      adminToggleAt.current = at
+      if (!adminAllowedRef.current) return
+      setShowAdmin(visible => !visible)
     }
     const onKey = (event: KeyboardEvent) => {
       if (event.repeat || event.altKey || event.metaKey || event.shiftKey || !event.ctrlKey) return
@@ -278,9 +282,6 @@ function Shell() {
     }
   }, [])
 
-  useEffect(() => {
-    if (!showDebug && page === 'debug') setPage('farming')
-  }, [showDebug, page])
 
   async function refresh(selectId?: number) {
     const result = await api<Overview>('/api/overview')
@@ -304,6 +305,21 @@ function Shell() {
   }, [])
 
   const account = overview?.accounts.find(item => item.id === accountId) ?? null
+  const [knownAccess, setKnownAccess] = useState<string[]>([])
+  useEffect(() => {
+    if (!accountId || account?.accesses) return
+    let alive = true
+    setKnownAccess([])
+    api<{ accesses?: { username?: string }[] }>(`/api/accounts/${accountId}`)
+      .then(result => { if (alive) setKnownAccess((result.data.accesses ?? []).map(item => item.username || '').filter(Boolean)) })
+      .catch(() => { if (alive) setKnownAccess([]) })
+    return () => { alive = false }
+  }, [accountId, Boolean(account?.accesses)])
+  const adminAllowed = account?.status === 'Online' && isAdminAccess([...(account?.accesses ?? []), ...knownAccess])
+  adminAllowedRef.current = adminAllowed
+  useEffect(() => {
+    if ((!showAdmin || !adminAllowed) && (page === 'admin' || page === 'admin-debug')) setPage('farming')
+  }, [showAdmin, adminAllowed, page])
   useEffect(() => {
     if (page === 'farming-juego' && account && !account.gold) setPage('farming')
   }, [account, page])
@@ -502,7 +518,7 @@ function Shell() {
           </Button>
         </Box>
         <Stack spacing={0.3} sx={{ px: 1, pt: 1, overflow: 'auto', flex: 1 }}>
-          {pages.filter(item => showDebug || item.id !== 'debug').map(item => {
+          {pages.filter(item => item.id !== 'admin' || (showAdmin && adminAllowed)).map(item => {
             if (item.id === 'aldeas') {
               return (
                 <Stack key="aldeas" spacing={0.15}>
@@ -523,16 +539,16 @@ function Shell() {
                 </Stack>
               )
             }
-            if (item.id === 'alianza') {
+            if (item.id === 'admin') {
               return (
-                <Stack key="alianza" spacing={0.15}>
-                  <NavItem selected={false} disabled={!account} icon={item.icon} label="Alianza" onClick={() => setPage('alianza')} />
-                  <SubNav selected={page === 'alianza'} disabled={!account} label="Datos" onClick={() => setPage('alianza')} />
-                  <SubNav selected={page === 'alianza-comandos'} disabled={!account} label="Comandos" onClick={() => setPage('alianza-comandos')} />
+                <Stack key="admin" spacing={0.15}>
+                  <NavItem selected={false} disabled={!adminAllowed} icon={item.icon} label="Administración" onClick={() => setPage('admin')} />
+                  <SubNav selected={page === 'admin-debug'} disabled={!adminAllowed} label="Debug" onClick={() => setPage('admin-debug')} />
+                  <SubNav selected={page === 'admin'} disabled={!adminAllowed} label="Administración" onClick={() => setPage('admin')} />
                 </Stack>
               )
             }
-            return <NavItem key={item.id} selected={page === item.id} disabled={!connected} icon={item.icon} label={item.label} onClick={() => setPage(item.id)} />
+            return <NavItem key={item.id} selected={page === item.id} disabled={item.id === 'alianza' ? !account : !connected} icon={item.icon} label={item.label} onClick={() => setPage(item.id)} />
           })}
         </Stack>
         <Stack spacing={0.3} sx={{ px: 1, pb: 1.5 }}>
@@ -551,18 +567,19 @@ function Shell() {
         )}
         {page === 'ajustes' && accountId && <AccountSettings key={accountId} accountId={accountId} meta={meta} notify={ui.notify} refresh={() => refresh().catch((error: Error) => ui.notify(error.message))} />}
         {page === 'ajustes' && !accountId && <Empty title="Elegí una cuenta" text="Creá una cuenta con el + y después vas a poder cambiar el servidor, la contraseña y el resto desde acá." />}
-        {(page === 'alianza' || page === 'alianza-comandos') && account && <Alliance key={account.id} account={account} meta={meta} tab={page === 'alianza-comandos' ? 'comandos' : 'datos'} />}
-        {(page === 'alianza' || page === 'alianza-comandos') && !account && <Empty title="Elegí una cuenta" text="Creá una cuenta con el + para ver sus datos y los de la alianza." />}
-        {page !== 'cuentas' && page !== 'ajustes' && page !== 'alianza' && page !== 'alianza-comandos' && connected && accountId && (
+        {page === 'alianza' && account && <Alliance key={account.id} account={account} meta={meta} />}
+        {page === 'alianza' && !account && <Empty title="Elegí una cuenta" text="Creá una cuenta con el + para ver sus datos y los de la alianza." />}
+        {page !== 'cuentas' && page !== 'ajustes' && page !== 'alianza' && connected && accountId && (
           <>
             {page === 'hero' && <Hero key={accountId} accountId={accountId} notify={ui.notify} />}
             {(page === 'aldeas' || page === 'aldeas-tropas' || page === 'aldeas-comercio') && <Villages key={accountId} accountId={accountId} meta={meta} notify={ui.notify} tab={page === 'aldeas-tropas' ? 'troops' : page === 'aldeas-comercio' ? 'trade' : 'build'} />}
             {(page === 'farming' || page === 'farming-juego') && <Farming key={`${accountId}-${page}`} accountId={accountId} notify={ui.notify} mode={page === 'farming-juego' ? 'game' : 'bot'} />}
             {page === 'farming-scout' && <Scouting key={accountId} accountId={accountId} notify={ui.notify} />}
-            {showDebug && page === 'debug' && <Debug key={accountId} accountId={accountId} notify={ui.notify} />}
+            {showAdmin && adminAllowed && page === 'admin' && <Admin notify={ui.notify} />}
+            {showAdmin && adminAllowed && page === 'admin-debug' && <Debug key={accountId} accountId={accountId} notify={ui.notify} />}
           </>
         )}
-        {page !== 'cuentas' && page !== 'ajustes' && page !== 'alianza' && page !== 'alianza-comandos' && !connected && (
+        {page !== 'cuentas' && page !== 'ajustes' && page !== 'alianza' && !connected && (
           <Empty
             title={heldByOther && holder ? `${holder.username} está conectada en este bot` : 'Conectá la cuenta'}
             text={heldByOther && holder
@@ -571,7 +588,7 @@ function Shell() {
           />
         )}
       </Box>
-      {account?.clan && account.host && <ClanChat username={account.username} host={account.host} clan={account.clan} page={page} accountId={account.id} debug={showDebug} />}
+      {account?.clan && account.host && <ClanChat username={account.username} host={account.host} clan={account.clan} page={page} accountId={account.id} />}
       {mandatory && update && (
         <Box sx={{ position: 'fixed', inset: 0, zIndex: 30, bgcolor: 'rgba(0,0,0,.72)', display: 'grid', placeItems: 'center', p: 3 }}>
           <Stack spacing={2} sx={{ width: 420, maxWidth: '100%', bgcolor: '#3a2513', borderRadius: 2, p: 3 }}>

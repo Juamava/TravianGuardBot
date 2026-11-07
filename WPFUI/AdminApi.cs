@@ -342,6 +342,11 @@ namespace WPFUI
             var templates = services.GetRequiredService<DefaultTemplatePathStore>().Get();
             var versionAssembly = typeof(AppDbContext).Assembly.GetName().Version;
             var version = versionAssembly is null ? "" : $"{versionAssembly.Major}.{versionAssembly.Minor}.{versionAssembly.Build}";
+            var accessNames = context.Accesses
+                .Select(x => new { x.AccountId, x.Username })
+                .AsEnumerable()
+                .GroupBy(x => x.AccountId)
+                .ToDictionary(x => x.Key, x => x.Select(access => access.Username).ToList());
             var accounts = new List<object>();
             foreach (var account in context.Accounts.AsEnumerable())
             {
@@ -373,6 +378,7 @@ namespace WPFUI
                     scoutNext = NextAt(queued.Where(task => task is RaidCowListTask.Task raid && scoutLists.Contains(raid.CowListId))),
                     gameFarmNext = NextAt(queued.Where(task => task is StartFarmListTask.Task or UpdateFarmListTask.Task)),
                     clan = await ReadClan(services, tasks, account.Id, status),
+                    accesses = accessNames.GetValueOrDefault(account.Id) ?? [],
                 });
             }
 
