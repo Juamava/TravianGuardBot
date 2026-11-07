@@ -86,6 +86,19 @@ namespace MainCore.Services
                 }
             }
 
+            // Attacks sent from Scouting whose report was not read yet keep being followed after a restart.
+            var since = DateTime.UtcNow.AddHours(-4);
+            var sinceLocal = DateTime.Now.AddHours(-4);
+            var flying = context.ScoutResults
+                .Where(x => x.AttackState == ScoutResult.AttackSent)
+                .Where(x => (x.AttackSentUtc != null && x.AttackSentUtc > since) || (x.AttackSentUtc == null && x.AttackAt != null && x.AttackAt > sinceLocal))
+                .Where(x => context.CowVillages.Any(village => village.Id == x.CowVillageId && village.CowList.AccountId == accountId.Value))
+                .Select(x => x.CowVillageId)
+                .ToList();
+            var followed = taskManager.GetTaskList(accountId).OfType<CheckAttackReportTask.Task>().Select(x => x.CowVillageId).ToHashSet();
+            foreach (var cowVillageId in flying.Where(id => !followed.Contains(id)))
+                taskManager.Add(new CheckAttackReportTask.Task(accountId, cowVillageId));
+
             var queued = taskManager.GetTaskList(accountId).OfType<RaidCowListTask.Task>().Select(x => x.CowListId).ToHashSet();
             var autoListIds = context.CowLists
                 .Where(x => x.AccountId == accountId.Value && x.AutoStart && x.MinAttackMinutes >= 1 && x.RepeatMinutes >= 1)

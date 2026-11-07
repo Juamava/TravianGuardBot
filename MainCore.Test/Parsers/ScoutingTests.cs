@@ -76,6 +76,26 @@ namespace MainCore.Test.Parsers
         }
 
         [Fact]
+        public async Task Attack_report_is_read()
+        {
+            await using var context = await CreateContextAsync();
+            var page = await CreatePageAsync(context, "AttackReportRaid.html");
+
+            var report = await AttackReportParser.Read(page);
+            report.ShouldNotBeNull();
+            (report.X, report.Y).ShouldBe((-59, 29));
+            report.AttackerWon.ShouldBeTrue();
+            report.TimeUtc.ShouldBe(new DateTime(2026, 11, 7, 1, 48, 5, DateTimeKind.Utc));
+            report.Attacker.Count.ShouldBe(1);
+            report.Attacker[0].Name.ShouldBe("Slave Militia");
+            (report.Sent, report.Lost, report.Attacker[0].Survived).ShouldBe((50, 3, 47));
+            (report.BountyWood, report.BountyClay, report.BountyIron, report.BountyCrop).ShouldBe((320, 280, 150, 0));
+            report.Bounty.ShouldBe(750);
+            (report.Carried, report.Capacity).ShouldBe((750, 1500));
+            report.Defender.Single().ShouldBe(new AttackUnit("Phalanx", 4, 4));
+        }
+
+        [Fact]
         public async Task Player_profile_is_read()
         {
             await using var context = await CreateContextAsync();
@@ -153,6 +173,24 @@ namespace MainCore.Test.Parsers
             text.ShouldContain("Mató a los espías");
             text.ShouldContain("Está en una alianza");
             text.ShouldContain("5 aldeas");
+        }
+
+        [Theory]
+        [InlineData("Villaggio di Corsara (Capital) ‭(‭−‭57‬‬|‭18‬‬)‬", "Villaggio di Corsara (Capital)")]
+        [InlineData("Aldea de Markkis19 (-59|29)", "Aldea de Markkis19")]
+        [InlineData("GoldSnake`s village", "GoldSnake`s village")]
+        public void Village_name_loses_the_coordinates(string raw, string clean)
+        {
+            ScoutRules.CleanVillageName(raw).ShouldBe(clean);
+        }
+
+        [Theory]
+        [InlineData("2 25 16", 1794018316L, 0)]
+        [InlineData("23 25 16", 1794018316L, -180)]
+        [InlineData("5 25 16", 1794018316L, 180)]
+        public void Server_offset_comes_from_the_top_bar(string shown, long unix, int minutes)
+        {
+            AttackReportParser.ServerOffset(shown, unix).ShouldBe(TimeSpan.FromMinutes(minutes));
         }
 
         [Fact]

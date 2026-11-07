@@ -329,6 +329,9 @@ namespace MainCore.Infrasturecture.Persistence
                     "AttackRaid" INTEGER NOT NULL DEFAULT 0,
                     "AttackAt" TEXT NULL,
                     "AttackMessage" TEXT NOT NULL DEFAULT '',
+                    "AttackSentUtc" TEXT NULL,
+                    "AttackReportAt" TEXT NULL,
+                    "AttackDetails" TEXT NOT NULL DEFAULT '',
                     CONSTRAINT "FK_ScoutResults_CowVillages_CowVillageId" FOREIGN KEY ("CowVillageId") REFERENCES "CowVillages" ("Id") ON DELETE CASCADE
                 );
                 """);
@@ -338,6 +341,9 @@ namespace MainCore.Infrasturecture.Persistence
             EnsureColumn("ScoutResults", "AttackRaid", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("ScoutResults", "AttackAt", "TEXT NULL");
             EnsureColumn("ScoutResults", "AttackMessage", "TEXT NOT NULL DEFAULT ''");
+            EnsureColumn("ScoutResults", "AttackSentUtc", "TEXT NULL");
+            EnsureColumn("ScoutResults", "AttackReportAt", "TEXT NULL");
+            EnsureColumn("ScoutResults", "AttackDetails", "TEXT NOT NULL DEFAULT ''");
         }
 
         public void EnsureVillageColumns()

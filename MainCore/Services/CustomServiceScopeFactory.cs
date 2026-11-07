@@ -86,6 +86,10 @@ namespace MainCore.Services
                     var startFarmListTaskHandler = scope.GetHandler<StartFarmListTask.Task>();
                     return await startFarmListTaskHandler.HandleAsync(startFarmListTask, cancellationToken);
 
+                case CheckAttackReportTask.Task checkAttackReportTask:
+                    var checkAttackReportTaskHandler = scope.GetHandler<CheckAttackReportTask.Task>();
+                    return await checkAttackReportTaskHandler.HandleAsync(checkAttackReportTask, cancellationToken);
+
                 case AttackVillageTask.Task attackVillageTask:
                     var attackVillageTaskHandler = scope.GetHandler<AttackVillageTask.Task>();
                     return await attackVillageTaskHandler.HandleAsync(attackVillageTask, cancellationToken);

@@ -12,6 +12,7 @@ namespace MainCore.Tasks
         IDbContextFactory<AppDbContext> contextFactory,
         IChromeBrowser browser,
         RxQueue rxQueue,
+        TaskManager taskManager,
         ILogger logger)
     {
         public sealed class Task(AccountId accountId, int cowVillageId, string url, string troopPlan, bool raid) : AccountTask(accountId)
@@ -96,7 +97,9 @@ namespace MainCore.Tasks
             }
 
             logger.Information("Attack sent to {Url} with {Plan} ({Mission})", task.Url, task.TroopPlan, task.Raid ? "raid" : "normal");
-            SetState(task, ScoutResult.AttackSent, $"{(task.Raid ? "Asalto" : "Ataque normal")} con {task.TroopPlan} confirmado en el juego");
+            SetState(task, ScoutResult.AttackSent, $"{(task.Raid ? "Asalto" : "Ataque normal")} con {task.TroopPlan} en camino. Se lee el reporte cuando llegue.");
+            MarkSent(task);
+            taskManager.Add(new CheckAttackReportTask.Task(task.AccountId, task.CowVillageId) { ExecuteAt = DateTime.Now.AddMinutes(1) });
             return Result.Ok();
         }
 
@@ -123,6 +126,14 @@ namespace MainCore.Tasks
             row.AttackAt = DateTime.Now;
             row.AttackMessage = message;
             context.SaveChanges();
+        }
+
+        private void MarkSent(Task task)
+        {
+            using var context = contextFactory.CreateDbContext();
+            var now = DateTime.UtcNow;
+            context.ScoutResults.Where(x => x.CowVillageId == task.CowVillageId)
+                .ExecuteUpdate(x => x.SetProperty(row => row.AttackSentUtc, now));
         }
 
         private void SetState(Task task, string state, string message)

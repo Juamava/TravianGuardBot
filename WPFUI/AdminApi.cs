@@ -942,7 +942,7 @@ namespace WPFUI
                     {
                         id = x.Id,
                         listId = x.CowListId,
-                        name = VillageLabel(x.Name),
+                        name = VillageLabel(ScoutRules.CleanVillageName(x.Name)),
                         url = x.Url,
                         troops = CowTroopPlan.Describe(x.TroopPlan, x.TroopCount),
                         status = FormatStatus(x.LastAttackedAt, x.LastSkipReason),
@@ -960,6 +960,8 @@ namespace WPFUI
                         label = scouted ? ScoutRules.Label(result.Class, result.Danger) : "",
                         why,
                         attack = AttackStatus(result, attackTasks.FirstOrDefault(task => task.CowVillageId == x.Id)),
+                        attackedAt = result?.AttackReportAt,
+                        attackReport = ReadAttackDetails(result?.AttackDetails),
                         wood = result?.Wood ?? -1,
                         clay = result?.Clay ?? -1,
                         iron = result?.Iron ?? -1,
@@ -1052,6 +1054,32 @@ namespace WPFUI
         /// Attack status of one target. The queue wins over the saved state: a task still in the queue is
         /// "cola", or "enviando" while it has the browser.
         /// </summary>
+        private static object ReadAttackDetails(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return null;
+            try
+            {
+                var report = JsonSerializer.Deserialize<AttackReport>(json);
+                if (report is null) return null;
+                return new
+                {
+                    won = report.AttackerWon,
+                    timeUtc = report.TimeUtc,
+                    attacker = report.Attacker.Select(x => new { name = x.Name, sent = x.Sent, dead = x.Dead, survived = x.Survived }),
+                    defender = report.Defender.Select(x => new { name = x.Name, sent = x.Sent, dead = x.Dead }),
+                    bounty = new { wood = report.BountyWood, clay = report.BountyClay, iron = report.BountyIron, crop = report.BountyCrop, total = report.Bounty },
+                    carried = report.Carried,
+                    capacity = report.Capacity,
+                    sent = report.Sent,
+                    lost = report.Lost,
+                };
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
         private static object AttackStatus(ScoutResult result, AttackVillageTask.Task task)
         {
             if (task is not null)

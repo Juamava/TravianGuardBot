@@ -142,6 +142,19 @@ namespace MainCore.Parsers
             return (x, y);
         }
 
+        /// <summary>
+        /// Village name without the coordinates the map title appends ("Aldea (Capital) (−57|18)" becomes
+        /// "Aldea (Capital)"), and without the direction marks Travian puts around numbers.
+        /// </summary>
+        public static string CleanVillageName(string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return "";
+            var text = new string(name.Where(c => c is not ('\u202a' or '\u202b' or '\u202c' or '\u202d' or '\u202e' or '\u2066' or '\u2067' or '\u2068' or '\u2069' or '\u200e' or '\u200f')).ToArray())
+                .Replace('\u2212', '-');
+            text = System.Text.RegularExpressions.Regex.Replace(text, @"\s*\(\s*-?\d+\s*\|\s*-?\d+\s*\)", "");
+            return text.Trim();
+        }
+
         /// <summary>The scout unit of each tribe, as a rally point letter.</summary>
         public static string DefaultScoutPlan(TribeEnums tribe, int amount = 1)
         {

@@ -64,6 +64,16 @@ namespace MainCore.Entities
         /// <summary>Why it failed, or what was sent.</summary>
         public string AttackMessage { get; set; } = "";
 
+        /// <summary>When the confirmed attack left, in UTC, to tell its report from older ones.</summary>
+        public DateTime? AttackSentUtc { get; set; }
+
+        /// <summary>When the attack report was read (local time).</summary>
+        public DateTime? AttackReportAt { get; set; }
+
+        /// <summary>The attack report as JSON (<see cref="Parsers.AttackReport"/>), for the details panel.</summary>
+        public string AttackDetails { get; set; } = "";
+
+        public const string AttackLanded = "llego";
         public const string AttackQueued = "cola";
         public const string AttackSending = "enviando";
         public const string AttackSent = "enviado";

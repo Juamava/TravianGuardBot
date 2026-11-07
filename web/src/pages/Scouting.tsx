@@ -3,6 +3,9 @@ import { Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions, D
 import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import ExpandLessIcon from '@mui/icons-material/ExpandLess'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import GpsFixedIcon from '@mui/icons-material/GpsFixed'
 import ScheduleIcon from '@mui/icons-material/Schedule'
@@ -37,6 +40,8 @@ type Target = {
   label: string
   why: string
   attack: Attack | null
+  attackedAt: string | null
+  attackReport: AttackReport | null
   wood: number
   clay: number
   iron: number
@@ -54,12 +59,24 @@ type OwnList = { id: number; name: string; sameVillage: boolean }
 type ScoutingData = { villages: Village[]; lists: ScoutList[]; targets: Target[]; ownLists: OwnList[]; scoutPlan: string; server: string }
 type Filter = 'todas' | 'gorda' | 'flaca' | 'peligro' | 'sin'
 type HomeTroop = { letter: string; index: number; name: string; available: number }
-type Attack = { state: 'cola' | 'enviando' | 'enviado' | 'error'; plan: string; raid: boolean; at: string | null; message: string }
+type Attack = { state: 'cola' | 'enviando' | 'enviado' | 'llego' | 'error'; plan: string; raid: boolean; at: string | null; message: string }
+type AttackReport = {
+  won: boolean
+  timeUtc: string | null
+  attacker: { name: string; sent: number; dead: number; survived: number }[]
+  defender: { name: string; sent: number; dead: number }[]
+  bounty: { wood: number; clay: number; iron: number; crop: number; total: number }
+  carried: number
+  capacity: number
+  sent: number
+  lost: number
+}
 
 const attackLook: Record<Attack['state'], { label: string; bg: string; fg: string }> = {
   cola: { label: 'En cola', bg: '#35373c', fg: '#dbdee1' },
   enviando: { label: 'Enviando', bg: '#1e2a4a', fg: '#8ea1f7' },
-  enviado: { label: 'Enviado', bg: '#1f3b2b', fg: '#3ba55d' },
+  enviado: { label: 'En camino', bg: '#1e2a4a', fg: '#8ea1f7' },
+  llego: { label: 'Llegó', bg: '#1f3b2b', fg: '#3ba55d' },
   error: { label: 'No se envió', bg: '#3a2426', fg: '#ed4245' },
 }
 
@@ -67,8 +84,10 @@ function AttackChip({ attack }: { attack: Attack }) {
   const look = attackLook[attack.state] ?? attackLook.error
   const icon = attack.state === 'enviando'
     ? <CircularProgress size={12} sx={{ color: look.fg, ml: '6px !important' }} />
-    : attack.state === 'enviado'
+    : attack.state === 'llego'
       ? <CheckCircleOutlineIcon sx={{ fontSize: 14, color: `${look.fg} !important` }} />
+      : attack.state === 'enviado'
+        ? <FlightTakeoffIcon sx={{ fontSize: 14, color: `${look.fg} !important` }} />
       : attack.state === 'error'
         ? <ErrorOutlineIcon sx={{ fontSize: 14, color: `${look.fg} !important` }} />
         : <ScheduleIcon sx={{ fontSize: 14, color: `${look.fg} !important` }} />
@@ -122,6 +141,62 @@ function toUrl(line: string, server: string) {
   return `${server.replace(/\/$/, '')}/karte.php?x=${match[1]}&y=${match[2]}`
 }
 
+function attacked(target: Target) {
+  if (!target.attackedAt) return false
+  if (!target.scoutedAt) return true
+  return new Date(target.attackedAt).getTime() >= new Date(target.scoutedAt).getTime()
+}
+
+function AttackDetails({ target, report, onDelete }: { target: Target; report: AttackReport; onDelete: () => void }) {
+  const percent = report.capacity > 0 ? Math.round(report.carried / report.capacity * 100) : 0
+  const cell = { fontSize: 13, py: 0.25 } as const
+  return (
+    <Box sx={{ mx: 1, mb: 1, p: 1.5, borderRadius: 1, bgcolor: '#232428', display: 'grid', gap: 2, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', minWidth: 880 }}>
+      <Box>
+        <Typography sx={{ fontWeight: 700, mb: 0.5 }}>
+          Último ataque {target.attackedAt ? `· ${ago(target.attackedAt)}` : ''}
+        </Typography>
+        <Typography sx={{ fontSize: 13, color: report.won ? '#3ba55d' : '#ed4245', fontWeight: 600 }}>
+          {report.won ? 'Ganaste' : 'Perdiste'} · volvieron {report.sent - report.lost} de {report.sent}{report.lost > 0 ? ` (murieron ${report.lost})` : ''}
+        </Typography>
+        {report.timeUtc && <Typography sx={{ fontSize: 12, color: '#949ba4' }}>Llegó {new Date(report.timeUtc).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</Typography>}
+        <Button size="small" color="error" startIcon={<DeleteOutlineIcon />} onClick={onDelete} sx={{ mt: 1, px: 0 }}>Quitar de la lista</Button>
+      </Box>
+      <Box>
+        <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Tus tropas</Typography>
+        <Box component="table" sx={{ borderCollapse: 'collapse', width: '100%', '& td, & th': { textAlign: 'right', px: 0.75 }, '& td:first-of-type, & th:first-of-type': { textAlign: 'left', pl: 0 } }}>
+          <thead><tr>{['Tropa', 'Fueron', 'Murieron', 'Volvieron'].map(head => <Box component="th" key={head} sx={{ fontSize: 12, color: '#949ba4', fontWeight: 600 }}>{head}</Box>)}</tr></thead>
+          <tbody>
+            {report.attacker.map(unit => (
+              <tr key={unit.name}>
+                <Box component="td" sx={cell}>{unit.name}</Box>
+                <Box component="td" sx={cell}>{unit.sent}</Box>
+                <Box component="td" sx={{ ...cell, color: unit.dead > 0 ? '#ed4245' : undefined }}>{unit.dead}</Box>
+                <Box component="td" sx={{ ...cell, color: '#3ba55d' }}>{unit.survived}</Box>
+              </tr>
+            ))}
+          </tbody>
+        </Box>
+      </Box>
+      <Box>
+        <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Botín</Typography>
+        <Typography sx={{ fontSize: 13 }}>Madera {number(report.bounty.wood)} · Barro {number(report.bounty.clay)} · Hierro {number(report.bounty.iron)} · Cereal {number(report.bounty.crop)}</Typography>
+        <Typography sx={{ fontSize: 13, fontWeight: 600 }}>Total {number(report.bounty.total)} · capacidad {number(report.carried)}/{number(report.capacity)} ({percent}%)</Typography>
+        <Typography sx={{ fontSize: 12, color: '#949ba4', mt: 0.5 }}>
+          Quedan (estimado): {target.wood < 0 ? '—' : `${number(target.wood)} / ${number(target.clay)} / ${number(target.iron)} / ${number(target.crop)}`}
+        </Typography>
+        {percent >= 100 && <Typography sx={{ fontSize: 12, color: '#f0b232' }}>Volvieron llenas: hay más para sacar.</Typography>}
+      </Box>
+      <Box>
+        <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Defensa</Typography>
+        {report.defender.length === 0
+          ? <Typography sx={{ fontSize: 13, color: '#3ba55d' }}>No había tropas.</Typography>
+          : report.defender.map(unit => <Typography key={unit.name} sx={{ fontSize: 13 }}>{unit.name}: {unit.sent}{unit.dead > 0 ? ` (murieron ${unit.dead})` : ''}</Typography>)}
+      </Box>
+    </Box>
+  )
+}
+
 export function Scouting({ accountId, notify }: { accountId: number; notify: (message: string) => void }) {
   const ui = useUi()
   const [villageId, setVillageId] = useState(0)
@@ -143,6 +218,7 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
   const [attackRaid, setAttackRaid] = useState(true)
   const [homeTroops, setHomeTroops] = useState<HomeTroop[] | null>(null)
   const [homeError, setHomeError] = useState('')
+  const [open, setOpen] = useState<number[]>([])
 
   async function load(village = villageId) {
     const result = await api<ScoutingData>(`/api/accounts/${accountId}/scouting?villageId=${village}`)
@@ -403,7 +479,8 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
             const color = classColor(target)
             const checked = selected.includes(target.id)
             return (
-              <Box key={target.id} sx={{ display: 'grid', gridTemplateColumns: columns, gap: 1, alignItems: 'center', px: 1, py: 0.6, borderTop: '1px solid #3f4147', minWidth: 900, bgcolor: checked ? '#35373c' : 'transparent' }}>
+              <Box key={target.id}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: columns, gap: 1, alignItems: 'center', px: 1, py: 0.6, borderTop: '1px solid #3f4147', minWidth: 900, bgcolor: checked || open.includes(target.id) ? '#35373c' : 'transparent' }}>
                 <Checkbox size="small" checked={checked} onChange={event => setSelected(current => event.target.checked ? [...current, target.id] : current.filter(id => id !== target.id))} />
                 <Box sx={{ minWidth: 0 }}>
                   <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0 }}>
@@ -438,17 +515,34 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
                   <Typography sx={{ fontSize: 13, color: '#b5bac1' }} noWrap>{target.playerPopulation >= 0 ? `${target.playerPopulation} hab · ${target.playerVillages} ald.` : '—'}</Typography>
                 </Tooltip>
                 <Box sx={{ minWidth: 0 }}>
-                  {target.attack && (target.attack.state === 'cola' || target.attack.state === 'enviando' || (target.attack.at && Date.now() - new Date(target.attack.at).getTime() < 6 * 3600 * 1000))
+                  {target.attack && target.attack.state !== 'llego' && (target.attack.state === 'cola' || target.attack.state === 'enviando' || target.attack.state === 'enviado' || (target.attack.at && Date.now() - new Date(target.attack.at).getTime() < 6 * 3600 * 1000))
                     ? <AttackChip attack={target.attack} />
-                    : <Typography sx={{ fontSize: 12 }} noWrap>{target.status}</Typography>}
-                  {target.scoutedAt && <Typography sx={{ fontSize: 11, color: '#949ba4' }} noWrap>espiada {ago(target.scoutedAt)}</Typography>}
+                    : attacked(target)
+                      ? <Typography sx={{ fontSize: 12, color: '#3ba55d', fontWeight: 600 }} noWrap>atacada {ago(target.attackedAt)}</Typography>
+                      : <Typography sx={{ fontSize: 12 }} noWrap>{target.scoutedAt ? `espiada ${ago(target.scoutedAt)}` : target.status}</Typography>}
+                  {attacked(target) && target.scoutedAt && <Typography sx={{ fontSize: 11, color: '#949ba4' }} noWrap>espiada {ago(target.scoutedAt)}</Typography>}
+                  {!attacked(target) && target.scoutedAt && target.attack && <Typography sx={{ fontSize: 11, color: '#949ba4' }} noWrap>espiada {ago(target.scoutedAt)}</Typography>}
                 </Box>
                 <Tooltip title="Atacar">
                   <span><IconButton size="small" sx={{ color: '#f0b232' }} disabled={target.attack?.state === 'cola' || target.attack?.state === 'enviando'} onClick={() => openAttack(target)}><GpsFixedIcon fontSize="small" /></IconButton></span>
                 </Tooltip>
-                <Tooltip title="Quitar de la lista">
-                  <IconButton size="small" sx={{ color: '#ed4245' }} onClick={async () => { if (await ui.confirm(`¿Quitar ${target.name} de la lista?`)) run(() => del(`/api/accounts/${accountId}/farming/villages/${target.id}`)) }}><DeleteOutlineIcon fontSize="small" /></IconButton>
-                </Tooltip>
+                {target.attackReport
+                  ? (
+                    <Tooltip title={open.includes(target.id) ? 'Ocultar el último ataque' : 'Ver el último ataque'}>
+                      <IconButton size="small" sx={{ color: '#dbdee1' }} onClick={() => setOpen(current => current.includes(target.id) ? current.filter(id => id !== target.id) : [...current, target.id])}>
+                        {open.includes(target.id) ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                      </IconButton>
+                    </Tooltip>
+                  )
+                  : (
+                    <Tooltip title="Quitar de la lista">
+                      <IconButton size="small" sx={{ color: '#ed4245' }} onClick={async () => { if (await ui.confirm(`¿Quitar ${target.name} de la lista?`)) run(() => del(`/api/accounts/${accountId}/farming/villages/${target.id}`)) }}><DeleteOutlineIcon fontSize="small" /></IconButton>
+                    </Tooltip>
+                  )}
+              </Box>
+              {open.includes(target.id) && target.attackReport && (
+                <AttackDetails target={target} report={target.attackReport} onDelete={async () => { if (await ui.confirm(`¿Quitar ${target.name} de la lista?`)) run(() => del(`/api/accounts/${accountId}/farming/villages/${target.id}`)) }} />
+              )}
               </Box>
             )
           })}
