@@ -2,7 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.IO.Compression;
+using System.IO.Pipes;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
@@ -10,6 +10,10 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+
+using MainCore.Services;
+
+using Microsoft.Extensions.DependencyInjection;
 
 namespace WPFUI
 {
@@ -27,6 +31,10 @@ namespace WPFUI
         private static int _percent;
         private static string _progress = "";
 
+        public static bool SkipRemoteCheck { get; private set; }
+        public static bool SkipAutoInstall { get; private set; }
+        public static bool IsExiting { get; private set; }
+
         public static string CurrentVersion()
         {
             var version = Assembly.GetExecutingAssembly().GetName().Version;
@@ -35,8 +43,42 @@ namespace WPFUI
             return version.Major + "." + version.Minor + "." + build;
         }
 
+        public static void CaptureLaunch()
+        {
+            foreach (var arg in Environment.GetCommandLineArgs())
+            {
+                if (arg == "--updated") SkipRemoteCheck = true;
+                else if (arg == "--rollback") SkipAutoInstall = true;
+            }
+        }
+
+        public static string StartupStatus()
+        {
+            if (SkipRemoteCheck) return "Abriendo la versión " + CurrentVersion() + "...";
+            if (!SkipAutoInstall) return "";
+            var error = LastError();
+            return error.Length > 0 ? error : "Se abre la versión anterior.";
+        }
+
+        public static int StartupPercent()
+        {
+            if (SkipRemoteCheck) return 100;
+            if (!SkipAutoInstall) return -1;
+            return LastError().Length > 0 ? 0 : 100;
+        }
+
         public static async Task<UpdateInfo> Check(bool force = false)
         {
+            if (!force && SkipRemoteCheck)
+            {
+                lock (Gate)
+                {
+                    if (_checkedAt == DateTime.MinValue)
+                        _cached = new UpdateInfo { Current = CurrentVersion() };
+                    return _cached;
+                }
+            }
+
             lock (Gate)
             {
                 if (!force && _checkedAt != DateTime.MinValue && DateTime.UtcNow - _checkedAt < TimeSpan.FromMinutes(30))
@@ -58,6 +100,29 @@ namespace WPFUI
             var path = ReadyPath();
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             File.WriteAllText(path, CurrentVersion());
+            if (!SkipRemoteCheck) return;
+            try
+            {
+                var error = Path.Combine(UpdateRoot(), "last-error");
+                if (File.Exists(error)) File.Delete(error);
+            }
+            catch
+            {
+                // The new version is already open.
+            }
+        }
+
+        public static string LastError()
+        {
+            try
+            {
+                var path = Path.Combine(UpdateRoot(), "last-error");
+                return File.Exists(path) ? File.ReadAllText(path).Trim() : "";
+            }
+            catch
+            {
+                return "";
+            }
         }
 
         public static UpdateInfo Peek()
@@ -81,91 +146,208 @@ namespace WPFUI
             if (System.Threading.Interlocked.Exchange(ref _applying, 1) == 1)
                 return "La actualización ya se está descargando.";
 
-            SetProgress("checking", 0, "Comprobando...");
+            SetProgress("downloading", 10, "Descargando...");
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    await Run(null, splashAtEnd: true);
+                    var info = Peek();
+                    if (!info.Available || string.IsNullOrWhiteSpace(info.AssetUrl))
+                        info = await Check(true);
+                    await HandOff(services, info, null);
                 }
                 catch (Exception ex)
                 {
                     SetProgress("failed", 0, ex.Message);
-                    UpdateSplash.Close();
                     System.Threading.Interlocked.Exchange(ref _applying, 0);
+                    AppLog.Write("actualización", "No se pudo actualizar.", ex);
                 }
             });
-            return "Se descarga mientras el bot sigue. Cuando termine se cierra unos segundos para instalar.";
+            return "Se descarga mientras el bot sigue. Cuando termine se cierra para instalar y se vuelve a abrir.";
         }
 
-        public static async Task<string> Apply(IServiceProvider services, Action<string, int> progress = null)
+        public static async Task<string> Apply(IServiceProvider services, UpdateInfo info, Action<string, int> progress = null)
         {
             if (System.Threading.Interlocked.Exchange(ref _applying, 1) == 1)
                 throw new InvalidOperationException("La actualización ya está en curso.");
             try
             {
-                return await Run(progress, splashAtEnd: false);
+                return await HandOff(services, info, progress);
             }
             catch
             {
-                UpdateSplash.Close();
                 System.Threading.Interlocked.Exchange(ref _applying, 0);
                 throw;
             }
         }
 
-        private static async Task<string> Run(Action<string, int> progress, bool splashAtEnd)
+        private static async Task<string> HandOff(IServiceProvider services, UpdateInfo info, Action<string, int> progress)
         {
-            SetProgress("checking", 0, "Comprobando...");
-            Report(progress, "Comprobando la versión...", 0);
-            var info = await CheckRemote();
-            if (!info.Available)
-                throw new InvalidOperationException(string.IsNullOrWhiteSpace(info.Detail) ? "Ya está al día." : info.Detail);
+            if (info == null || !info.Available || string.IsNullOrWhiteSpace(info.AssetUrl))
+                throw new InvalidOperationException(string.IsNullOrWhiteSpace(info?.Detail) ? "Ya está al día." : info.Detail);
+            if (!info.AssetUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("La descarga no es válida.");
 
-            SetProgress("downloading", 10, "Descargando...");
-            Report(progress, "Descargando " + info.Latest + "...", 10);
-            var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TravianGuardBot", "update");
-            Directory.CreateDirectory(root);
-            var zipPath = Path.Combine(root, AssetName);
-            var staging = Path.Combine(root, "staging");
-            if (Directory.Exists(staging)) Directory.Delete(staging, true);
-            Directory.CreateDirectory(staging);
+            var source = Path.Combine(AppContext.BaseDirectory, "TravianGuardUpdater.exe");
+            if (!File.Exists(source))
+                throw new InvalidOperationException("No está TravianGuardUpdater.exe al lado del programa.");
 
-            await Download(info.AssetUrl, zipPath, (status, percent) =>
-            {
-                SetProgress("downloading", percent, "Descargando " + percent + "%");
-                Report(progress, status, percent);
-            }, info.Latest);
-            SetProgress("extracting", 90, "Preparando...");
-            Report(progress, "Preparando los archivos...", 90);
-            Extract(zipPath, staging);
-            if (!File.Exists(Path.Combine(staging, "TravianBotSharp.exe")))
-                throw new InvalidOperationException("El paquete no trae el programa.");
-
-            SetProgress("installing", 98, "Instalando...");
-            var closing = "Se cierra unos segundos para instalar " + info.Latest + ".";
-            if (splashAtEnd) UpdateSplash.Show(info.Current, closing, 98, info.Latest);
-            else UpdateSplash.Report(closing, 98, info.Latest);
-            Report(progress, closing, 98);
-
+            var destination = CopyUpdater(source);
+            var pipeName = "TravianGuardBot.Update." + Environment.ProcessId;
             var install = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var script = Path.Combine(root, "apply.ps1");
-            File.WriteAllText(script, ApplyScript(), new UTF8Encoding(true));
-            Process.Start(new ProcessStartInfo
+            SetProgress("downloading", 10, "Descargando " + info.Latest + "...");
+            Report(progress, "Descargando " + info.Latest + "...", 10);
+
+            await using var server = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            using var connectTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+            var connection = server.WaitForConnectionAsync(connectTimeout.Token);
+            try
             {
-                FileName = "powershell.exe",
-                Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + script + "\" -Install \"" + install + "\" -Staging \"" + staging + "\" -TargetPid " + Environment.ProcessId,
+                StartUpdater(destination, install, info.Latest, info.AssetUrl, pipeName);
+                await connection;
+            }
+            catch (OperationCanceledException)
+            {
+                throw new InvalidOperationException("El actualizador no llegó a conectarse.");
+            }
+            catch (Exception)
+            {
+                connectTimeout.Cancel();
+                try { await connection; } catch { }
+                throw;
+            }
+
+            AppLog.Write("actualización", "El actualizador de " + info.Latest + " está conectado.");
+            return await Listen(server, services, progress, info.Latest);
+        }
+
+        private static async Task<string> Listen(NamedPipeServerStream server, IServiceProvider services, Action<string, int> progress, string latest)
+        {
+            while (true)
+            {
+                var line = await ReadLineAsync(server);
+                if (line == null) throw new InvalidOperationException("El actualizador se desconectó.");
+                if (line.Length == 0) continue;
+                using var document = JsonDocument.Parse(line);
+                var type = document.RootElement.TryGetProperty("type", out var typeValue) ? typeValue.GetString() : "";
+                if (type == "progress")
+                {
+                    var phase = document.RootElement.TryGetProperty("phase", out var phaseValue) ? phaseValue.GetString() ?? "downloading" : "downloading";
+                    var percent = document.RootElement.TryGetProperty("percent", out var percentValue) && percentValue.TryGetInt32(out var parsed) ? parsed : 0;
+                    var message = document.RootElement.TryGetProperty("message", out var messageValue) ? messageValue.GetString() ?? "" : "";
+                    SetProgress(phase, percent, message);
+                    Report(progress, message, percent);
+                    if (phase == "failed")
+                        throw new InvalidOperationException(message.Length == 0 ? "No se pudo actualizar." : message);
+                    continue;
+                }
+
+                if (type != "shutdown") continue;
+                var bye = Encoding.UTF8.GetBytes("{\"type\":\"bye\"}\n");
+                try
+                {
+                    await server.WriteAsync(bye);
+                    await server.FlushAsync();
+                }
+                catch
+                {
+                    // The updater also watches the process.
+                }
+
+                await ExitForInstall(services);
+                return "Se cierra para instalar " + latest + ". Se vuelve a abrir solo.";
+            }
+        }
+
+        private static async Task ExitForInstall(IServiceProvider services)
+        {
+            IsExiting = true;
+            try
+            {
+                var chrome = services.GetService<ChromeManager>();
+                if (chrome != null) await chrome.Shutdown();
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("actualización", "No se pudieron cerrar los navegadores.", ex);
+            }
+
+            var app = System.Windows.Application.Current;
+            if (app == null)
+            {
+                Environment.Exit(0);
+                return;
+            }
+
+            _ = app.Dispatcher.BeginInvoke(() =>
+            {
+                UpdateSplash.Close();
+                app.Shutdown();
+            });
+        }
+
+        private static string CopyUpdater(string source)
+        {
+            var root = UpdateRoot();
+            Directory.CreateDirectory(root);
+            var destination = Path.Combine(root, "TravianGuardUpdater.exe");
+            try
+            {
+                File.Copy(source, destination, true);
+                return destination;
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                destination = Path.Combine(root, "TravianGuardUpdater-" + Environment.ProcessId + ".exe");
+                File.Copy(source, destination, true);
+                return destination;
+            }
+        }
+
+        private static void StartUpdater(string exe, string install, string version, string url, string pipeName)
+        {
+            // cmd start leaves the updater outside this process tree, so closing the client does not stop the install.
+            var command = "/c start \"\" "
+                + QuoteForCmd(exe)
+                + " --install " + QuoteForCmd(install)
+                + " --pid " + Environment.ProcessId
+                + " --version " + QuoteForCmd(version)
+                + " --url " + QuoteForCmd(url)
+                + " --pipe " + QuoteForCmd(pipeName);
+            var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = Path.Combine(Environment.SystemDirectory, "cmd.exe"),
+                Arguments = command,
                 UseShellExecute = false,
                 CreateNoWindow = true,
+                WorkingDirectory = Path.GetDirectoryName(exe),
             });
+            if (process == null) throw new InvalidOperationException("No se pudo abrir el actualizador.");
+        }
 
-            _ = Task.Run(async () =>
+        private static string QuoteForCmd(string value)
+        {
+            return "\"" + value.Replace("\"", "").Replace("%", "%%") + "\"";
+        }
+
+        private static async Task<string> ReadLineAsync(Stream stream)
+        {
+            using var data = new MemoryStream();
+            var buffer = new byte[1];
+            while (true)
             {
-                await Task.Delay(800);
-                System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => System.Windows.Application.Current.Shutdown());
-            });
+                var read = await stream.ReadAsync(buffer);
+                if (read == 0)
+                {
+                    if (data.Length == 0) return null;
+                    break;
+                }
 
-            return closing + " Se vuelve a abrir solo.";
+                if (buffer[0] == '\n') break;
+                if (buffer[0] != '\r') data.WriteByte(buffer[0]);
+            }
+
+            return Encoding.UTF8.GetString(data.ToArray());
         }
 
         private static void SetProgress(string phase, int percent, string message)
@@ -253,67 +435,19 @@ namespace WPFUI
             }
         }
 
-        private static async Task Download(string assetUrl, string zipPath, Action<string, int> progress, string latest)
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Get, assetUrl);
-            request.Headers.UserAgent.ParseAdd("TravianGuardBot");
-            if (assetUrl.Contains("api.github.com", StringComparison.OrdinalIgnoreCase))
-            {
-                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
-                var token = ReadToken();
-                if (token.Length > 0) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            }
-
-            using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
-            response.EnsureSuccessStatusCode();
-            await using var source = await response.Content.ReadAsStreamAsync();
-            await using var destination = File.Create(zipPath);
-            var total = response.Content.Headers.ContentLength.GetValueOrDefault();
-            var buffer = new byte[81920];
-            var read = 0L;
-            var last = 10;
-            while (true)
-            {
-                var count = await source.ReadAsync(buffer, 0, buffer.Length);
-                if (count == 0) break;
-                await destination.WriteAsync(buffer, 0, count);
-                read += count;
-                if (total <= 0) continue;
-                var percent = 10 + (int)(read * 70 / total);
-                if (percent == last) continue;
-                last = percent;
-                Report(progress, "Descargando " + latest + "...", percent);
-            }
-        }
-
         private static void Report(Action<string, int> progress, string status, int percent)
         {
             if (progress != null) progress(status, percent);
         }
 
-        private static string ReadyPath()
+        private static string UpdateRoot()
         {
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TravianGuardBot", "update", "ready");
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TravianGuardBot", "update");
         }
 
-        private static void Extract(string zipPath, string staging)
+        private static string ReadyPath()
         {
-            var root = Path.GetFullPath(staging) + Path.DirectorySeparatorChar;
-            using var archive = ZipFile.OpenRead(zipPath);
-            foreach (var entry in archive.Entries)
-            {
-                var target = Path.GetFullPath(Path.Combine(staging, entry.FullName.Replace('/', Path.DirectorySeparatorChar)));
-                if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase) && !string.Equals(target.TrimEnd(Path.DirectorySeparatorChar), root.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
-                    continue;
-                if (entry.FullName.EndsWith("/", StringComparison.Ordinal) || entry.FullName.EndsWith("\\", StringComparison.Ordinal))
-                {
-                    Directory.CreateDirectory(target);
-                    continue;
-                }
-
-                Directory.CreateDirectory(Path.GetDirectoryName(target));
-                entry.ExtractToFile(target, true);
-            }
+            return Path.Combine(UpdateRoot(), "ready");
         }
 
         private static string ReadToken()
@@ -364,84 +498,6 @@ namespace WPFUI
             Version right;
             if (!Version.TryParse(latest, out left) || !Version.TryParse(current, out right)) return false;
             return left > right;
-        }
-
-        private static string ApplyScript()
-        {
-            return """
-                param(
-                  [string]$Install,
-                  [string]$Staging,
-                  [int]$TargetPid
-                )
-                $root = Join-Path $env:LOCALAPPDATA 'TravianGuardBot\update'
-                $log = Join-Path $root 'apply.log'
-                $backup = Join-Path $root 'backup'
-                $ready = Join-Path $root 'ready'
-                $exe = Join-Path $Install 'TravianBotSharp.exe'
-                function Write-Log($text) {
-                  $line = (Get-Date -Format o) + ' ' + $text
-                  Add-Content -Path $log -Value $line
-                  if (-not $Install) { return }
-                  $folder = Join-Path $Install 'logs'
-                  New-Item -ItemType Directory -Force -Path $folder | Out-Null
-                  Add-Content -Path (Join-Path $folder 'update.log') -Value $line
-                }
-                function Copy-Tree($from, $to) {
-                  New-Item -ItemType Directory -Force -Path $to | Out-Null
-                  & robocopy $from $to /E /NFL /NDL /NJH /NJS /XD Data Screenshots Logs /XF *.pdb > $null
-                  $code = $LASTEXITCODE
-                  Write-Log ("robocopy " + $code + " " + $from)
-                  return $code
-                }
-                function Start-Current {
-                  Start-Process -FilePath $exe -WorkingDirectory $Install
-                }
-                function Restore-Previous {
-                  if (-not (Test-Path (Join-Path $backup 'TravianBotSharp.exe'))) { return }
-                  Copy-Tree $backup $Install | Out-Null
-                  Start-Current
-                }
-                try {
-                  Write-Log ("waiting " + $TargetPid)
-                  Wait-Process -Id $TargetPid -ErrorAction SilentlyContinue
-                  Start-Sleep -Seconds 2
-                  if (Test-Path $backup) { Remove-Item $backup -Recurse -Force }
-                  $saved = Copy-Tree $Install $backup
-                  if ($saved -ge 8) {
-                    Write-Log 'backup failed, current version stays'
-                    Start-Current
-                    exit 1
-                  }
-                  $applied = Copy-Tree $Staging $Install
-                  if ($applied -ge 8) {
-                    Write-Log 'install failed, restoring'
-                    Restore-Previous
-                    exit $applied
-                  }
-                  if (Test-Path $ready) { Remove-Item $ready -Force }
-                  $proc = Start-Process -FilePath $exe -WorkingDirectory $Install -ArgumentList '--updated' -PassThru
-                  $deadline = (Get-Date).AddSeconds(90)
-                  $healthy = $false
-                  while ((Get-Date) -lt $deadline) {
-                    if (Test-Path $ready) { $healthy = $true; break }
-                    if ($proc.HasExited) { break }
-                    Start-Sleep -Milliseconds 500
-                  }
-                  if ($healthy) {
-                    Write-Log 'ready'
-                    exit 0
-                  }
-                  Write-Log 'new version did not stay open, restoring'
-                  if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
-                  Restore-Previous
-                  exit 1
-                } catch {
-                  Write-Log $_.Exception.Message
-                  Restore-Previous
-                  exit 1
-                }
-                """;
         }
     }
 

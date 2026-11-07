@@ -6,7 +6,7 @@ import { useUi } from '../ui'
 type EditorProps = {
   accountId: number | null
   notify: (message: string) => void
-  refresh: () => void
+  refresh: (accountId?: number) => void
 }
 
 export function AccountEditor({ accountId, notify, refresh }: EditorProps) {
@@ -59,15 +59,21 @@ export function AccountEditor({ accountId, notify, refresh }: EditorProps) {
   }
 
   async function create() {
+    const body = draft.current
+    if (!canSaveAccount(body.username, body.server, body.accesses)) {
+      notify('Completá el nombre, el servidor, el usuario y la contraseña.')
+      return
+    }
     try {
-      const result = await post('/api/accounts', { username, server, accesses })
+      const result = await post<{ id: number }>('/api/accounts', body)
       notify(result.message)
+      draft.current = { username: '', server: '', accesses: [emptyAccess()] }
       setUsername('')
       setServer('')
       setAccesses([emptyAccess()])
-      refresh()
+      refresh(result.data.id)
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'No se pudo agregar')
+      notify(error instanceof Error ? error.message : 'No se pudo guardar')
     }
   }
 
@@ -84,7 +90,7 @@ export function AccountEditor({ accountId, notify, refresh }: EditorProps) {
 
   return (
     <Stack spacing={2}>
-      <Typography color="text.secondary">Nombre, servidor y los accesos para entrar. El proxy y el user agent son opcionales.</Typography>
+      <Typography color="text.secondary">{editing ? 'Nombre, servidor y los accesos para entrar. El proxy y el user agent son opcionales.' : 'Completá los datos y apretá Guardar. Recién ahí Conectar se pone en verde.'}</Typography>
       <Stack spacing={1.5} sx={{ p: 2, borderRadius: 2, bgcolor: '#2b2d31' }}>
         <TextField label="Nombre" value={username} onChange={event => { setUsername(event.target.value); draft.current = { ...draft.current, username: event.target.value } }} onBlur={commit} />
         <TextField label="Servidor" placeholder="https://ts1.x1.international.travian.com" value={server} onChange={event => { setServer(event.target.value); draft.current = { ...draft.current, server: event.target.value } }} onBlur={commit} />
@@ -116,20 +122,24 @@ export function AccountEditor({ accountId, notify, refresh }: EditorProps) {
           </Stack>
         </Box>
       ))}
-      <Stack direction="row" spacing={1} flexWrap="wrap">
+      <Stack direction="row" spacing={2} useFlexGap flexWrap="wrap">
         <Button variant="outlined" onClick={() => {
           const next = [...accesses, emptyAccess()]
           draft.current = { ...draft.current, accesses: next }
           setAccesses(next)
         }}>Otro acceso</Button>
-        {!editing && <Button variant="contained" onClick={create}>Agregar</Button>}
+        {!editing && <Button variant="contained" disabled={!canSaveAccount(username, server, accesses)} onClick={create}>Guardar</Button>}
         {editing && <Button variant="contained" color="error" onClick={remove}>Borrar cuenta</Button>}
       </Stack>
     </Stack>
   )
 }
 
-export function Accounts({ notify, refresh }: { notify: (message: string) => void; refresh: () => void }) {
+function canSaveAccount(name: string, address: string, rows: Access[]) {
+  return name.trim() !== '' && address.trim() !== '' && rows.some(access => access.username.trim() !== '' && access.password !== '')
+}
+
+export function Accounts({ notify, refresh }: { notify: (message: string) => void; refresh: (accountId?: number) => void }) {
   const [bulk, setBulk] = useState('')
 
   async function saveBulk() {

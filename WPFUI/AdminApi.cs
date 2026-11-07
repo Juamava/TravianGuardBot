@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -136,7 +137,7 @@ namespace WPFUI
         {
             var progress = AppUpdate.Progress();
             var local = progress.Phase is "checking" or "downloading" or "extracting" or "installing" or "failed";
-            var info = local && !force ? AppUpdate.Peek() : await AppUpdate.Check(force);
+            var info = local && !force && !AppUpdate.SkipRemoteCheck ? AppUpdate.Peek() : await AppUpdate.Check(force);
             return Ok(info.Detail ?? "", new
             {
                 current = info.Current,
@@ -215,6 +216,15 @@ namespace WPFUI
             return Ok("Las tropas se entrenan en el próximo turno del navegador.");
         }
 
+        private static string NextAt(IEnumerable<BaseTask> tasks)
+        {
+            var times = tasks.Select(task => task.ExecuteAt).ToList();
+            if (times.Count == 0) return null;
+            var upcoming = times.Where(time => time > DateTime.Now).ToList();
+            var at = upcoming.Count > 0 ? upcoming.Min() : DateTime.Now;
+            return at.ToString("o");
+        }
+
         private static bool IsVillageWork(BaseTask task)
         {
             return task is UpgradeBuildingTask.Task
@@ -225,20 +235,37 @@ namespace WPFUI
                 or NpcTask.Task;
         }
 
-        private static IResult Overview(IServiceProvider services)
+        private static readonly ConcurrentDictionary<int, string> ClanNames = new();
+
+        private static async Task<string> ReadClan(IServiceProvider services, TaskManager tasks, int accountId, StatusEnums status)
+        {
+            if (ClanNames.TryGetValue(accountId, out var known)) return status == StatusEnums.Offline ? "" : known;
+            if (status != StatusEnums.Online) return "";
+            var id = new AccountId(accountId);
+            if (tasks.IsExecuting(id)) return "";
+            var browser = services.GetRequiredService<ChromeManager>().Get(id);
+            if (!browser.IsInitialized) return "";
+            var clan = (await browser.ReadAllianceName()).Trim();
+            if (clan.Length == 0) return "";
+            ClanNames[accountId] = clan;
+            return clan;
+        }
+
+        private static async Task<IResult> Overview(IServiceProvider services)
         {
             using var context = Context(services);
             var tasks = services.GetRequiredService<TaskManager>();
             var templates = services.GetRequiredService<DefaultTemplatePathStore>().Get();
             var versionAssembly = typeof(AppDbContext).Assembly.GetName().Version;
             var version = versionAssembly is null ? "" : $"{versionAssembly.Major}.{versionAssembly.Minor}.{versionAssembly.Build}";
-            var accounts = context.Accounts.AsEnumerable().Select(account =>
+            var accounts = new List<object>();
+            foreach (var account in context.Accounts.AsEnumerable())
             {
                 var accountId = new AccountId(account.Id);
                 var status = tasks.GetStatus(accountId);
                 var queued = status == StatusEnums.Online ? tasks.GetTaskList(accountId) : [];
                 var scoutLists = context.CowLists.Where(x => x.AccountId == account.Id && x.Kind == CowList.ScoutKind).Select(x => x.Id).ToHashSet();
-                return new
+                accounts.Add(new
                 {
                     id = account.Id,
                     username = account.Username,
@@ -251,8 +278,13 @@ namespace WPFUI
                     farms = queued.Any(task => task is RaidCowListTask.Task raid && !scoutLists.Contains(raid.CowListId)),
                     scouts = queued.Any(task => task is RaidCowListTask.Task raid && scoutLists.Contains(raid.CowListId)),
                     gameFarms = queued.Any(task => task is StartFarmListTask.Task or UpdateFarmListTask.Task),
-                };
-            }).ToList();
+                    villageNext = NextAt(queued.Where(IsVillageWork)),
+                    farmNext = NextAt(queued.Where(task => task is RaidCowListTask.Task raid && !scoutLists.Contains(raid.CowListId))),
+                    scoutNext = NextAt(queued.Where(task => task is RaidCowListTask.Task raid && scoutLists.Contains(raid.CowListId))),
+                    gameFarmNext = NextAt(queued.Where(task => task is StartFarmListTask.Task or UpdateFarmListTask.Task)),
+                    clan = await ReadClan(services, tasks, account.Id, status),
+                });
+            }
 
             return Ok("", new
             {
@@ -272,9 +304,9 @@ namespace WPFUI
             using var context = Context(services);
             if (context.Accounts.Any(x => x.Username == dto.Username && x.Server == dto.Server)) return Fail("La cuenta ya existe.");
 
-            InsertAccounts(services, context, [dto]);
+            var ids = InsertAccounts(services, context, [dto]);
             services.GetRequiredService<RxQueue>().Enqueue(new AccountsModified());
-            return Ok("Cuenta agregada.");
+            return Ok("Cuenta guardada.", new { id = ids[0] });
         }
 
         private static IResult AddAccounts(IServiceProvider services, string text)
@@ -404,6 +436,7 @@ namespace WPFUI
             await tasks.StopCurrentTask(accountId);
             await browser.Shutdown();
             tasks.SetStatus(accountId, StatusEnums.Offline);
+            ClanNames.TryRemove(id, out _);
             return Ok("Sesión cerrada.");
         }
 
@@ -1619,17 +1652,20 @@ namespace WPFUI
             return Ok("Plantilla guardada.");
         }
 
-        private static void InsertAccounts(IServiceProvider services, AppDbContext context, List<AccountDto> dtos)
+        private static List<int> InsertAccounts(IServiceProvider services, AppDbContext context, List<AccountDto> dtos)
         {
             var settings = LoadAccountDefaults(services);
+            var created = new List<Account>();
             foreach (var dto in dtos)
             {
                 var account = dto.ToEntity();
                 account.Settings = settings.Select(setting => new AccountSetting { Setting = setting.Key, Value = setting.Value }).ToList();
                 context.Add(account);
+                created.Add(account);
             }
 
             context.SaveChanges();
+            return created.Select(account => account.Id).ToList();
         }
 
         private static Dictionary<AccountSettingEnums, int> LoadAccountDefaults(IServiceProvider services)

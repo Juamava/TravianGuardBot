@@ -58,6 +58,7 @@ namespace WPFUI.Views
 
         private async void OnClosing(object sender, CancelEventArgs e)
         {
+            if (global::WPFUI.AppUpdate.IsExiting) return;
             if (!_isLoaded)
             {
                 e.Cancel = true;

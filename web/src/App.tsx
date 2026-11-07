@@ -19,6 +19,7 @@ import { AccountSettings, Templates } from './pages/Settings'
 import { Villages } from './pages/Villages'
 import { Farming } from './pages/Farming'
 import { Scouting } from './pages/Scouting'
+import { ClanChat } from './chat/ClanChat'
 import { Debug } from './pages/Debug'
 import { Hero } from './pages/Hero'
 import { Empty, UiProvider, useUi } from './ui'
@@ -71,7 +72,37 @@ function LiveLed() {
   )
 }
 
-function NavItem({ selected, disabled, icon: Icon, label, onClick, tone = 'normal', live = false }: { selected?: boolean; disabled?: boolean; icon: SvgIconComponent; label: string; onClick: () => void; tone?: 'normal' | 'danger'; live?: boolean }) {
+function formatNext(at: string | null | undefined, now: number) {
+  if (!at) return ''
+  const target = Date.parse(at)
+  if (!Number.isFinite(target)) return ''
+  const remaining = target - now
+  if (remaining <= 1000) return 'ahora'
+  const total = Math.ceil(remaining / 1000)
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const seconds = total % 60
+  if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+function sooner(left?: string | null, right?: string | null) {
+  const a = left ? Date.parse(left) : Number.POSITIVE_INFINITY
+  const b = right ? Date.parse(right) : Number.POSITIVE_INFINITY
+  if (!Number.isFinite(a) && !Number.isFinite(b)) return null
+  return (Number.isFinite(a) ? a : Number.POSITIVE_INFINITY) <= (Number.isFinite(b) ? b : Number.POSITIVE_INFINITY) ? left ?? null : right ?? null
+}
+
+function NextCount({ text }: { text: string }) {
+  if (!text) return null
+  return (
+    <Box component="span" title={`Próxima acción en ${text}`} sx={{ color: '#23a559', fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1, flexShrink: 0 }}>
+      {text}
+    </Box>
+  )
+}
+
+function NavItem({ selected, disabled, icon: Icon, label, onClick, tone = 'normal', live = false, count = '' }: { selected?: boolean; disabled?: boolean; icon: SvgIconComponent; label: string; onClick: () => void; tone?: 'normal' | 'danger'; live?: boolean; count?: string }) {
   const color = tone === 'danger' ? '#ed4245' : selected ? '#fff' : '#949ba4'
   return (
     <Button
@@ -89,12 +120,15 @@ function NavItem({ selected, disabled, icon: Icon, label, onClick, tone = 'norma
       }}
     >
       <Box component="span" sx={{ flex: 1, textAlign: 'left' }}>{label}</Box>
-      {live && <LiveLed />}
+      <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0 }}>
+        {live && <NextCount text={count} />}
+        {live && <LiveLed />}
+      </Box>
     </Button>
   )
 }
 
-function SubNav({ selected, disabled, label, onClick, live = false }: { selected?: boolean; disabled?: boolean; label: string; onClick: () => void; live?: boolean }) {
+function SubNav({ selected, disabled, label, onClick, live = false, count = '' }: { selected?: boolean; disabled?: boolean; label: string; onClick: () => void; live?: boolean; count?: string }) {
   return (
     <Button
       disabled={disabled}
@@ -114,7 +148,10 @@ function SubNav({ selected, disabled, label, onClick, live = false }: { selected
       }}
     >
       <Box component="span" sx={{ flex: 1, textAlign: 'left' }}>{label}</Box>
-      {live && <LiveLed />}
+      <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0 }}>
+        {live && <NextCount text={count} />}
+        {live && <LiveLed />}
+      </Box>
     </Button>
   )
 }
@@ -143,15 +180,19 @@ function Shell() {
   const [update, setUpdate] = useState<{ current: string; latest: string; available: boolean; mandatory: boolean; publishedAt: string; detail: string; phase?: string; percent?: number; progress?: string } | null>(null)
   const [updateDue, setUpdateDue] = useState(false)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const [now, setNow] = useState(() => Date.now())
   const updatePoll = useRef<number | null>(null)
   useEffect(() => () => {
     if (updatePoll.current !== null) window.clearInterval(updatePoll.current)
   }, [])
 
-  async function refresh() {
+  async function refresh(selectId?: number) {
     const result = await api<Overview>('/api/overview')
     setOverview(result.data)
-    setAccountId(current => result.data.accounts.some(account => account.id === current) ? current : (result.data.accounts[0]?.id ?? null))
+    setAccountId(current => {
+      if (selectId != null && result.data.accounts.some(account => account.id === selectId)) return selectId
+      return result.data.accounts.some(account => account.id === current) ? current : (result.data.accounts[0]?.id ?? null)
+    })
   }
 
   useEffect(() => {
@@ -159,7 +200,11 @@ function Shell() {
     api<Meta>('/api/meta').then(result => setMeta(result.data)).catch(() => undefined)
     api<{ current: string; latest: string; available: boolean; mandatory: boolean; publishedAt: string; detail: string; phase?: string; percent?: number; progress?: string }>('/api/update').then(result => setUpdate(result.data)).catch(() => undefined)
     const timer = window.setInterval(() => refresh().catch(() => undefined), 2000)
-    return () => window.clearInterval(timer)
+    const clock = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => {
+      window.clearInterval(timer)
+      window.clearInterval(clock)
+    }
   }, [])
 
   const account = overview?.accounts.find(item => item.id === accountId) ?? null
@@ -172,7 +217,12 @@ function Shell() {
   const farmsLive = !!account?.farms
   const gameLive = !!account?.gameFarms
   const scoutLive = !!account?.scouts
+  const villageCount = villagesLive ? formatNext(account?.villageNext, now) : ''
+  const farmCount = farmsLive ? formatNext(account?.farmNext, now) : ''
+  const gameCount = gameLive ? formatNext(account?.gameFarmNext, now) : ''
+  const scoutCount = scoutLive ? formatNext(account?.scoutNext, now) : ''
   const heldByOther = holder != null && holder.id !== account?.id
+  const canConnect = account != null && account.status === 'Offline' && !heldByOther
   useEffect(() => {
     if (!update?.available || !update.publishedAt) return
     const published = Date.parse(update.publishedAt)
@@ -317,8 +367,8 @@ function Shell() {
           </Typography>
         </Box>
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.75, px: 1.5, py: 1.25 }}>
-          <Button onClick={() => act('login')} disabled={!account || account.status !== 'Offline' || heldByOther} sx={actionButton}>
-            <LinkIcon sx={{ fontSize: 18, color: '#5865f2' }} />
+          <Button onClick={() => act('login')} disabled={!canConnect} sx={{ ...actionButton, ...(canConnect ? { color: '#23a559' } : {}) }}>
+            <LinkIcon sx={{ fontSize: 18, color: 'inherit' }} />
             Conectar
           </Button>
           <Button onClick={() => act('pause')} disabled={!connected} sx={actionButton}>
@@ -339,7 +389,7 @@ function Shell() {
             if (item.id === 'aldeas') {
               return (
                 <Stack key="aldeas" spacing={0.15}>
-                  <NavItem selected={false} disabled={!connected} live={villagesLive} icon={item.icon} label="Aldeas" onClick={() => setPage('aldeas')} />
+                  <NavItem selected={false} disabled={!connected} live={villagesLive} count={villageCount} icon={item.icon} label="Aldeas" onClick={() => setPage('aldeas')} />
                   <SubNav selected={page === 'aldeas'} disabled={!connected} label="Construcción" onClick={() => setPage('aldeas')} />
                   <SubNav selected={page === 'aldeas-tropas'} disabled={!connected} label="Tropas" onClick={() => setPage('aldeas-tropas')} />
                   <SubNav selected={page === 'aldeas-comercio'} disabled={!connected} label="Comercio" onClick={() => setPage('aldeas-comercio')} />
@@ -349,10 +399,10 @@ function Shell() {
             if (item.id === 'farming') {
               return (
                 <Stack key="farming" spacing={0.15}>
-                  <NavItem selected={false} disabled={!connected} live={!account?.gold && (farmsLive || scoutLive)} icon={item.icon} label="Farming" onClick={() => setPage('farming')} />
-                  <SubNav selected={page === 'farming'} disabled={!connected} live={farmsLive} label="Listas propias" onClick={() => setPage('farming')} />
-                  {account?.gold && <SubNav selected={page === 'farming-juego'} disabled={!connected} live={gameLive} label="Listas del juego" onClick={() => setPage('farming-juego')} />}
-                  <SubNav selected={page === 'farming-scout'} disabled={!connected} live={scoutLive} label="Scouting" onClick={() => setPage('farming-scout')} />
+                  <NavItem selected={false} disabled={!connected} live={!account?.gold && (farmsLive || scoutLive)} count={!account?.gold ? formatNext(sooner(account?.farmNext, account?.scoutNext), now) : ''} icon={item.icon} label="Farming" onClick={() => setPage('farming')} />
+                  <SubNav selected={page === 'farming'} disabled={!connected} live={farmsLive} count={farmCount} label="Listas propias" onClick={() => setPage('farming')} />
+                  {account?.gold && <SubNav selected={page === 'farming-juego'} disabled={!connected} live={gameLive} count={gameCount} label="Listas del juego" onClick={() => setPage('farming-juego')} />}
+                  <SubNav selected={page === 'farming-scout'} disabled={!connected} live={scoutLive} count={scoutCount} label="Scouting" onClick={() => setPage('farming-scout')} />
                 </Stack>
               )
             }
@@ -368,7 +418,7 @@ function Shell() {
       <Box sx={{ overflow: 'auto', p: 3, bgcolor: '#313338', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {page === 'cuentas' && (
           <Stack spacing={3}>
-            <Accounts notify={ui.notify} refresh={() => refresh().catch((error: Error) => ui.notify(error.message))} />
+            <Accounts notify={ui.notify} refresh={id => { void refresh(id).catch((error: Error) => ui.notify(error.message)) }} />
             <Templates notify={ui.notify} refresh={() => refresh().catch(() => undefined)} />
           </Stack>
         )}
@@ -392,6 +442,7 @@ function Shell() {
           />
         )}
       </Box>
+      {account?.clan && account.host && <ClanChat username={account.username} host={account.host} clan={account.clan} page={page} />}
       {mandatory && update && (
         <Box sx={{ position: 'fixed', inset: 0, zIndex: 30, bgcolor: 'rgba(0,0,0,.72)', display: 'grid', placeItems: 'center', p: 3 }}>
           <Stack spacing={2} sx={{ width: 420, maxWidth: '100%', bgcolor: '#2b2d31', borderRadius: 2, p: 3 }}>
