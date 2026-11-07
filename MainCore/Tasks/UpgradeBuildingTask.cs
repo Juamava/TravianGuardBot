@@ -56,7 +56,19 @@ namespace MainCore.Tasks
                     }
                     if (result.HasError<MissingResource>())
                     {
-                        var time = await UpgradeParser.GetTimeWhenEnoughResource(browser.CurrentPage, plan.Type);
+                        var time = TimeSpan.Zero;
+                        try
+                        {
+                            time = await UpgradeParser.GetTimeWhenEnoughResource(browser.CurrentPage, plan.Type);
+                        }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        {
+                            logger.Warning("Could not read when resources are enough: {Message}", ex.Message);
+                        }
+
+                        // Without a timer on the page, try again later instead of right away.
+                        if (time <= TimeSpan.Zero) time = TimeSpan.FromMinutes(5);
+                        logger.Information("Not enough resources for {Type}, next try at {Time}", plan.Type, DateTime.Now.Add(time).ToString("yyyy-MM-dd HH:mm:ss"));
                         task.ExecuteAt = DateTime.Now.Add(time);
                         return Skip.Error.WithErrors(result.Errors);
                     }

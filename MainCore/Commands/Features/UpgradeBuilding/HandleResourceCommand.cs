@@ -38,10 +38,16 @@ namespace MainCore.Commands.Features.UpgradeBuilding
             logger.Information("Don't have enough resource. Use resource in hero invetory to upgrade building");
             var missingResource = GetMissingResource(villageId, requiredResource);
 
-            result = await useHeroResourceCommand.HandleAsync(new(plan.Type, missingResource), cancellationToken);
-            if (result.IsFailed) return result;
+            var heroResult = await useHeroResourceCommand.HandleAsync(new(plan.Type, missingResource), cancellationToken);
+            if (heroResult.IsSuccess) return Result.Ok();
+            if (heroResult.HasError<Cancel>()) return heroResult;
 
-            return Result.Ok();
+            // The hero could not cover it (no dialog, empty inventory, not enough): this is still
+            // "not enough resource", so the task waits for the page's time instead of retrying the dialog
+            // and holding the browser that the farm lists also use.
+            logger.Warning("Hero resources could not be used: {Message}", string.Join(" ", heroResult.Errors.Select(x => x.Message)));
+            await browser.Refresh();
+            return result;
         }
 
         private async Task<long[]> GetRequiredResource(BuildingEnums building)
