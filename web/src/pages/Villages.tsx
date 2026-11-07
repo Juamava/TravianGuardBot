@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Box, Button, IconButton, MenuItem, Stack, TextField, Tooltip, Typography } from '@mui/material'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import StopIcon from '@mui/icons-material/Stop'
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined'
 import FileUploadOutlinedIcon from '@mui/icons-material/FileUploadOutlined'
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
@@ -33,6 +35,8 @@ export function Villages({ accountId, meta, notify, tab }: { accountId: number; 
   const [level, setLevel] = useState(1)
   const [plan, setPlan] = useState('AllResources')
   const [resourceLevel, setResourceLevel] = useState(10)
+  const [buildingOn, setBuildingOn] = useState(false)
+  const [buildingBusy, setBuildingBusy] = useState(false)
 
   async function loadVillages() {
     const result = await api<Village[]>(`/api/accounts/${accountId}/villages`)
@@ -46,7 +50,18 @@ export function Villages({ accountId, meta, notify, tab }: { accountId: number; 
     setBuild(result.data)
   }
 
+  async function loadBuilding() {
+    const result = await api<{ running: boolean }>(`/api/accounts/${accountId}/villages/building`)
+    setBuildingOn(result.data.running)
+  }
+
   useEffect(() => { loadVillages().catch((error: Error) => notify(error.message)) }, [accountId])
+  useEffect(() => {
+    if (tab !== 'build') return
+    loadBuilding().catch((error: Error) => notify(error.message))
+    const timer = window.setInterval(() => { loadBuilding().catch(() => undefined) }, 5000)
+    return () => window.clearInterval(timer)
+  }, [accountId, tab])
   useEffect(() => { if (villageId) loadBuild(villageId).catch((error: Error) => notify(error.message)) }, [villageId])
   useEffect(() => {
     setLocation(0)
@@ -105,6 +120,37 @@ export function Villages({ accountId, meta, notify, tab }: { accountId: number; 
         <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 1.5 }}>
           {tab === 'build' && build && (
             <>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1, maxWidth: 420 }}>
+            <Button
+              disabled={buildingBusy || buildingOn}
+              onClick={() => {
+                setBuildingBusy(true)
+                post(`/api/accounts/${accountId}/villages/building/start`)
+                  .then(result => notify(result.message))
+                  .catch((error: Error) => notify(error.message))
+                  .finally(() => { setBuildingBusy(false); loadBuilding().catch(() => undefined) })
+              }}
+              sx={{ height: 48, color: '#3b2a17', bgcolor: 'var(--tg-panel)', display: 'flex', gap: 1, '&:hover': { bgcolor: '#f1e5c2' } }}
+            >
+              <PlayArrowIcon sx={{ color: buildingBusy || buildingOn ? '#7a6342' : '#4f8a10' }} />
+              Iniciar
+            </Button>
+            <Button
+              disabled={buildingBusy || !buildingOn}
+              onClick={() => {
+                setBuildingBusy(true)
+                post(`/api/accounts/${accountId}/villages/building/stop`)
+                  .then(result => notify(result.message))
+                  .catch((error: Error) => notify(error.message))
+                  .finally(() => { setBuildingBusy(false); loadBuilding().catch(() => undefined) })
+              }}
+              sx={{ height: 48, color: '#3b2a17', bgcolor: 'var(--tg-panel)', display: 'flex', gap: 1, '&:hover': { bgcolor: '#f1e5c2' } }}
+            >
+              <StopIcon sx={{ color: buildingBusy || !buildingOn ? '#7a6342' : '#b8281d' }} />
+              Detener
+            </Button>
+          </Box>
+          <Typography variant="caption" color="text.secondary">{buildingOn ? 'La construcción está en marcha. Detener la saca de la cola, igual que /stop building.' : 'La construcción está detenida. Iniciar vuelve a poner en cola las aldeas que tienen trabajos.'}</Typography>
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 1 }}>
             <ReloadTile icon={<RefreshIcon />} label="Esta aldea" hint="Vuelve a leer los edificios de la aldea seleccionada." onClick={() => reload(`/api/accounts/${accountId}/villages/${villageId}/reload`)} />
             <ReloadTile icon={<RefreshIcon />} label="Incompletas" hint="Lee las aldeas a las que todavía les faltan edificios." onClick={() => reload(`/api/accounts/${accountId}/villages/reload-missing`)} />

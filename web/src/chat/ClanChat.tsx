@@ -5,12 +5,11 @@ import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import SendIcon from '@mui/icons-material/Send'
 import { Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, MenuItem, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material'
-import { createClient, type RealtimeChannel } from '@supabase/supabase-js'
+import { type RealtimeChannel } from '@supabase/supabase-js'
 import { useEffect, useRef, useState, type ClipboardEvent } from 'react'
 import { api, post } from '../api'
 import { useUi } from '../ui'
-
-const supabase = createClient('https://uyzkcejpsjpavghbchoq.supabase.co', 'sb_publishable_Wdj9c0igv_Th0TNGqgN2Uw_TaA-ruCN')
+import { clanChat as supabase, parseClanCommand, roomOf } from './commands'
 
 const emojis = ['😀', '😁', '😂', '😉', '😎', '😭', '👍', '🙏', '🔥', '💪', '🎉', '✅', '⚔️', '🛡️', '🏰', '🌾', '🐎', '🏹']
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
@@ -127,10 +126,6 @@ async function purgeOld() {
   await supabase.rpc('purge_old_chat')
 }
 
-function roomOf(host: string, clan: string) {
-  return `${host.trim().toLowerCase()}|${clan.trim()}`
-}
-
 function imageUrl(path: string) {
   const encoded = path.split('/').map(part => encodeURIComponent(part)).join('/')
   return `https://uyzkcejpsjpavghbchoq.supabase.co/storage/v1/object/public/chat-images/${encoded}`
@@ -200,43 +195,46 @@ function ChatLink({ part, onAttack }: { part: ChatPart; onAttack: (target: Attac
 const helpText = [
   '/stop Nombre razón',
   'Pausa todo el bot de esa persona.',
+  '/resume Nombre razón',
+  'Vuelve a poner el bot en marcha.',
   '',
   '/stop farming Nombre razón',
   'Detiene el farming: listas propias, listas del juego y ataques en cola.',
+  '/resume farming Nombre razón',
+  'Vuelve a iniciar las listas con tiempos y aldeas, y las listas activas del juego.',
   '',
   '/stop building Nombre razón',
   'Detiene la construcción de las aldeas. aldeas es lo mismo que building.',
+  '/resume building Nombre razón',
+  'Vuelve a poner en cola las aldeas que tienen trabajos.',
   '',
-  'La razón es obligatoria. /help y /stop solos muestran esta ayuda.',
+  'La razón es obligatoria. /help, /stop y /resume solos muestran esta ayuda.',
 ].join('\n')
 
-type ClanCommand =
-  | { kind: 'help' }
-  | { kind: 'need-reason' }
-  | { kind: 'stop'; feature: 'all' | 'farming' | 'building'; target: string; reason: string }
+const updateHelp = [
+  '/update Nombre',
+  'Descarga la versión nueva en el cliente de esa persona y lo reinicia.',
+  '/update all',
+  'Hace lo mismo en todos los clientes de este clan.',
+].join('\n')
 
-function parseClanCommand(body: string): ClanCommand | null {
-  const parts = body.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return null
-  const command = parts[0].toLowerCase()
-  if (command === '/help') return parts.length === 1 ? { kind: 'help' } : null
-  if (command !== '/stop') return null
-  if (parts.length === 1) return { kind: 'help' }
-  let index = 1
-  let feature: 'all' | 'farming' | 'building' = 'all'
-  const word = parts[1].toLowerCase()
-  if (word === 'farming' || word === 'building' || word === 'aldeas') {
-    feature = word === 'farming' ? 'farming' : 'building'
-    index = 2
-  }
-  if (parts.length < index + 2) return { kind: 'need-reason' }
-  return { kind: 'stop', feature, target: parts[index], reason: parts.slice(index + 1).join(' ') }
+function commandHelp(debug: boolean) {
+  return debug ? `${helpText}\n\n${updateHelp}` : helpText
 }
 
-function stopLabel(feature: 'all' | 'farming' | 'building') {
-  if (feature === 'farming') return 'el farming'
-  if (feature === 'building') return 'la construcción'
-  return 'el bot'
+function sameName(left: string, right: string) {
+  return left.trim().localeCompare(right.trim(), 'es', { sensitivity: 'accent' }) === 0
+}
+
+function actionLabel(action: 'stop' | 'resume', feature: 'all' | 'farming' | 'building') {
+  const name = feature === 'farming' ? 'el farming' : feature === 'building' ? 'la construcción' : 'el bot'
+  return action === 'resume' ? `reanudó ${name}` : `detuvo ${name}`
+}
+
+function clock(value?: string) {
+  const date = value ? new Date(value) : new Date()
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 function stamp(value: string) {
@@ -250,7 +248,7 @@ function readMark(room: string) {
   return Number.isFinite(stored) ? stored : 0
 }
 
-export function ClanChat({ username, host, clan, page, accountId }: { username: string; host: string; clan: string; page: string; accountId: number }) {
+export function ClanChat({ username, host, clan, page, accountId, debug = false }: { username: string; host: string; clan: string; page: string; accountId: number; debug?: boolean }) {
   const ui = useUi()
   const room = roomOf(host, clan)
   const [open, setOpen] = useState(false)
@@ -272,8 +270,12 @@ export function ClanChat({ username, host, clan, page, accountId }: { username: 
   const [home, setHome] = useState<HomeTroop[] | null>(null)
   const [homeError, setHomeError] = useState('')
   const [attacking, setAttacking] = useState(false)
-  const [notice, setNotice] = useState<{ title: string; text: string } | null>(null)
+  const [logs, setLogs] = useState<{ id: string; at: string; text: string }[]>([])
+  const [logOpen, setLogOpen] = useState(false)
   const handled = useRef(new Set<string>())
+  const debugRef = useRef(debug)
+  debugRef.current = debug
+  const logBox = useRef<HTMLDivElement | null>(null)
   const [readAt, setReadAt] = useState(() => readMark(room))
   const pageRef = useRef(page)
   const listRef = useRef<HTMLDivElement | null>(null)
@@ -311,15 +313,25 @@ export function ClanChat({ username, host, clan, page, accountId }: { username: 
         if (command && message.id && !handled.current.has(message.id)) {
           handled.current.add(message.id)
           const mine = author.localeCompare(username.trim(), 'es', { sensitivity: 'accent' }) === 0
-          if (command.kind === 'help' && mine) setNotice({ title: 'Comandos', text: helpText })
-          if (command.kind === 'need-reason' && mine) setNotice({ title: 'Falta la razón', text: `La razón es obligatoria.\n\n${helpText}` })
-          if (command.kind === 'stop' && command.target.localeCompare(username.trim(), 'es', { sensitivity: 'accent' }) === 0) {
-            const label = stopLabel(command.feature)
-            const text = `${author} te detuvo ${label} por: ${command.reason}`
-            setNotice({ title: 'Bot detenido', text })
-            void post(`/api/accounts/${accountId}/remote-stop`, { feature: command.feature }).catch((reason: unknown) => {
-              setNotice({ title: 'Bot detenido', text: `${text}\n\n${reason instanceof Error ? reason.message : 'No se pudo completar la detención.'}` })
-            })
+          const note = (text: string, at?: string) => {
+            setLogs(current => [...current, { id: `${message.id}-${current.length}`, at: clock(at), text }])
+            setLogOpen(true)
+          }
+          if (command.kind === 'help' && mine) note(commandHelp(debugRef.current), message.created_at)
+          if (command.kind === 'need-reason' && mine) note(`Falta la razón.\n\n${commandHelp(debugRef.current)}`, message.created_at)
+          if (command.kind === 'update-usage' && mine) note(commandHelp(true), message.created_at)
+          if (command.kind === 'update' && (sameName(command.target, 'all') || sameName(command.target, username))) {
+            const everyone = sameName(command.target, 'all')
+            note(everyone ? `${author} pidió actualizar todos los clientes.` : `${author} pidió actualizar este cliente.`, message.created_at)
+            void post('/api/update')
+              .then(result => note(result.message || 'Actualización en marcha.'))
+              .catch((reason: unknown) => note(reason instanceof Error ? reason.message : 'No se pudo actualizar.'))
+          }
+          if (command.kind === 'action' && sameName(command.target, username)) {
+            note(`${author} te ${actionLabel(command.action, command.feature)}. Razón: ${command.reason}`, message.created_at)
+            void post(`/api/accounts/${accountId}/remote-stop`, { action: command.action, feature: command.feature })
+              .then(result => note(result.message || 'Listo.'))
+              .catch((reason: unknown) => note(reason instanceof Error ? reason.message : 'No se pudo completar el comando.'))
           }
         }
       })
@@ -378,6 +390,11 @@ export function ClanChat({ username, host, clan, page, accountId }: { username: 
   }, [room, username, accountId])
 
   useEffect(() => {
+    const box = logBox.current
+    if (box) box.scrollTop = box.scrollHeight
+  }, [logs, logOpen])
+
+  useEffect(() => {
     sharedRead.current = 0
   }, [room, username])
 
@@ -428,6 +445,18 @@ export function ClanChat({ username, host, clan, page, accountId }: { username: 
   async function send() {
     const text = draft.trim()
     if ((!text && !file) || sending) return
+    const command = parseClanCommand(text)
+    if (command?.kind === 'update' || command?.kind === 'update-usage') {
+      if (!debug) {
+        setError('Activá Debug con Ctrl+D para usar /update.')
+        return
+      }
+      if (command.kind === 'update-usage') {
+        setLogs(current => [...current, { id: `update-help-${Date.now()}`, at: clock(), text: commandHelp(true) }])
+        setLogOpen(true)
+        return
+      }
+    }
     if (file && (!imageTypes.has(file.type) || file.size > 1.5 * 1024 * 1024)) {
       setError('La imagen tiene que ser jpg, png, webp o gif, de hasta 1,5 MB.')
       return
@@ -594,13 +623,22 @@ export function ClanChat({ username, host, clan, page, accountId }: { username: 
           </Box>
         )}
       </Box>
-      <Dialog open={notice != null} onClose={() => setNotice(null)} fullWidth maxWidth="xs">
-        <DialogTitle>{notice?.title}</DialogTitle>
+      <Dialog open={logOpen} onClose={() => setLogOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Comandos</DialogTitle>
         <DialogContent>
-          <Typography sx={{ whiteSpace: 'pre-line' }}>{notice?.text}</Typography>
+          <Box ref={logBox} sx={{ maxHeight: 360, overflow: 'auto', fontFamily: 'ui-monospace, Consolas, monospace' }}>
+            {logs.map(entry => (
+              <Typography key={entry.id} sx={{ fontFamily: 'inherit', fontSize: 13, whiteSpace: 'pre-wrap', py: 0.45 }}>
+                <Box component="span" sx={{ color: '#5c4529' }}>{entry.at}</Box>
+                {'  '}
+                {entry.text}
+              </Typography>
+            ))}
+          </Box>
         </DialogContent>
         <DialogActions>
-          <Button variant="contained" onClick={() => setNotice(null)}>Entendido</Button>
+          <Button onClick={() => setLogs([])}>Limpiar</Button>
+          <Button variant="contained" onClick={() => setLogOpen(false)}>Cerrar</Button>
         </DialogActions>
       </Dialog>
       <Dialog open={attack != null} onClose={() => !attacking && setAttack(null)} fullWidth maxWidth="sm">

@@ -32,10 +32,16 @@ export type AccountRow = {
   pause: string
   gold?: boolean
   villages?: boolean
+  build?: boolean
+  troops?: boolean
+  trade?: boolean
   farms?: boolean
   gameFarms?: boolean
   scouts?: boolean
   villageNext?: string | null
+  buildNext?: string | null
+  troopNext?: string | null
+  tradeNext?: string | null
   farmNext?: string | null
   gameFarmNext?: string | null
   scoutNext?: string | null
