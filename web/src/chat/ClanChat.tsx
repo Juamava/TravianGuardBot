@@ -1,10 +1,14 @@
-import { useEffect, useRef, useState, type ClipboardEvent } from 'react'
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline'
 import CloseIcon from '@mui/icons-material/Close'
+import GpsFixedIcon from '@mui/icons-material/GpsFixed'
 import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined'
+import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import SendIcon from '@mui/icons-material/Send'
-import { Box, IconButton, TextField, Typography } from '@mui/material'
+import { Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, MenuItem, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material'
 import { createClient, type RealtimeChannel } from '@supabase/supabase-js'
+import { useEffect, useRef, useState, type ClipboardEvent } from 'react'
+import { api, post } from '../api'
+import { useUi } from '../ui'
 
 const supabase = createClient('https://uyzkcejpsjpavghbchoq.supabase.co', 'sb_publishable_Wdj9c0igv_Th0TNGqgN2Uw_TaA-ruCN')
 
@@ -132,6 +136,67 @@ function imageUrl(path: string) {
   return `https://uyzkcejpsjpavghbchoq.supabase.co/storage/v1/object/public/chat-images/${encoded}`
 }
 
+type ChatPart = { kind: 'text' | 'link'; value: string; x: number | null; y: number | null }
+type OwnVillage = { id: number; name: string; x: number; y: number }
+type HomeTroop = { letter: string; index: number; name: string; available: number }
+type AttackTarget = { url: string; x: number; y: number }
+
+function villageOf(url: string) {
+  try {
+    const parsed = new URL(url)
+    if (!/\/karte\.php$/i.test(parsed.pathname)) return null
+    const x = parsed.searchParams.get('x')
+    const y = parsed.searchParams.get('y')
+    if (x == null || y == null || !/^-?\d+$/.test(x) || !/^-?\d+$/.test(y)) return null
+    return { x: Number(x), y: Number(y) }
+  } catch {
+    return null
+  }
+}
+
+function messageParts(text: string): ChatPart[] {
+  const linkPattern = /https?:\/\/[^\s<>"']+/gi
+  const parts: ChatPart[] = []
+  let last = 0
+  for (const match of text.matchAll(linkPattern)) {
+    const start = match.index ?? 0
+    if (start > last) parts.push({ kind: 'text', value: text.slice(last, start), x: null, y: null })
+    let href = match[0]
+    let trailing = ''
+    while (/[.,;:!?)\]]$/.test(href)) {
+      trailing = href.slice(-1) + trailing
+      href = href.slice(0, -1)
+    }
+    const village = href ? villageOf(href) : null
+    if (href) parts.push({ kind: 'link', value: href, x: village?.x ?? null, y: village?.y ?? null })
+    if (trailing) parts.push({ kind: 'text', value: trailing, x: null, y: null })
+    last = start + match[0].length
+  }
+  if (last < text.length) parts.push({ kind: 'text', value: text.slice(last), x: null, y: null })
+  return parts
+}
+
+function ChatLink({ part, onAttack }: { part: ChatPart; onAttack: (target: AttackTarget) => void }) {
+  const village = part.x != null && part.y != null
+  return (
+    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25, maxWidth: '100%', verticalAlign: 'middle' }}>
+      {village && (
+        <Tooltip title="Atacar">
+          <IconButton size="small" aria-label={`Atacar Aldea (${part.x}|${part.y})`} onClick={() => onAttack({ url: part.value, x: part.x as number, y: part.y as number })} sx={{ color: '#a86f08', p: 0.25 }}>
+            <GpsFixedIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        </Tooltip>
+      )}
+      <Tooltip title="Abrir en Chrome">
+        <Box component="a" href={part.value} target="_blank" rel="noreferrer" sx={{ color: '#1f5e9c', fontWeight: 600, textDecoration: 'underline', display: 'inline-flex', alignItems: 'center', gap: 0.25, minWidth: 0, wordBreak: 'break-all', textUnderlineOffset: '2px', '&:hover': { textDecoration: 'underline' } }}>
+          {village ? `Aldea (${part.x}|${part.y})` : part.value}
+          <OpenInNewIcon sx={{ fontSize: 12, flex: 'none' }} />
+        </Box>
+      </Tooltip>
+    </Box>
+  )
+}
+
 function stamp(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
@@ -143,7 +208,8 @@ function readMark(room: string) {
   return Number.isFinite(stored) ? stored : 0
 }
 
-export function ClanChat({ username, host, clan, page }: { username: string; host: string; clan: string; page: string }) {
+export function ClanChat({ username, host, clan, page, accountId }: { username: string; host: string; clan: string; page: string; accountId: number }) {
+  const ui = useUi()
   const room = roomOf(host, clan)
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -156,6 +222,14 @@ export function ClanChat({ username, host, clan, page }: { username: string; hos
   const [emojisOpen, setEmojisOpen] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
+  const [attack, setAttack] = useState<AttackTarget | null>(null)
+  const [villages, setVillages] = useState<OwnVillage[]>([])
+  const [fromId, setFromId] = useState(0)
+  const [troops, setTroops] = useState('')
+  const [raid, setRaid] = useState(true)
+  const [home, setHome] = useState<HomeTroop[] | null>(null)
+  const [homeError, setHomeError] = useState('')
+  const [attacking, setAttacking] = useState(false)
   const [readAt, setReadAt] = useState(() => readMark(room))
   const pageRef = useRef(page)
   const listRef = useRef<HTMLDivElement | null>(null)
@@ -323,6 +397,59 @@ export function ClanChat({ username, host, clan, page }: { username: string; hos
     setEmojisOpen(false)
   }
 
+  useEffect(() => {
+    if (!attack || !fromId) return
+    let cancel = false
+    setHome(null)
+    setHomeError('')
+    api<HomeTroop[]>(`/api/accounts/${accountId}/villages/${fromId}/home-troops`)
+      .then(result => { if (!cancel) setHome(result.data) })
+      .catch((reason: unknown) => {
+        if (cancel) return
+        setHome([])
+        setHomeError(reason instanceof Error ? reason.message : 'No se pudieron leer las tropas')
+      })
+    return () => { cancel = true }
+  }, [attack, fromId, accountId])
+
+  async function openAttack(target: AttackTarget) {
+    setAttack(target)
+    setTroops('')
+    setRaid(true)
+    setHome(null)
+    setHomeError('')
+    try {
+      const result = await api<OwnVillage[]>(`/api/accounts/${accountId}/villages`)
+      setVillages(result.data)
+      setFromId(current => result.data.some(village => village.id === current) ? current : (result.data[0]?.id ?? 0))
+    } catch (reason) {
+      setVillages([])
+      setHomeError(reason instanceof Error ? reason.message : 'No se pudieron leer las aldeas')
+    }
+  }
+
+  function addToPlan(troop: HomeTroop) {
+    const parts = troops.trim().split(/\s+/).filter(Boolean).filter(part => !part.toUpperCase().startsWith(`${troop.letter}:`))
+    parts.push(`${troop.letter}:${troop.available}`)
+    setTroops(parts.join(' '))
+  }
+
+  async function sendAttack() {
+    if (!attack || !fromId || attacking) return
+    setAttacking(true)
+    try {
+      const result = await post(`/api/accounts/${accountId}/chat/attack`, { url: attack.url, villageId: fromId, troops: troops.trim() || 'A:50', raid })
+      ui.notify(result.message)
+      setAttack(null)
+    } catch (reason) {
+      ui.notify(reason instanceof Error ? reason.message : 'No se pudo atacar')
+    } finally {
+      setAttacking(false)
+    }
+  }
+
+  const fromVillage = villages.find(village => village.id === fromId)
+
   return (
     <Box sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
       {open && (
@@ -343,7 +470,15 @@ export function ClanChat({ username, host, clan, page }: { username: string; hos
               return (
                 <Box key={message.id} sx={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '85%', bgcolor: mine ? '#e4efcc' : '#fffaf0', color: '#2e2010', border: '1px solid', borderColor: mine ? '#a9c27a' : '#d6c296', boxShadow: '0 1px 2px rgba(91,58,27,.15)', borderRadius: 1.5, px: 1.1, py: 0.7 }}>
                   <Typography variant="caption" sx={{ color: mine ? '#3f6f0a' : '#8a4b12', fontWeight: 700 }}>{message.username}</Typography>
-                  {message.body && <Typography sx={{ fontSize: 14, color: '#2e2010', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}><Linkified text={message.body} /></Typography>}
+                  {message.body && (
+                    <Typography sx={{ fontSize: 14, color: '#2e2010', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      {messageParts(message.body).map((part, index) => part.kind === 'link' ? (
+                        <ChatLink key={index} part={part} onAttack={openAttack} />
+                      ) : (
+                        <span key={index}>{part.value}</span>
+                      ))}
+                    </Typography>
+                  )}
                   {message.image_path && <Box component="img" src={imageUrl(message.image_path)} alt="" sx={{ display: 'block', mt: 0.5, maxWidth: '100%', borderRadius: 1 }} />}
                   <Typography variant="caption" color="text.secondary">{stamp(message.created_at)}</Typography>
                   {seen.length > 0 && (
@@ -400,29 +535,37 @@ export function ClanChat({ username, host, clan, page }: { username: string; hos
           </Box>
         )}
       </Box>
+      <Dialog open={attack != null} onClose={() => !attacking && setAttack(null)} fullWidth maxWidth="sm">
+        <DialogTitle>Atacar {attack ? `Aldea (${attack.x}|${attack.y})` : ''}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField select label="Las tropas salen de" value={fromId || ''} onChange={event => setFromId(Number(event.target.value))} disabled={villages.length === 0}>
+              {villages.map(village => <MenuItem key={village.id} value={village.id}>{village.name} ({village.x}|{village.y})</MenuItem>)}
+            </TextField>
+            <Box>
+              <Typography variant="caption" color="text.secondary">Tus tropas en {fromVillage?.name ?? 'la aldea'} (click para mandar todas)</Typography>
+              {attack && fromId > 0 && home == null && !homeError && <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}><CircularProgress size={16} /><Typography variant="body2">Leyendo el punto de reunión...</Typography></Stack>}
+              {homeError && <Typography variant="body2" color="error" sx={{ mt: 1 }}>{homeError}</Typography>}
+              {home && home.length > 0 && (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
+                  {home.map(troop => (
+                    <Chip key={troop.letter} label={`${troop.letter} · ${troop.name}: ${troop.available}`} disabled={troop.available === 0} onClick={() => addToPlan(troop)} variant={troop.available > 0 ? 'filled' : 'outlined'} sx={{ bgcolor: troop.available > 0 ? '#404249' : 'transparent' }} />
+                  ))}
+                </Box>
+              )}
+            </Box>
+            <TextField label="Tropas" placeholder="A:50" helperText="Letra de la casilla y cantidad, por ejemplo A:50 o A:30 D:2. Vacío manda A:50." value={troops} onChange={event => setTroops(event.target.value)} />
+            <ToggleButtonGroup exclusive size="small" value={raid ? 'raid' : 'normal'} onChange={(_, value) => value && setRaid(value === 'raid')}>
+              <ToggleButton value="raid">Asalto</ToggleButton>
+              <ToggleButton value="normal">Ataque normal</ToggleButton>
+            </ToggleButtonGroup>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAttack(null)} disabled={attacking}>Cancelar</Button>
+          <Button variant="contained" color="warning" startIcon={<GpsFixedIcon />} disabled={!fromId || attacking} onClick={() => { void sendAttack() }}>Atacar</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
-  )
-}
-
-const urlPattern = /(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/gi
-
-/** Message text with web addresses as links; they open in the person's own browser. */
-function Linkified({ text }: { text: string }) {
-  const parts = text.split(urlPattern)
-  return (
-    <>
-      {parts.map((part, index) => {
-        if (index % 2 === 0) return part
-        const trimmed = part.replace(/[.,;:!?)\]]+$/, '')
-        const rest = part.slice(trimmed.length)
-        const href = /^https?:/i.test(trimmed) ? trimmed : `https://${trimmed}`
-        return (
-          <span key={index}>
-            <Box component="a" href={href} target="_blank" rel="noreferrer" sx={{ color: '#1f5e9c', fontWeight: 600, textDecoration: 'underline', wordBreak: 'break-all', '&:hover': { color: '#0f3d6b' } }}>{trimmed}</Box>
-            {rest}
-          </span>
-        )
-      })}
-    </>
   )
 }

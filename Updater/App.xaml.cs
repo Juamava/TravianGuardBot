@@ -9,10 +9,17 @@ namespace Updater
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
             var window = new ProgressWindow();
             MainWindow = window;
+            UpdateSession? session = null;
+            window.CancelRequested += () =>
+            {
+                if (session == null) return CancelChoice.Close;
+                return session.Cancel() ? CancelChoice.Started : CancelChoice.Busy;
+            };
+            window.Closed += (_, _) => Shutdown();
             window.Show();
             try
             {
-                var session = UpdateSession.Parse(e.Args);
+                session = UpdateSession.Parse(e.Args);
                 if (session == null)
                 {
                     window.ShowStatus("Este programa lo abre Travian Guard para instalar una versión.", 0);
@@ -22,6 +29,11 @@ namespace Updater
 
                 window.ShowVersion(session.Version);
                 await Task.Run(() => session.Execute(window.ShowStatus));
+                window.AllowClose();
+                Shutdown();
+            }
+            catch (OperationCanceledException)
+            {
                 window.AllowClose();
                 Shutdown();
             }
