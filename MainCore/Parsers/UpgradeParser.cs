@@ -32,9 +32,11 @@
         public static async Task<ILocator> GetFillUpButton(IPage page, BuildingEnums building)
         {
             var panel = await GetPanel(page, building);
-            // The (+1) next to a hero resource opens the transfer dialog.
-            // The old .resource.transfer.fillUp node still takes the click and leaves the page unchanged.
-            var plus = panel.Locator("#contract").GetByText("(+1)", new() { Exact = true });
+            // Only look inside the resource cost row. The "(+1)" next to the building level and the
+            // population (under the costs) also live in #contract, and clicking them opens nothing:
+            // that is what left the bot waiting 30s for the transfer dialog on Residence level 8.
+            var wrapper = panel.Locator("#contract .resourceWrapper");
+            var plus = wrapper.GetByText("(+1)", new() { Exact = true });
             var count = await plus.CountAsync();
             for (var i = 0; i < count; i++)
             {
@@ -43,8 +45,7 @@
                 if (!around.StartsWith('0')) return item;
             }
 
-            if (count > 0) return plus.First;
-            return panel.Locator("#contract .resourceWrapper .resource.transfer.fillUp").First;
+            return wrapper.Locator(".resource.transfer.fillUp").First;
         }
 
         public static async Task<ILocator> GetNormalButton(IPage page, BuildingEnums building)
