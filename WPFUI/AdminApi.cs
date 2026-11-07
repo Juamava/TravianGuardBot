@@ -150,6 +150,7 @@ namespace WPFUI
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/villages", (int id, int listId, CowVillageBody body) => AddCowVillage(services, id, listId, body));
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/bulk", (int id, int listId, BulkBody body) => BulkEditCowList(services, id, listId, body.Text));
             app.MapPut("/api/accounts/{id:int}/farming/villages/{cowId:int}", (int id, int cowId, CowVillageBody body) => UpdateCowVillage(services, id, cowId, body));
+            app.MapPost("/api/accounts/{id:int}/farming/villages/{cowId:int}/active", (int id, int cowId) => ToggleCowVillage(services, id, cowId));
             app.MapDelete("/api/accounts/{id:int}/farming/villages/{cowId:int}", (int id, int cowId) => DeleteCowVillage(services, id, cowId));
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/sync", (int id, int listId, HttpContext http) => SyncVillageNames(services, id, listId, http.RequestAborted));
             app.MapPost("/api/accounts/{id:int}/farming/lists/{listId:int}/start", (int id, int listId, CowListBody body) => StartCowList(services, id, listId, body));
@@ -1057,7 +1058,7 @@ namespace WPFUI
             var listIds = lists.Select(x => x.id).ToList();
             var home = context.Villages.Where(x => x.Id == villageId).Select(x => new { x.X, x.Y }).FirstOrDefault();
             var cows = context.CowVillages.Where(x => listIds.Contains(x.CowListId)).OrderBy(x => x.Id)
-                .Select(x => new { x.Id, x.CowListId, x.Name, x.Url, x.TroopCount, x.TroopPlan, x.LastAttackedAt, x.LastSkipReason, x.Kind, x.Owner, x.Tribe, x.Alliance, x.Population, x.Distance, x.CoordX, x.CoordY })
+                .Select(x => new { x.Id, x.CowListId, x.Name, x.Url, x.TroopCount, x.TroopPlan, x.LastAttackedAt, x.LastSkipReason, x.Kind, x.Owner, x.Tribe, x.Alliance, x.Population, x.Distance, x.CoordX, x.CoordY, x.IsActive })
                 .AsEnumerable()
                 .Select(x =>
                 {
@@ -1091,6 +1092,7 @@ namespace WPFUI
                         distance,
                         x = coordX,
                         y = coordY,
+                        active = x.IsActive,
                     };
                 }).ToList();
             var account = new AccountId(accountId);
@@ -1788,6 +1790,16 @@ namespace WPFUI
             context.SaveChanges();
             if (updated == 0 && added == 0 && removed == 0) return Ok("La lista ya estaba así.");
             return Ok($"Se actualizó la lista. Modificadas: {updated}. Nuevas: {added}. Borradas: {removed}.");
+        }
+
+        private static IResult ToggleCowVillage(IServiceProvider services, int accountId, int cowId)
+        {
+            using var context = Context(services);
+            var row = context.CowVillages.FirstOrDefault(x => x.Id == cowId && x.CowList.AccountId == accountId);
+            if (row is null) return Fail("No se encontró la aldea.");
+            row.IsActive = !row.IsActive;
+            context.SaveChanges();
+            return Ok(row.IsActive ? "Aldea activada." : "Aldea desactivada. El robot no la analiza hasta que la actives.");
         }
 
         private static IResult UpdateCowVillage(IServiceProvider services, int accountId, int cowId, CowVillageBody body)

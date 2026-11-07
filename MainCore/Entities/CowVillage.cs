@@ -16,6 +16,7 @@ namespace MainCore.Entities
         public string TroopPlan { get; set; }
         public DateTime? LastAttackedAt { get; set; }
         public string LastSkipReason { get; set; }
+        public bool IsActive { get; set; } = true;
         public string Kind { get; set; } = "";
         public string Owner { get; set; } = "";
         public string Tribe { get; set; } = "";

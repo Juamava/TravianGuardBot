@@ -303,6 +303,7 @@ namespace MainCore.Infrasturecture.Persistence
             EnsureColumn("CowVillages", "Distance", "REAL NOT NULL DEFAULT -1");
             EnsureColumn("CowVillages", "CoordX", "INTEGER NULL");
             EnsureColumn("CowVillages", "CoordY", "INTEGER NULL");
+            EnsureColumn("CowVillages", "IsActive", "INTEGER NOT NULL DEFAULT 1");
         }
 
         public void EnsureScoutTables()
