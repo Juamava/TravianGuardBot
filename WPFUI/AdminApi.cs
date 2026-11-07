@@ -354,6 +354,7 @@ namespace WPFUI
                 var status = tasks.GetStatus(accountId);
                 var queued = status == StatusEnums.Online ? tasks.GetTaskList(accountId) : [];
                 var scoutLists = context.CowLists.Where(x => x.AccountId == account.Id && x.Kind == CowList.ScoutKind).Select(x => x.Id).ToHashSet();
+                var adventures = status == StatusEnums.Online && context.BooleanByName(accountId, AccountSettingEnums.EnableAutoStartAdventure);
                 accounts.Add(new
                 {
                     id = account.Id,
@@ -369,6 +370,7 @@ namespace WPFUI
                     trade = queued.Any(IsTradeWork),
                     farms = queued.Any(task => task is RaidCowListTask.Task raid && !scoutLists.Contains(raid.CowListId)),
                     scouts = queued.Any(task => task is RaidCowListTask.Task raid && scoutLists.Contains(raid.CowListId)),
+                    adventures,
                     gameFarms = queued.Any(task => task is StartFarmListTask.Task or UpdateFarmListTask.Task),
                     villageNext = NextAt(queued.Where(IsVillageWork)),
                     buildNext = NextAt(queued.Where(IsBuildWork)),
@@ -376,6 +378,7 @@ namespace WPFUI
                     tradeNext = NextAt(queued.Where(IsTradeWork)),
                     farmNext = NextAt(queued.Where(task => task is RaidCowListTask.Task raid && !scoutLists.Contains(raid.CowListId))),
                     scoutNext = NextAt(queued.Where(task => task is RaidCowListTask.Task raid && scoutLists.Contains(raid.CowListId))),
+                    adventureNext = NextAt(queued.Where(task => task is StartAdventureTask.Task)),
                     gameFarmNext = NextAt(queued.Where(task => task is StartFarmListTask.Task or UpdateFarmListTask.Task)),
                     clan = await ReadClan(services, tasks, account.Id, status),
                     accesses = accessNames.GetValueOrDefault(account.Id) ?? [],

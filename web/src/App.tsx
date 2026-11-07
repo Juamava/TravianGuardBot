@@ -331,12 +331,14 @@ function Shell() {
   const farmsLive = !!account?.farms
   const gameLive = !!account?.gameFarms
   const scoutLive = !!account?.scouts
+  const adventureLive = !!account?.adventures
   const buildCount = buildLive ? formatNext(account?.buildNext, now) : ''
   const troopCount = troopsLive ? formatNext(account?.troopNext, now) : ''
   const tradeCount = tradeLive ? formatNext(account?.tradeNext, now) : ''
   const farmCount = farmsLive ? formatNext(account?.farmNext, now) : ''
   const gameCount = gameLive ? formatNext(account?.gameFarmNext, now) : ''
   const scoutCount = scoutLive ? formatNext(account?.scoutNext, now) : ''
+  const adventureCount = adventureLive ? formatNext(account?.adventureNext, now) : ''
   const heldByOther = holder != null && holder.id !== account?.id
   const canConnect = account != null && account.status === 'Offline' && !heldByOther
   useEffect(() => {
@@ -548,7 +550,7 @@ function Shell() {
                 </Stack>
               )
             }
-            return <NavItem key={item.id} selected={page === item.id} disabled={item.id === 'alianza' ? !account : !connected} icon={item.icon} label={item.label} onClick={() => setPage(item.id)} />
+            return <NavItem key={item.id} selected={page === item.id} disabled={item.id === 'alianza' ? !account : !connected} live={item.id === 'hero' && adventureLive} count={item.id === 'hero' ? adventureCount : ''} icon={item.icon} label={item.label} onClick={() => setPage(item.id)} />
           })}
         </Stack>
         <Stack spacing={0.3} sx={{ px: 1, pb: 1.5 }}>
