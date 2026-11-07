@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Box, Button, Stack, Tooltip, Typography } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import AgricultureIcon from '@mui/icons-material/Agriculture'
+import GroupsIcon from '@mui/icons-material/Groups'
 import BugReportIcon from '@mui/icons-material/BugReport'
 import LinkIcon from '@mui/icons-material/Link'
 import LocationCityIcon from '@mui/icons-material/LocationCity'
@@ -22,14 +23,16 @@ import { Scouting } from './pages/Scouting'
 import { ClanChat } from './chat/ClanChat'
 import { Debug } from './pages/Debug'
 import { Hero } from './pages/Hero'
+import { Alliance } from './pages/Alliance'
 import { Empty, UiProvider, useUi } from './ui'
 
-type Page = 'aldeas' | 'aldeas-tropas' | 'aldeas-comercio' | 'farming' | 'farming-juego' | 'farming-scout' | 'hero' | 'debug' | 'ajustes' | 'cuentas'
+type Page = 'aldeas' | 'aldeas-tropas' | 'aldeas-comercio' | 'farming' | 'farming-juego' | 'farming-scout' | 'hero' | 'alianza' | 'debug' | 'ajustes' | 'cuentas'
 
 const pages: { id: Page; label: string; icon: SvgIconComponent }[] = [
   { id: 'aldeas', label: 'Aldeas', icon: LocationCityIcon },
   { id: 'farming', label: 'Farming', icon: AgricultureIcon },
   { id: 'hero', label: 'Hero', icon: ShieldIcon },
+  { id: 'alianza', label: 'Alianza', icon: GroupsIcon },
   { id: 'debug', label: 'Debug', icon: BugReportIcon },
 ]
 
@@ -406,7 +409,7 @@ function Shell() {
                 </Stack>
               )
             }
-            return <NavItem key={item.id} selected={page === item.id} disabled={!connected} icon={item.icon} label={item.label} onClick={() => setPage(item.id)} />
+            return <NavItem key={item.id} selected={page === item.id} disabled={item.id === 'alianza' ? !account : !connected} icon={item.icon} label={item.label} onClick={() => setPage(item.id)} />
           })}
         </Stack>
         <Stack spacing={0.3} sx={{ px: 1, pb: 1.5 }}>
@@ -424,7 +427,9 @@ function Shell() {
         )}
         {page === 'ajustes' && accountId && <AccountSettings key={accountId} accountId={accountId} meta={meta} notify={ui.notify} refresh={() => refresh().catch((error: Error) => ui.notify(error.message))} />}
         {page === 'ajustes' && !accountId && <Empty title="Elegí una cuenta" text="Creá una cuenta con el + y después vas a poder cambiar el servidor, la contraseña y el resto desde acá." />}
-        {page !== 'cuentas' && page !== 'ajustes' && connected && accountId && (
+        {page === 'alianza' && account && <Alliance key={account.id} account={account} meta={meta} />}
+        {page === 'alianza' && !account && <Empty title="Elegí una cuenta" text="Creá una cuenta con el + para ver sus datos y los de la alianza." />}
+        {page !== 'cuentas' && page !== 'ajustes' && page !== 'alianza' && connected && accountId && (
           <>
             {page === 'hero' && <Hero key={accountId} accountId={accountId} notify={ui.notify} />}
             {(page === 'aldeas' || page === 'aldeas-tropas' || page === 'aldeas-comercio') && <Villages key={accountId} accountId={accountId} meta={meta} notify={ui.notify} tab={page === 'aldeas-tropas' ? 'troops' : page === 'aldeas-comercio' ? 'trade' : 'build'} />}
@@ -433,7 +438,7 @@ function Shell() {
             {page === 'debug' && <Debug key={accountId} accountId={accountId} notify={ui.notify} />}
           </>
         )}
-        {page !== 'cuentas' && page !== 'ajustes' && !connected && (
+        {page !== 'cuentas' && page !== 'ajustes' && page !== 'alianza' && !connected && (
           <Empty
             title={heldByOther && holder ? `${holder.username} está conectada en este bot` : 'Conectá la cuenta'}
             text={heldByOther && holder
