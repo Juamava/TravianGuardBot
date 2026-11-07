@@ -46,6 +46,7 @@ export type AccountRow = {
   gameFarmNext?: string | null
   scoutNext?: string | null
   clan?: string | null
+  accesses?: string[]
 }
 
 export type Overview = {
