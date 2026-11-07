@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session } = require('electron')
+const { app, BrowserWindow, session, shell } = require('electron')
 const fs = require('fs')
 const path = require('path')
 
@@ -51,6 +51,15 @@ app.whenReady().then(() => {
     log('lista para mostrar')
     window.maximize()
     window.show()
+  })
+
+  // Links to the game (target=_blank) open in the person's own browser, where they are signed in.
+  window.webContents.setWindowOpenHandler(({ url: target }) => {
+    if (/^https?:\/\//i.test(target) && !/^https?:\/\/(127\.0\.0\.1|localhost)/i.test(target)) {
+      log('abre afuera ' + target)
+      shell.openExternal(target)
+    }
+    return { action: 'deny' }
   })
 
   window.webContents.on('did-fail-load', (_event, code, description, failedUrl, isMainFrame) => {

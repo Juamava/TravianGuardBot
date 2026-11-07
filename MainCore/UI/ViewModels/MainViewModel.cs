@@ -32,9 +32,7 @@ namespace MainCore.UI.ViewModels
 
                 using var context = contextFactory.CreateDbContext();
                 var notExist = context.Database.EnsureCreated();
-                context.EnsureCowListTables();
-                context.EnsureHeroLevelingTable();
-                context.EnsureAccessColumns();
+                context.EnsureSchema();
 
                 if (!notExist)
                 {

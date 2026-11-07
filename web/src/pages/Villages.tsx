@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Box, Button, IconButton, MenuItem, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material'
+import { Box, Button, IconButton, MenuItem, Stack, TextField, Tooltip, Typography } from '@mui/material'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined'
 import FileUploadOutlinedIcon from '@mui/icons-material/FileUploadOutlined'
@@ -11,33 +11,21 @@ import VerticalAlignTopIcon from '@mui/icons-material/VerticalAlignTop'
 import { api, del, post, type Meta } from '../api'
 import { Empty, panel, useUi } from '../ui'
 import { VillageSettings } from './Settings'
+import { Troops } from './Troops'
 
 type Village = { id: number; name: string; x: number; y: number }
 type Building = { id: number; location: number; type: string; name: string; level: number; queueLevel: number; jobLevel: number }
 type Build = { buildings: Building[]; queue: { id: number; text: string }[]; jobs: { id: number; text: string }[] }
 type Option = { type: string; name: string; maxLevel: number }
 
-const tabGroup = {
-  bgcolor: '#2b2d31',
-  p: 0.5,
-  borderRadius: 1,
-  '& .MuiToggleButton-root': {
-    border: 0,
-    borderRadius: 1,
-    px: 2,
-    color: '#b5bac1',
-    textTransform: 'none',
-    fontWeight: 600,
-    '&.Mui-selected': { bgcolor: '#404249', color: '#fff' },
-    '&.Mui-selected:hover': { bgcolor: '#404249' },
-  },
-} as const
+export type VillageTab = 'build' | 'troops' | 'trade'
 
-export function Villages({ accountId, meta, notify }: { accountId: number; meta: Meta | null; notify: (message: string) => void }) {
+const titles: Record<VillageTab, string> = { build: 'Construcción', troops: 'Tropas', trade: 'Comercio' }
+
+export function Villages({ accountId, meta, notify, tab }: { accountId: number; meta: Meta | null; notify: (message: string) => void; tab: VillageTab }) {
   const ui = useUi()
   const [villages, setVillages] = useState<Village[]>([])
   const [villageId, setVillageId] = useState(0)
-  const [tab, setTab] = useState('build')
   const [build, setBuild] = useState<Build | null>(null)
   const [location, setLocation] = useState(0)
   const [options, setOptions] = useState<Option[]>([])
@@ -103,18 +91,11 @@ export function Villages({ accountId, meta, notify }: { accountId: number; meta:
   return (
     <Stack spacing={1.5} sx={{ flex: 1, minHeight: 0 }}>
       <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
-        <Typography variant="h4" sx={{ flexShrink: 0 }}>Aldeas</Typography>
+        <Typography variant="h4" sx={{ flexShrink: 0 }}>{titles[tab]}</Typography>
         {villages.length > 0 && (
           <TextField select size="small" label="Aldea" value={villageId || ''} onChange={event => setVillageId(Number(event.target.value))} sx={{ flex: '1 1 280px', maxWidth: 480, minWidth: 220 }}>
             {villages.map(village => <MenuItem key={village.id} value={village.id}>{village.name} ({village.x}|{village.y})</MenuItem>)}
           </TextField>
-        )}
-        {villages.length > 0 && (
-          <ToggleButtonGroup exclusive size="small" value={tab} onChange={(_, value) => value && setTab(value)} sx={tabGroup}>
-            <ToggleButton value="build">Construcción</ToggleButton>
-            <ToggleButton value="troops">Tropas</ToggleButton>
-            <ToggleButton value="trade">Comercio</ToggleButton>
-          </ToggleButtonGroup>
         )}
       </Stack>
 
@@ -240,8 +221,9 @@ export function Villages({ accountId, meta, notify }: { accountId: number; meta:
           </Box>
             </>
           )}
-          {villageId > 0 && (
-            <VillageSettings accountId={accountId} villageId={villageId} meta={meta} notify={notify} section={tab === 'troops' ? 'troops' : tab === 'trade' ? 'trade' : 'build'} />
+          {villageId > 0 && tab === 'troops' && <Troops key={villageId} accountId={accountId} villageId={villageId} meta={meta} notify={notify} />}
+          {villageId > 0 && tab !== 'troops' && (
+            <VillageSettings accountId={accountId} villageId={villageId} meta={meta} notify={notify} section={tab} />
           )}
         </Box>
       )}
