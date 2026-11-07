@@ -18,6 +18,7 @@ import { Accounts } from './pages/Accounts'
 import { AccountSettings, Templates } from './pages/Settings'
 import { Villages } from './pages/Villages'
 import { Farming } from './pages/Farming'
+import { ClanChat } from './chat/ClanChat'
 import { Debug } from './pages/Debug'
 import { Hero } from './pages/Hero'
 import { Empty, UiProvider, useUi } from './ui'
@@ -423,6 +424,7 @@ function Shell() {
           />
         )}
       </Box>
+      {account?.clan && account.host && <ClanChat username={account.username} host={account.host} clan={account.clan} page={page} />}
       {mandatory && update && (
         <Box sx={{ position: 'fixed', inset: 0, zIndex: 30, bgcolor: 'rgba(0,0,0,.72)', display: 'grid', placeItems: 'center', p: 3 }}>
           <Stack spacing={2} sx={{ width: 420, maxWidth: '100%', bgcolor: '#2b2d31', borderRadius: 2, p: 3 }}>
