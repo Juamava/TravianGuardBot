@@ -7,6 +7,9 @@ const logDir = process.env.TBS_LOG_DIR || path.join(appRoot, 'logs')
 const logFile = path.join(logDir, 'electron.log')
 
 app.setPath('userData', path.join(appRoot, 'Data', 'electron'))
+// Its own taskbar group and icon, instead of Electron's.
+app.setAppUserModelId('TravianGuard.Admin')
+const icon = [path.join(__dirname, 'icon.ico'), path.join(appRoot, 'favicon.ico')].find(file => fs.existsSync(file))
 
 function log(message) {
   try {
@@ -41,8 +44,9 @@ app.whenReady().then(() => {
     height: 840,
     minWidth: 1024,
     minHeight: 680,
-    backgroundColor: '#313338',
+    backgroundColor: '#3a2513',
     title: 'Travian Guard',
+    ...(icon ? { icon } : {}),
     autoHideMenuBar: true,
     show: false,
   })

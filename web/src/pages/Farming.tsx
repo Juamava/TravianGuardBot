@@ -65,20 +65,20 @@ const tile = {
   alignItems: 'center',
   justifyContent: 'center',
   gap: 0.25,
-  fontSize: 12,
+  fontSize: 13,
   lineHeight: 1.2,
   whiteSpace: 'nowrap',
   color: '#3b2a17',
   bgcolor: '#efe4c6',
   '&:hover': { bgcolor: '#f1e5c2' },
-  '&.Mui-disabled': { color: '#a8956f' },
-  '&.Mui-disabled .MuiSvgIcon-root': { color: '#a8956f' },
+  '&.Mui-disabled': { color: '#7a6342' },
+  '&.Mui-disabled .MuiSvgIcon-root': { color: '#7a6342' },
 } as const
 
 function Hint({ text }: { text: string }) {
   return (
     <Tooltip title={text} placement="top" arrow enterDelay={200} slotProps={{ tooltip: { sx: { maxWidth: 280, fontSize: 13, lineHeight: 1.45 } } }}>
-      <InfoOutlinedIcon sx={{ fontSize: 16, color: '#8a7350', cursor: 'help' }} />
+      <InfoOutlinedIcon sx={{ fontSize: 16, color: '#5c4529', cursor: 'help' }} />
     </Tooltip>
   )
 }
@@ -181,7 +181,7 @@ function GameFarmRow({ accountId, list, disabled, notify, reload }: { accountId:
 function Tile({ icon, label, color, disabled, onClick }: { icon: ReactNode; label: string; color: string; disabled?: boolean; onClick: () => void }) {
   return (
     <Button onClick={onClick} disabled={disabled} sx={tile}>
-      <Box sx={{ color: disabled ? '#a8956f' : color, display: 'flex', '& .MuiSvgIcon-root': { fontSize: 18 } }}>{icon}</Box>
+      <Box sx={{ color: disabled ? '#7a6342' : color, display: 'flex', '& .MuiSvgIcon-root': { fontSize: 18 } }}>{icon}</Box>
       {label}
     </Button>
   )
@@ -628,7 +628,7 @@ export function Farming({ accountId, notify, mode }: { accountId: number; notify
                       <Typography sx={{ color: '#3b2a17' }}>{cow.population >= 0 ? cow.population : '—'}</Typography>
                       <Typography sx={{ color: '#3b2a17' }}>{cow.distance >= 0 ? cow.distance.toLocaleString('es', { maximumFractionDigits: 2 }) : '—'}</Typography>
                       <Typography sx={{ color: '#3b2a17' }}>{cow.troops}</Typography>
-                      <Typography sx={{ color: cow.status === 'Atacando' ? '#4f8a10' : cow.status === 'Analizando' ? '#a86f08' : '#6b5233', fontSize: 13, fontWeight: live ? 700 : 400 }}>{cow.status}</Typography>
+                      <Typography sx={{ color: cow.status === 'Atacando' ? '#4f8a10' : cow.status === 'Analizando' ? '#a86f08' : '#4a3820', fontSize: 13, fontWeight: live ? 700 : 400 }}>{cow.status}</Typography>
                     </Box>
                   )
                 })}

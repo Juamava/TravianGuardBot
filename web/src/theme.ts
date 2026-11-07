@@ -1,11 +1,11 @@
 import { createTheme } from '@mui/material/styles'
-import { divider, parchmentTexture, woodTexture } from './art'
+import { divider, woodTexture } from './art'
 
 // Inspired by the Travian Legends interface: parchment panels, wood frames, serif titles and green buttons.
-const ink = '#3b2a17'
+const ink = '#2e2010'
 const wood = '#6b4423'
 const woodLight = '#a07a44'
-const parchment = '#fbf5e2'
+const parchment = '#fdf9ec'
 const green = '#5f8f12'
 
 export const theme = createTheme({
@@ -17,17 +17,20 @@ export const theme = createTheme({
     error: { main: '#b8281d', contrastText: '#fff' },
     info: { main: '#3d6d8a' },
     background: { default: '#1c2625', paper: parchment },
-    text: { primary: ink, secondary: '#6b5233' },
-    divider: '#c9b27c',
+    text: { primary: ink, secondary: '#5c4529' },
+    divider: '#d6c296',
   },
   shape: { borderRadius: 4 },
   typography: {
-    fontFamily: 'Arial, Helvetica, Verdana, sans-serif',
-    fontSize: 13,
+    fontFamily: '"Segoe UI", "Noto Sans", Arial, sans-serif',
+    fontSize: 14,
+    body1: { fontSize: '0.95rem', lineHeight: 1.5 },
+    body2: { fontSize: '0.9rem', lineHeight: 1.5 },
+    caption: { fontSize: '0.8rem', lineHeight: 1.45 },
     h4: { fontFamily: '"Noto Serif", Georgia, serif', fontWeight: 700, color: '#4a2e15', textShadow: '0 1px 0 rgba(255,250,232,.9), 0 0 12px rgba(255,250,232,.8)', paddingBottom: 18, backgroundImage: divider, backgroundRepeat: 'no-repeat', backgroundPosition: 'left bottom', backgroundSize: '240px 14px' },
     h5: { fontFamily: '"Noto Serif", Georgia, serif', fontWeight: 700, color: wood },
     h6: { fontFamily: '"Noto Serif", Georgia, serif', fontWeight: 700, fontSize: '1rem', color: wood },
-    button: { fontWeight: 700, textTransform: 'none' },
+    button: { fontWeight: 600, textTransform: 'none', fontSize: '0.9rem' },
   },
   components: {
     MuiCssBaseline: {
@@ -58,7 +61,7 @@ export const theme = createTheme({
     },
     MuiPaper: {
       styleOverrides: {
-        root: { backgroundImage: parchmentTexture, backgroundColor: parchment, color: ink },
+        root: { backgroundImage: 'none', backgroundColor: parchment, color: ink },
       },
     },
     MuiDialog: {
@@ -93,7 +96,7 @@ export const theme = createTheme({
       },
     },
     MuiInputLabel: {
-      styleOverrides: { root: { color: '#6b5233', '&.Mui-focused': { color: green } } },
+      styleOverrides: { root: { color: '#4a3820', fontWeight: 600, fontSize: '0.92rem', '&.MuiInputLabel-shrink': { color: '#3b2a17', transform: 'translate(10px, -11px) scale(0.88)', backgroundColor: '#fdf9ec', padding: '0 5px', borderRadius: 3 }, '&.Mui-focused': { color: green } } },
     },
     MuiToggleButtonGroup: {
       styleOverrides: {
@@ -117,7 +120,7 @@ export const theme = createTheme({
       },
     },
     MuiChip: {
-      styleOverrides: { root: { fontWeight: 700, border: '1px solid rgba(107,68,35,.25)' } },
+      styleOverrides: { root: { fontWeight: 600, fontSize: '0.8rem', border: '1px solid rgba(107,68,35,.25)' } },
     },
     MuiCheckbox: {
       styleOverrides: { root: { color: woodLight, '&.Mui-checked': { color: green } } },

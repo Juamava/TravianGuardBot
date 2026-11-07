@@ -9,7 +9,6 @@ export const parchmentTexture = url(`
   <feColorMatrix values='0 0 0 0 .45  0 0 0 0 .32  0 0 0 0 .15  0 0 0 .09 0'/></filter>
   <filter id='s'><feTurbulence type='fractalNoise' baseFrequency='.012' numOctaves='2' stitchTiles='stitch'/>
   <feColorMatrix values='0 0 0 0 .55  0 0 0 0 .38  0 0 0 0 .15  0 0 0 .5 -.18'/></filter>
-  <rect width='300' height='300' filter='url(#s)'/>
   <rect width='300' height='300' filter='url(#p)'/>
 </svg>`)
 
@@ -48,9 +47,9 @@ export const corners = {
 
 /** Background layers that put an ornament in each corner of a box. */
 export const framedCorners = {
-  backgroundImage: `${corners.tl}, ${corners.tr}, ${corners.bl}, ${corners.br}, ${parchmentTexture}`,
-  backgroundPosition: '2px 2px, calc(100% - 2px) 2px, 2px calc(100% - 2px), calc(100% - 2px) calc(100% - 2px), 0 0',
-  backgroundRepeat: 'no-repeat, no-repeat, no-repeat, no-repeat, repeat',
+  backgroundImage: `${corners.tl}, ${corners.tr}, ${corners.bl}, ${corners.br}`,
+  backgroundPosition: '2px 2px, calc(100% - 2px) 2px, 2px calc(100% - 2px), calc(100% - 2px) calc(100% - 2px)',
+  backgroundRepeat: 'no-repeat',
 }
 
 /** A wide countryside: hills, fields, a palisade village and a watchtower. */

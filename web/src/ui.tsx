@@ -77,7 +77,7 @@ export function Empty({ title, text }: { title: string; text: string }) {
 export const panel = {
   p: 2,
   borderRadius: 1.5,
-  bgcolor: '#fbf5e2',
+  bgcolor: '#fdf9ec',
   border: '1px solid #c9b27c',
   boxShadow: 'inset 0 0 0 1px #fffaf0, inset 0 0 0 4px rgba(201,178,124,.35), 0 2px 6px rgba(91,58,27,.3)',
   ...framedCorners,

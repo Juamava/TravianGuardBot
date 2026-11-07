@@ -156,7 +156,7 @@ export function Villages({ accountId, meta, notify, tab }: { accountId: number; 
               <Stack sx={{ ...panel, p: 1, maxHeight: '34%', minHeight: 112, overflow: 'hidden' }}>
                 <Typography sx={{ px: 1, py: 0.75, fontWeight: 700 }}>En construcción</Typography>
                 <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-                  {build.queue.length === 0 && <Typography sx={{ px: 1, py: 0.5, color: '#8a7350', fontSize: 13 }}>Nada construyéndose.</Typography>}
+                  {build.queue.length === 0 && <Typography sx={{ px: 1, py: 0.5, color: '#5c4529', fontSize: 13 }}>Nada construyéndose.</Typography>}
                   {build.queue.map(item => (
                     <Typography key={item.id} sx={{ px: 1, py: 0.6, fontSize: 14 }}>{item.text}</Typography>
                   ))}
@@ -204,7 +204,7 @@ export function Villages({ accountId, meta, notify, tab }: { accountId: number; 
                   </Stack>
                 </Stack>
                 <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-                  {build.jobs.length === 0 && <Typography sx={{ px: 1, py: 0.5, color: '#8a7350', fontSize: 13 }}>Todavía no hay trabajos. Elegí un edificio y agregalo.</Typography>}
+                  {build.jobs.length === 0 && <Typography sx={{ px: 1, py: 0.5, color: '#5c4529', fontSize: 13 }}>Todavía no hay trabajos. Elegí un edificio y agregalo.</Typography>}
                   {build.jobs.map(job => (
                     <Stack key={job.id} direction="row" spacing={0.5} alignItems="center" sx={{ px: 1, py: 0.4, borderRadius: 1, '&:hover': { bgcolor: '#f1e5c2' } }}>
                       <Typography sx={{ flex: 1, fontSize: 14, overflowWrap: 'anywhere' }}>{job.text}</Typography>
@@ -234,7 +234,7 @@ export function Villages({ accountId, meta, notify, tab }: { accountId: number; 
 function ReloadTile({ icon, label, hint, onClick }: { icon: ReactNode; label: string; hint: string; onClick: () => void }) {
   return (
     <Tooltip title={hint}>
-      <Button onClick={onClick} sx={{ height: 48, color: '#3b2a17', bgcolor: '#fbf5e2', display: 'flex', gap: 1, '&:hover': { bgcolor: '#f1e5c2' } }}>
+      <Button onClick={onClick} sx={{ height: 48, color: '#3b2a17', bgcolor: '#fdf9ec', display: 'flex', gap: 1, '&:hover': { bgcolor: '#f1e5c2' } }}>
         <Box sx={{ color: '#4f7a12', display: 'flex' }}>{icon}</Box>
         {label}
       </Button>
@@ -246,16 +246,16 @@ function BuildingGroup({ title, buildings, location, onChoose }: { title: string
   if (buildings.length === 0) return null
   return (
     <Box sx={{ mb: 1 }}>
-      <Typography sx={{ position: 'sticky', top: 0, zIndex: 1, px: 1, py: 0.5, bgcolor: '#fbf5e2', color: '#8a7350', fontSize: 12, fontWeight: 700 }}>{title}</Typography>
+      <Typography sx={{ position: 'sticky', top: 0, zIndex: 1, px: 1, py: 0.5, bgcolor: '#fdf9ec', color: '#5c4529', fontSize: 13, fontWeight: 700 }}>{title}</Typography>
       {buildings.map(building => {
         const selected = location === building.location
         return (
           <Box key={building.id} onClick={() => onChoose(building.location)} sx={{ display: 'grid', gridTemplateColumns: '28px minmax(0, 1fr) auto', gap: 1, alignItems: 'center', px: 1, py: 0.8, borderRadius: 1, cursor: 'pointer', bgcolor: selected ? '#e2cf9a' : 'transparent', boxShadow: selected ? 'inset 3px 0 0 #4f7a12' : 'none', '&:hover': { bgcolor: selected ? '#e2cf9a' : '#f1e5c2' } }}>
-            <Typography sx={{ color: '#8a7350', fontSize: 12 }}>{building.location}</Typography>
+            <Typography sx={{ color: '#5c4529', fontSize: 13 }}>{building.location}</Typography>
             <Box sx={{ minWidth: 0 }}>
               <Typography sx={{ fontWeight: 600, fontSize: 14, overflowWrap: 'anywhere' }}>{building.name}</Typography>
               {(building.queueLevel > 0 || building.jobLevel > building.level) && (
-                <Typography sx={{ fontSize: 12, color: '#6b5233' }}>
+                <Typography sx={{ fontSize: 13, color: '#4a3820' }}>
                   {building.queueLevel > 0 && <Box component="span" sx={{ color: '#a86f08' }}>cola {building.queueLevel}</Box>}
                   {building.queueLevel > 0 && building.jobLevel > building.level && ' · '}
                   {building.jobLevel > building.level && <Box component="span" sx={{ color: '#4f7a12' }}>plan {building.jobLevel}</Box>}
@@ -273,7 +273,7 @@ function BuildingGroup({ title, buildings, location, onChoose }: { title: string
 function MoveButton({ title, tone = 'normal', onClick, children }: { title: string; tone?: 'normal' | 'danger'; onClick: () => void; children: ReactNode }) {
   return (
     <Tooltip title={title}>
-      <IconButton size="small" onClick={onClick} sx={{ color: tone === 'danger' ? '#b8281d' : '#6b5233' }}>
+      <IconButton size="small" onClick={onClick} sx={{ color: tone === 'danger' ? '#b8281d' : '#4a3820' }}>
         {children}
       </IconButton>
     </Tooltip>

@@ -21,7 +21,7 @@ const slots: Slot[] = [
 function Hint({ text }: { text: string }) {
   return (
     <Tooltip title={text} placement="top" arrow enterDelay={200} slotProps={{ tooltip: { sx: { maxWidth: 280, fontSize: 13, lineHeight: 1.45 } } }}>
-      <InfoOutlinedIcon sx={{ fontSize: 16, color: '#8a7350', cursor: 'help' }} />
+      <InfoOutlinedIcon sx={{ fontSize: 16, color: '#5c4529', cursor: 'help' }} />
     </Tooltip>
   )
 }

@@ -209,13 +209,13 @@ export function ClanChat({ username, host, clan, page }: { username: string; hos
   return (
     <Box sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
       {open && (
-        <Box sx={{ width: 'min(340px, calc(100vw - 32px))', height: 'min(480px, calc(100vh - 96px))', display: 'flex', flexDirection: 'column', bgcolor: '#fbf5e2', borderRadius: 2, boxShadow: '0 12px 40px rgba(0,0,0,.45)', overflow: 'hidden' }}>
+        <Box sx={{ width: 'min(340px, calc(100vw - 32px))', height: 'min(480px, calc(100vh - 96px))', display: 'flex', flexDirection: 'column', bgcolor: '#fdf9ec', borderRadius: 2, boxShadow: '0 12px 40px rgba(0,0,0,.45)', overflow: 'hidden' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1, bgcolor: '#e8dab3' }}>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography noWrap sx={{ fontWeight: 700 }}>{clan}</Typography>
               <Typography noWrap variant="caption" color="text.secondary">{people.length ? people.join(', ') : 'Conectando'}</Typography>
             </Box>
-            <IconButton size="small" aria-label="Cerrar chat" onClick={() => setOpen(false)} sx={{ color: '#6b5233' }}>
+            <IconButton size="small" aria-label="Cerrar chat" onClick={() => setOpen(false)} sx={{ color: '#4a3820' }}>
               <CloseIcon fontSize="small" />
             </IconButton>
           </Box>
@@ -244,10 +244,10 @@ export function ClanChat({ username, host, clan, page }: { username: string; hos
           {file && <Typography variant="caption" color="text.secondary" sx={{ px: 1.5 }}>{file.name}</Typography>}
           {error && <Typography variant="caption" color="error" sx={{ px: 1.5 }}>{error}</Typography>}
           <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 0.5, p: 1 }}>
-            <IconButton size="small" aria-label="Iconos" onClick={() => setEmojisOpen(current => !current)} sx={{ color: '#6b5233' }}>
+            <IconButton size="small" aria-label="Iconos" onClick={() => setEmojisOpen(current => !current)} sx={{ color: '#4a3820' }}>
               <Typography sx={{ fontSize: 16, lineHeight: 1 }}>☺</Typography>
             </IconButton>
-            <IconButton size="small" component="label" aria-label="Imagen" sx={{ color: '#6b5233' }}>
+            <IconButton size="small" component="label" aria-label="Imagen" sx={{ color: '#4a3820' }}>
               <ImageOutlinedIcon fontSize="small" />
               <input hidden type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={event => { setFile(event.target.files?.[0] ?? null); event.target.value = '' }} />
             </IconButton>
@@ -267,7 +267,7 @@ export function ClanChat({ username, host, clan, page }: { username: string; hos
         <ChatBubbleOutlineIcon sx={{ fontSize: 18 }} />
         {clan}
         {unread > 0 && (
-          <Box component="span" sx={{ position: 'absolute', top: -6, right: -4, minWidth: 18, height: 18, px: 0.5, borderRadius: 999, bgcolor: '#b8281d', color: '#fff', fontSize: 11, lineHeight: '18px', textAlign: 'center' }}>
+          <Box component="span" sx={{ position: 'absolute', top: -6, right: -4, minWidth: 18, height: 18, px: 0.5, borderRadius: 999, bgcolor: '#b8281d', color: '#fff', fontSize: 13.5, lineHeight: '18px', textAlign: 'center' }}>
             {unread > 99 ? '99+' : unread}
           </Box>
         )}

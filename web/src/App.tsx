@@ -43,7 +43,7 @@ const actionButton = {
   alignItems: 'center',
   justifyContent: 'center',
   gap: 0.25,
-  fontSize: 12,
+  fontSize: 13,
   lineHeight: 1.2,
   whiteSpace: 'nowrap',
   color: '#eadbb8',
@@ -97,7 +97,7 @@ function sooner(left?: string | null, right?: string | null) {
 function NextCount({ text }: { text: string }) {
   if (!text) return null
   return (
-    <Box component="span" title={`Próxima acción en ${text}`} sx={{ color: '#7cb32a', fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1, flexShrink: 0 }}>
+    <Box component="span" title={`Próxima acción en ${text}`} sx={{ color: '#7cb32a', fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1, flexShrink: 0 }}>
       {text}
     </Box>
   )
@@ -422,7 +422,7 @@ function Shell() {
         </Stack>
       </Stack>
 
-      <Box sx={{ overflow: 'auto', p: 3, minHeight: 0, display: 'flex', flexDirection: 'column', color: '#3b2a17', bgcolor: '#efe4c6', backgroundImage: `linear-gradient(rgba(239,228,198,0) 70px, rgba(239,228,198,.85) 150px, #efe4c6 190px), ${landscape}, ${parchmentTexture}`, backgroundSize: '100% 190px, 100% 190px, 300px 300px', backgroundRepeat: 'no-repeat, no-repeat, repeat', backgroundAttachment: 'local, local, local', pt: '110px', borderLeft: '6px solid #6b4423', boxShadow: 'inset 0 0 0 2px #a07a44, inset 0 0 40px rgba(110,74,36,.25)' }}>
+      <Box sx={{ overflow: 'auto', p: 3, minHeight: 0, display: 'flex', flexDirection: 'column', color: '#3b2a17', bgcolor: '#f4ecd6', backgroundImage: `linear-gradient(rgba(244,236,214,0) 70px, rgba(244,236,214,.85) 150px, #f4ecd6 190px), ${landscape}, ${parchmentTexture}`, backgroundSize: '100% 190px, 100% 190px, 300px 300px', backgroundRepeat: 'no-repeat, no-repeat, repeat', backgroundAttachment: 'local, local, local', pt: '110px', borderLeft: '6px solid #6b4423', boxShadow: 'inset 0 0 0 2px #a07a44, inset 0 0 40px rgba(110,74,36,.25)' }}>
         {page === 'cuentas' && (
           <Stack spacing={3}>
             <Accounts notify={ui.notify} refresh={id => { void refresh(id).catch((error: Error) => ui.notify(error.message)) }} />

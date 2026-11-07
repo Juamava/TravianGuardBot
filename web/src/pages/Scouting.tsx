@@ -104,7 +104,7 @@ const tipSx = { tooltip: { sx: { maxWidth: 360, fontSize: 13, lineHeight: 1.5, w
 function Hint({ text }: { text: string }) {
   return (
     <Tooltip title={text} placement="top" arrow enterDelay={200} slotProps={{ tooltip: { sx: { maxWidth: 300, fontSize: 13, lineHeight: 1.45 } } }}>
-      <InfoOutlinedIcon sx={{ fontSize: 16, color: '#8a7350', cursor: 'help' }} />
+      <InfoOutlinedIcon sx={{ fontSize: 16, color: '#5c4529', cursor: 'help' }} />
     </Tooltip>
   )
 }
@@ -116,7 +116,7 @@ function classColor(target: Target) {
     const strong = Math.min(1, Math.max(0, (target.danger - 1) / 9))
     return { bg: `rgba(237,66,69,${0.15 + strong * 0.35})`, fg: strong > 0.4 ? '#2b1d0e' : '#8a1f16' }
   }
-  return { bg: '#f1e5c2', fg: '#6b5233' }
+  return { bg: '#f1e5c2', fg: '#4a3820' }
 }
 
 function number(value: number) {
@@ -159,13 +159,13 @@ function AttackDetails({ target, report, onDelete }: { target: Target; report: A
         <Typography sx={{ fontSize: 13, color: report.won ? '#4f8a10' : '#b8281d', fontWeight: 600 }}>
           {report.won ? 'Ganaste' : 'Perdiste'} · volvieron {report.sent - report.lost} de {report.sent}{report.lost > 0 ? ` (murieron ${report.lost})` : ''}
         </Typography>
-        {report.timeUtc && <Typography sx={{ fontSize: 12, color: '#8a7350' }}>Llegó {new Date(report.timeUtc).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</Typography>}
+        {report.timeUtc && <Typography sx={{ fontSize: 13, color: '#5c4529' }}>Llegó {new Date(report.timeUtc).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</Typography>}
         <Button size="small" color="error" startIcon={<DeleteOutlineIcon />} onClick={onDelete} sx={{ mt: 1, px: 0 }}>Quitar de la lista</Button>
       </Box>
       <Box>
         <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Tus tropas</Typography>
         <Box component="table" sx={{ borderCollapse: 'collapse', width: '100%', '& td, & th': { textAlign: 'right', px: 0.75 }, '& td:first-of-type, & th:first-of-type': { textAlign: 'left', pl: 0 } }}>
-          <thead><tr>{['Tropa', 'Fueron', 'Murieron', 'Volvieron'].map(head => <Box component="th" key={head} sx={{ fontSize: 12, color: '#8a7350', fontWeight: 600 }}>{head}</Box>)}</tr></thead>
+          <thead><tr>{['Tropa', 'Fueron', 'Murieron', 'Volvieron'].map(head => <Box component="th" key={head} sx={{ fontSize: 13, color: '#5c4529', fontWeight: 600 }}>{head}</Box>)}</tr></thead>
           <tbody>
             {report.attacker.map(unit => (
               <tr key={unit.name}>
@@ -182,10 +182,10 @@ function AttackDetails({ target, report, onDelete }: { target: Target; report: A
         <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Botín</Typography>
         <Typography sx={{ fontSize: 13 }}>Madera {number(report.bounty.wood)} · Barro {number(report.bounty.clay)} · Hierro {number(report.bounty.iron)} · Cereal {number(report.bounty.crop)}</Typography>
         <Typography sx={{ fontSize: 13, fontWeight: 600 }}>Total {number(report.bounty.total)} · capacidad {number(report.carried)}/{number(report.capacity)} ({percent}%)</Typography>
-        <Typography sx={{ fontSize: 12, color: '#8a7350', mt: 0.5 }}>
+        <Typography sx={{ fontSize: 13, color: '#5c4529', mt: 0.5 }}>
           Quedan (estimado): {target.wood < 0 ? '—' : `${number(target.wood)} / ${number(target.clay)} / ${number(target.iron)} / ${number(target.crop)}`}
         </Typography>
-        {percent >= 100 && <Typography sx={{ fontSize: 12, color: '#a86f08' }}>Volvieron llenas: hay más para sacar.</Typography>}
+        {percent >= 100 && <Typography sx={{ fontSize: 13, color: '#a86f08' }}>Volvieron llenas: hay más para sacar.</Typography>}
       </Box>
       <Box>
         <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Defensa</Typography>
@@ -461,8 +461,8 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
             <Stack key={target.id} direction="row" spacing={1} alignItems="center" sx={{ px: 0.5, py: 0.25, borderRadius: 1, '&:hover': { bgcolor: '#f1e5c2' } }}>
               <Box sx={{ width: 190, flexShrink: 0 }}><AttackChip attack={target.attack!} /></Box>
               <Typography sx={{ fontSize: 13, fontWeight: 600, minWidth: 0 }} noWrap>{target.name}{target.x != null ? ` (${target.x}|${target.y})` : ''}</Typography>
-              <Typography sx={{ fontSize: 12, color: target.attack!.state === 'error' ? '#b8281d' : '#8a7350', flex: 1, minWidth: 0 }} noWrap title={target.attack!.message}>{target.attack!.message}</Typography>
-              <Typography sx={{ fontSize: 12, color: '#8a7350', flexShrink: 0 }}>{target.attack!.at ? ago(target.attack!.at) : ''}</Typography>
+              <Typography sx={{ fontSize: 13, color: target.attack!.state === 'error' ? '#b8281d' : '#5c4529', flex: 1, minWidth: 0 }} noWrap title={target.attack!.message}>{target.attack!.message}</Typography>
+              <Typography sx={{ fontSize: 13, color: '#5c4529', flexShrink: 0 }}>{target.attack!.at ? ago(target.attack!.at) : ''}</Typography>
             </Stack>
           ))}
         </Stack>
@@ -470,7 +470,7 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
 
       {list && (
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-          <ToggleButtonGroup exclusive size="small" value={filter} onChange={(_, value) => value && setFilter(value)} sx={{ bgcolor: '#fbf5e2', p: 0.5, borderRadius: 1, '& .MuiToggleButton-root': { border: 0, borderRadius: 1, px: 1.5, color: '#6b5233', textTransform: 'none', fontWeight: 600, '&.Mui-selected': { bgcolor: '#e2cf9a', color: '#2b1d0e' } } }}>
+          <ToggleButtonGroup exclusive size="small" value={filter} onChange={(_, value) => value && setFilter(value)} sx={{ bgcolor: '#fdf9ec', p: 0.5, borderRadius: 1, '& .MuiToggleButton-root': { border: 0, borderRadius: 1, px: 1.5, color: '#4a3820', textTransform: 'none', fontWeight: 600, '&.Mui-selected': { bgcolor: '#e2cf9a', color: '#2b1d0e' } } }}>
             <ToggleButton value="todas">Todas {counts.todas}</ToggleButton>
             <ToggleButton value="gorda">Vaca gorda {counts.gorda}</ToggleButton>
             <ToggleButton value="flaca">Vaca flaca {counts.flaca}</ToggleButton>
@@ -487,7 +487,7 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
 
       {list && (
         <Box sx={{ ...panel, p: 0, flex: 1, minHeight: 0, overflow: 'auto' }}>
-          <Box sx={{ display: 'grid', gridTemplateColumns: columns, gap: 1, alignItems: 'center', px: 1, py: 0.75, position: 'sticky', top: 0, zIndex: 1, bgcolor: '#fbf5e2', color: '#8a7350', fontSize: 12, fontWeight: 700, minWidth: 900 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: columns, gap: 1, alignItems: 'center', px: 1, py: 0.75, position: 'sticky', top: 0, zIndex: 1, bgcolor: '#fdf9ec', color: '#5c4529', fontSize: 13, fontWeight: 700, minWidth: 900 }}>
             <Checkbox size="small" checked={allChecked} indeterminate={!allChecked && targets.some(target => selected.includes(target.id))} onChange={event => setSelected(event.target.checked ? targets.map(target => target.id) : [])} />
             <Box>Aldea · dueño</Box>
             <Box>Clasificación</Box>
@@ -499,7 +499,7 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
             <Box />
             <Box />
           </Box>
-          {targets.length === 0 && <Typography sx={{ p: 2, color: '#8a7350' }}>{counts.todas === 0 ? 'La lista está vacía. Agregá aldeas con su enlace o sus coordenadas.' : 'Ninguna aldea en este filtro.'}</Typography>}
+          {targets.length === 0 && <Typography sx={{ p: 2, color: '#5c4529' }}>{counts.todas === 0 ? 'La lista está vacía. Agregá aldeas con su enlace o sus coordenadas.' : 'Ninguna aldea en este filtro.'}</Typography>}
           {targets.map(target => {
             const color = classColor(target)
             const checked = selected.includes(target.id)
@@ -513,11 +513,11 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
                     <Tooltip title="Abrir la aldea en el navegador">
                       <Link href={target.url} target="_blank" rel="noreferrer" underline="hover" sx={{ fontSize: 13, color: '#00a8fc', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 0.25 }}>
                         {target.x != null ? `(${target.x}|${target.y})` : 'mapa'}
-                        <OpenInNewIcon sx={{ fontSize: 12 }} />
+                        <OpenInNewIcon sx={{ fontSize: 13 }} />
                       </Link>
                     </Tooltip>
                   </Stack>
-                  <Typography sx={{ fontSize: 12, color: '#8a7350' }} noWrap>{[target.owner, target.alliance && `[${target.alliance}]`, target.population >= 0 && `${target.population} hab.`].filter(Boolean).join(' · ') || '—'}</Typography>
+                  <Typography sx={{ fontSize: 13, color: '#5c4529' }} noWrap>{[target.owner, target.alliance && `[${target.alliance}]`, target.population >= 0 && `${target.population} hab.`].filter(Boolean).join(' · ') || '—'}</Typography>
                 </Box>
                 <Box>
                   {target.label
@@ -526,27 +526,27 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
                         <Chip size="small" label={target.label} sx={{ bgcolor: color.bg, color: color.fg, fontWeight: 700, cursor: 'help' }} />
                       </Tooltip>
                     )
-                    : <Typography sx={{ fontSize: 12, color: '#8a7350' }}>{target.pending ? 'esperando reporte' : 'sin espiar'}</Typography>}
+                    : <Typography sx={{ fontSize: 13, color: '#5c4529' }}>{target.pending ? 'esperando reporte' : 'sin espiar'}</Typography>}
                 </Box>
                 <Typography sx={{ fontSize: 13 }}>
                   {target.wood < 0 ? '—' : `${number(target.wood)} / ${number(target.clay)} / ${number(target.iron)} / ${number(target.crop)}`}
-                  {target.cranny > 0 && <Box component="span" sx={{ color: '#8a7350' }}> · escondite {target.cranny}</Box>}
+                  {target.cranny > 0 && <Box component="span" sx={{ color: '#5c4529' }}> · escondite {target.cranny}</Box>}
                 </Typography>
                 <Typography sx={{ fontSize: 13, color: target.defenders === 0 ? '#4f8a10' : target.defenders < 0 && target.scoutedAt ? '#b8281d' : '#3b2a17' }}>
                   {!target.scoutedAt ? '—' : target.scoutsDied ? 'mató espías' : number(target.defenders)}
                 </Typography>
                 <Typography sx={{ fontSize: 13 }}>{target.distance >= 0 ? target.distance.toFixed(1) : '—'}</Typography>
                 <Tooltip title={target.playerPopulation >= 0 ? `Población ${target.playerPopulation} · ${target.playerVillages} aldeas · ataque ${number(target.attackPoints)} · defensa ${number(target.defensePoints)} · héroe ${number(target.heroLevel)}` : 'Todavía no se leyó el perfil'}>
-                  <Typography sx={{ fontSize: 13, color: '#6b5233' }} noWrap>{target.playerPopulation >= 0 ? `${target.playerPopulation} hab · ${target.playerVillages} ald.` : '—'}</Typography>
+                  <Typography sx={{ fontSize: 13, color: '#4a3820' }} noWrap>{target.playerPopulation >= 0 ? `${target.playerPopulation} hab · ${target.playerVillages} ald.` : '—'}</Typography>
                 </Tooltip>
                 <Box sx={{ minWidth: 0 }}>
                   {target.attack && target.attack.state !== 'llego' && (target.attack.state === 'cola' || target.attack.state === 'enviando' || target.attack.state === 'enviado' || (target.attack.at && Date.now() - new Date(target.attack.at).getTime() < 6 * 3600 * 1000))
                     ? <AttackChip attack={target.attack} />
                     : attacked(target)
-                      ? <Typography sx={{ fontSize: 12, color: '#4f8a10', fontWeight: 600 }} noWrap>atacada {ago(target.attackedAt)}</Typography>
-                      : <Typography sx={{ fontSize: 12 }} noWrap>{target.scoutedAt ? `espiada ${ago(target.scoutedAt)}` : target.status}</Typography>}
-                  {attacked(target) && target.scoutedAt && <Typography sx={{ fontSize: 11, color: '#8a7350' }} noWrap>espiada {ago(target.scoutedAt)}</Typography>}
-                  {!attacked(target) && target.scoutedAt && target.attack && <Typography sx={{ fontSize: 11, color: '#8a7350' }} noWrap>espiada {ago(target.scoutedAt)}</Typography>}
+                      ? <Typography sx={{ fontSize: 13, color: '#4f8a10', fontWeight: 600 }} noWrap>atacada {ago(target.attackedAt)}</Typography>
+                      : <Typography sx={{ fontSize: 13 }} noWrap>{target.scoutedAt ? `espiada ${ago(target.scoutedAt)}` : target.status}</Typography>}
+                  {attacked(target) && target.scoutedAt && <Typography sx={{ fontSize: 13.5, color: '#5c4529' }} noWrap>espiada {ago(target.scoutedAt)}</Typography>}
+                  {!attacked(target) && target.scoutedAt && target.attack && <Typography sx={{ fontSize: 13.5, color: '#5c4529' }} noWrap>espiada {ago(target.scoutedAt)}</Typography>}
                 </Box>
                 <Tooltip title="Atacar">
                   <span><IconButton size="small" sx={{ color: '#a86f08' }} disabled={target.attack?.state === 'cola' || target.attack?.state === 'enviando'} onClick={() => openAttack(target)}><GpsFixedIcon fontSize="small" /></IconButton></span>
