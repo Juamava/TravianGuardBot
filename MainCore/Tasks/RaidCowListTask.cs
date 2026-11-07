@@ -31,6 +31,9 @@ namespace MainCore.Tasks
 
         private async ValueTask<Result> HandleAsync(Task task, CancellationToken cancellationToken)
         {
+            // Stopped between two turns: leave ExecuteAt as it is so the scheduler drops the task.
+            if (!task.KeepRepeating) return Result.Ok();
+
             var targets = GetTargets(task);
             if (targets.Count == 0) return Skip.Error.WithError("Cow list has no villages");
             var hero = GetHeroOptions(task);
@@ -68,7 +71,6 @@ namespace MainCore.Tasks
 
                     logger.Information("Raiding {Url} with {Troops} ({Index}/{Total})", target.Url, CowTroopPlan.Format(slots), index + 1, targets.Count);
                     MarkPhase(target.Id, "Analizando");
-                    await System.Threading.Tasks.Task.Delay(NextAttackDelay(task.AccountId), cancellationToken);
 
                     Result result;
                     try
@@ -83,7 +85,7 @@ namespace MainCore.Tasks
                     {
                         logger.Warning(ex, "Skipping {Url}: {Message}", target.Url, ex.Message);
                         MarkSkipped(target.Id, "Error");
-                        continue;
+                        result = Result.Ok();
                     }
 
                     if (result.IsFailed)
@@ -93,6 +95,17 @@ namespace MainCore.Tasks
                     }
 
                     task.NextIndex = index + 1;
+
+                    // Every tile that used the browser is one turn. Moving ExecuteAt to now puts this list
+                    // behind whatever else is due on the same account (the other lists, builds, troops),
+                    // so several lists alternate on the one browser instead of one running to the end.
+                    // The account task delay the scheduler waits after each task is the pause between attacks.
+                    if (!task.KeepRepeating) return Result.Ok();
+                    if (task.NextIndex < targets.Count)
+                    {
+                        task.ExecuteAt = DateTime.Now;
+                        return Result.Ok();
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -295,14 +308,6 @@ namespace MainCore.Tasks
             var server = context.Accounts.Where(x => x.Id == task.AccountId.Value).Select(x => x.Server).FirstOrDefault();
             if (list is null || string.IsNullOrWhiteSpace(server)) return new HeroOptions(false, 0, "");
             return new HeroOptions(list.LevelHero, list.VillageId, server);
-        }
-
-        private TimeSpan NextAttackDelay(AccountId accountId)
-        {
-            using var context = contextFactory.CreateDbContext();
-            var milliseconds = context.ByName(accountId, AccountSettingEnums.TaskDelayMin, AccountSettingEnums.TaskDelayMax);
-            if (milliseconds < 0) milliseconds = 0;
-            return TimeSpan.FromMilliseconds(milliseconds);
         }
 
         private static bool IsOnCooldown(CowTarget target, int minAttackMinutes, out int elapsedMinutes)

@@ -795,7 +795,7 @@ namespace WPFUI
             var queued = tasks.GetTaskList(account).OfType<RaidCowListTask.Task>().Any();
             tasks.Add(new RaidCowListTask.Task(account, listId));
             return Ok(queued
-                ? message + " Empieza cuando termine la lista que está en curso."
+                ? message + " Se alterna con la lista que está en curso."
                 : message + " El raid empezó.");
         }
 

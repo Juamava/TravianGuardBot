@@ -767,7 +767,8 @@ namespace MainCore.UI.ViewModels.Tabs
         {
             if (CowLists.SelectedItem is null) return "";
 
-            var task = _taskManager.GetTaskList(AccountId).OfType<RaidCowListTask.Task>().FirstOrDefault();
+            var listId = CowLists.SelectedItem.Id;
+            var task = _taskManager.GetTaskList(AccountId).OfType<RaidCowListTask.Task>().FirstOrDefault(x => x.CowListId == listId);
             if (task is null) return "";
             if (task.Stage == StageEnums.Executing) return "Atacando";
 
