@@ -1161,7 +1161,10 @@ namespace WPFUI
             var sources = context.CowVillages
                 .Where(x => ids.Contains(x.Id) && x.CowList.AccountId == accountId && x.CowList.Kind == CowList.ScoutKind)
                 .ToList();
-            var existing = context.CowVillages.Where(x => x.CowListId == list.Id).Select(x => x.Url).ToList()
+            var existing = context.CowVillages.Where(x => x.CowListId == list.Id)
+                .Select(x => new { x.Url, x.CoordX, x.CoordY })
+                .AsEnumerable()
+                .Select(x => ScoutRules.TileKey(x.Url, x.CoordX, x.CoordY))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             var origin = context.Villages.Where(x => x.Id == list.VillageId).Select(x => new { x.X, x.Y }).FirstOrDefault();
 
@@ -1169,7 +1172,7 @@ namespace WPFUI
             var skipped = 0;
             foreach (var source in sources)
             {
-                if (!existing.Add(source.Url))
+                if (!existing.Add(ScoutRules.TileKey(source.Url, source.CoordX, source.CoordY)))
                 {
                     skipped++;
                     continue;
@@ -1278,6 +1281,15 @@ namespace WPFUI
             using (var context = Context(services))
             {
                 if (!context.CowLists.Any(x => x.Id == listId && x.AccountId == accountId)) return Fail("No se encontró la lista.");
+
+                // The same tile can come as karte.php?x=&y= or karte.php?d=: compare coordinates.
+                var key = ScoutRules.TileKey(url);
+                var already = context.CowVillages.Where(x => x.CowListId == listId)
+                    .Select(x => new { x.Name, x.Url, x.CoordX, x.CoordY })
+                    .AsEnumerable()
+                    .FirstOrDefault(x => ScoutRules.TileKey(x.Url, x.CoordX, x.CoordY) == key);
+                if (already is not null)
+                    return Ok($"Ya estaba en la lista: {VillageLabel(ScoutRules.CleanVillageName(already.Name))} ({key}).", new { added = false, key });
             }
 
             var (originX, originY) = ListOrigin(services, listId);
@@ -1291,7 +1303,7 @@ namespace WPFUI
                 context.SaveChanges();
             }
 
-            return Ok(row.Name == CowOasisParser.MissingName ? "Aldea agregada sin nombre." : $"Aldea agregada: {row.Name}.");
+            return Ok(row.Name == CowOasisParser.MissingName ? "Aldea agregada sin nombre." : $"Aldea agregada: {ScoutRules.CleanVillageName(row.Name)}.", new { added = true, key = ScoutRules.TileKey(url, row.CoordX, row.CoordY) });
         }
 
         private static IResult BulkEditCowList(IServiceProvider services, int accountId, int listId, string text)

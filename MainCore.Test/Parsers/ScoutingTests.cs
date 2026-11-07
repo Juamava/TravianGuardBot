@@ -194,6 +194,16 @@ namespace MainCore.Test.Parsers
         }
 
         [Fact]
+        public void Same_tile_has_the_same_key_whatever_the_link()
+        {
+            var byXY = ScoutRules.TileKey("https://ts21.x2.international.travian.com/karte.php?x=-59&y=29");
+            byXY.ShouldBe("-59|29");
+            ScoutRules.TileKey("https://ts21.x2.international.travian.com/karte.php?d=68713").ShouldBe(byXY);
+            ScoutRules.TileKey("https://otro/karte.php?zoom=1", -59, 29).ShouldBe(byXY);
+            ScoutRules.TileKey("https://ts21.x2.international.travian.com/karte.php?x=-60&y=29").ShouldNotBe(byXY);
+        }
+
+        [Fact]
         public void Percentile_compares_with_the_list()
         {
             ScoutRules.Percentile(100, [10, 50, 100, 200, 400]).ShouldBe(0.5);

@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, Link, MenuItem, Stack, Switch, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
-import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff'
+import DirectionsRunIcon from '@mui/icons-material/DirectionsRun'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import GpsFixedIcon from '@mui/icons-material/GpsFixed'
 import ScheduleIcon from '@mui/icons-material/Schedule'
@@ -87,7 +87,7 @@ function AttackChip({ attack }: { attack: Attack }) {
     : attack.state === 'llego'
       ? <CheckCircleOutlineIcon sx={{ fontSize: 14, color: `${look.fg} !important` }} />
       : attack.state === 'enviado'
-        ? <FlightTakeoffIcon sx={{ fontSize: 14, color: `${look.fg} !important` }} />
+        ? <DirectionsRunIcon sx={{ fontSize: 14, color: `${look.fg} !important` }} />
       : attack.state === 'error'
         ? <ErrorOutlineIcon sx={{ fontSize: 14, color: `${look.fg} !important` }} />
         : <ScheduleIcon sx={{ fontSize: 14, color: `${look.fg} !important` }} />
@@ -210,6 +210,8 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
   const [addText, setAddText] = useState('')
   const [addTroops, setAddTroops] = useState('')
   const [adding, setAdding] = useState(false)
+  const [progress, setProgress] = useState({ done: 0, total: 0, added: 0, repeated: 0, failed: 0 })
+  const stopAdding = useRef<AbortController | null>(null)
   const [promoteOpen, setPromoteOpen] = useState(false)
   const [promoteList, setPromoteList] = useState(0)
   const [promoteTroops, setPromoteTroops] = useState('A:5')
@@ -302,23 +304,46 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
     const urls = lines.map(line => toUrl(line, data.server))
     const bad = lines.filter((_, index) => !urls[index])
     if (bad.length > 0) {
-      notify(`No entendí: ${bad[0]}. Usá un enlace del mapa o coordenadas como -59|29.`)
+      notify(`No entendí "${bad[0]}". Usá -59|29, (-59|29) o un enlace del mapa.`)
       return
     }
+
+    // The same tile twice in the paste only goes once.
+    const unique = urls.filter((url, index) => urls.indexOf(url) === index)
+    const controller = new AbortController()
+    stopAdding.current = controller
     setAdding(true)
-    let added = 0
-    for (const url of urls) {
+    const counts = { done: 0, total: unique.length, added: 0, repeated: urls.length - unique.length, failed: 0 }
+    setProgress({ ...counts })
+    for (const url of unique) {
+      if (controller.signal.aborted) break
       try {
-        await post(`/api/accounts/${accountId}/farming/lists/${list.id}/villages`, { url, troops: addTroops || data.scoutPlan })
-        added++
+        const result = await api<{ added?: boolean }>(`/api/accounts/${accountId}/farming/lists/${list.id}/villages`, {
+          method: 'POST',
+          body: JSON.stringify({ url, troops: addTroops || data.scoutPlan }),
+          signal: controller.signal,
+        })
+        if (result.data?.added === false) counts.repeated++
+        else counts.added++
       } catch (error) {
+        if (controller.signal.aborted) break
+        counts.failed++
         notify(error instanceof Error ? error.message : 'No se pudo agregar')
       }
+      counts.done++
+      setProgress({ ...counts })
     }
+    const stopped = controller.signal.aborted
+    stopAdding.current = null
     setAdding(false)
-    setAddOpen(false)
-    setAddText('')
-    notify(`${added} de ${urls.length} aldeas agregadas.`)
+    if (!stopped) {
+      setAddOpen(false)
+      setAddText('')
+    }
+    const parts = [`${counts.added} agregada${counts.added === 1 ? '' : 's'}`]
+    if (counts.repeated > 0) parts.push(`${counts.repeated} ya estaba${counts.repeated === 1 ? '' : 'n'} en la lista`)
+    if (counts.failed > 0) parts.push(`${counts.failed} con error`)
+    notify(`${stopped ? `Detenido en ${counts.done} de ${counts.total}: ` : ''}${parts.join(', ')}.`)
     await load()
   }
 
@@ -553,12 +578,31 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
         <DialogTitle>Agregar aldeas para espiar</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
-            <TextField multiline minRows={6} label="Una aldea por línea" placeholder={'-59|29\nhttps://servidor/karte.php?x=-60&y=31'} value={addText} onChange={event => setAddText(event.target.value)} />
+            <TextField
+              multiline
+              minRows={6}
+              label="Una aldea por línea"
+              disabled={adding}
+              placeholder={'Coordenadas x|y, una por línea:\n-59|29\n(-57|18)\n\nO el enlace del mapa:\nhttps://ts21.x2.international.travian.com/karte.php?x=-60&y=31'}
+              helperText="Formatos: -59|29, (-59|29), -59,29 o el enlace del mapa (karte.php?x=…&y=… o karte.php?d=…). Las que ya están en la lista se saltean."
+              value={addText}
+              onChange={event => setAddText(event.target.value)}
+            />
+            {adding && (
+              <Stack spacing={0.5}>
+                <Typography variant="body2">Agregando {progress.done} de {progress.total} · {progress.added} nuevas{progress.repeated > 0 ? ` · ${progress.repeated} repetidas` : ''}{progress.failed > 0 ? ` · ${progress.failed} con error` : ''}</Typography>
+                <Box sx={{ height: 6, borderRadius: 3, bgcolor: '#1e1f22', overflow: 'hidden' }}>
+                  <Box sx={{ height: '100%', width: `${progress.total ? Math.round(progress.done / progress.total * 100) : 0}%`, bgcolor: '#5865f2', transition: 'width .2s' }} />
+                </Box>
+              </Stack>
+            )}
             <TextField label="Espías" helperText={`Por defecto ${data?.scoutPlan ?? ''}: la letra es la casilla del espía en el punto de reunión.`} value={addTroops} onChange={event => setAddTroops(event.target.value)} />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button disabled={adding} onClick={() => setAddOpen(false)}>Cancelar</Button>
+          {adding
+            ? <Button color="warning" variant="outlined" onClick={() => stopAdding.current?.abort()}>Detener</Button>
+            : <Button onClick={() => setAddOpen(false)}>Cancelar</Button>}
           <Button variant="contained" disabled={adding || !addText.trim()} onClick={addTargets}>{adding ? 'Agregando...' : 'Agregar'}</Button>
         </DialogActions>
       </Dialog>

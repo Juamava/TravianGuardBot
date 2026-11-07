@@ -155,6 +155,22 @@ namespace MainCore.Parsers
             return text.Trim();
         }
 
+        /// <summary>
+        /// Identity of a map tile for duplicate checks: "x|y" when the coordinates are known (from the
+        /// stored columns, karte.php?x=&amp;y= or karte.php?d=), otherwise the URL in lower case.
+        /// </summary>
+        public static string TileKey(string? url, int? x = null, int? y = null)
+        {
+            if (x is int knownX && y is int knownY) return $"{knownX}|{knownY}";
+            if (CowOasisParser.TryReadCoordinates(url ?? "", out var urlX, out var urlY)) return $"{urlX}|{urlY}";
+            if (ScoutParser.TryReadMapId(url, out var mapId))
+            {
+                var (mapX, mapY) = FromMapId(mapId);
+                return $"{mapX}|{mapY}";
+            }
+            return (url ?? "").Trim().ToLowerInvariant();
+        }
+
         /// <summary>The scout unit of each tribe, as a rally point letter.</summary>
         public static string DefaultScoutPlan(TribeEnums tribe, int amount = 1)
         {
