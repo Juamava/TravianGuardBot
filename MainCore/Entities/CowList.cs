@@ -19,6 +19,17 @@ namespace MainCore.Entities
         /// <summary>"Levear héroe": oases with animals go through the hero hunt instead of being skipped.</summary>
         public bool LevelHero { get; set; }
 
+        /// <summary>"" for an own raid list, <see cref="ScoutKind"/> for a Scouting list.</summary>
+        public string Kind { get; set; } = "";
+
+        /// <summary>Scouting only: total resources from which a village without defense is a fat cow. 0 = only full warehouses.</summary>
+        public int FullThreshold { get; set; }
+
+        /// <summary>Scouting only: scouts that always stay home. A target is skipped when sending would leave fewer.</summary>
+        public int KeepScouts { get; set; }
+
+        public const string ScoutKind = "scout";
+
         public ICollection<CowVillage> Villages { get; set; }
     }
 }
