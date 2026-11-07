@@ -262,3 +262,15 @@ Create a `[Handler] sealed partial class XCommand(...)` with a nested `record Co
 ### Read something new from the page
 
 Add a static method to a parser in `MainCore/Parsers/` that takes an `IPage` and returns an `ILocator` or a value. Use the saved pages in `Examples HTML/` to find the right selectors.
+
+## Evadir ataques (attack evasion)
+
+The "Evadir ataques con todas las tropas" checkbox at the top of the Troops page (`EvadeEnable` and the other `Evade*` village settings) queues one `EvadeAttackTask` per village (`MainCore/Tasks/EvadeAttackTask.cs`). The timing rules have no browser and live in `MainCore/Parsers/EvadeRules.cs`; the rally point is read by `MainCore/Parsers/EvadeParser.cs`.
+
+1. Every `EvadeCheckSeconds` the task opens the rally point incoming list (`build.php?gid=16&tt=1&filter=1`) and reads each `table.troop_details.inAttack` / `.inRaid` with its arrival timer.
+2. `EvadeRules.GroupWaves` joins attacks that land at most `EvadeTrainGapSeconds` apart into one wave, so a train of attacks is one wave.
+3. When the first attack of the wave is less than `EvadeRules.PrepareSeconds` away, the task fills the send form with every unit at home (the hero too when `EvadeIncludeHero` is on), picks Reinforcement, writes the ally coordinates, waits on the confirmation page and confirms `EvadeLeadSeconds` before the hit.
+4. A cancelled movement goes back in the time it already travelled. `EvadeRules.CancelAt` picks the moment that brings the troops home `EvadeSafetySeconds` after the last attack. Shortly before, the task reads the attacks again, and attacks that keep the train going extend the wave. Then it clicks cancel in the outgoing list (`filter=2`).
+5. When that moment is past Travian's 90-second cancel window, or the ally is so close that the troops arrive first, the troops stay with the ally. `EvadeStateStore` remembers it, and once `EvadeRules.CanRecall` says the attacks stopped, the task clicks "send back" for the troops in that village.
+
+The state is kept in memory. Troops left with the ally when the app closes have to be sent back by hand. The Troops page reads the status from `GET /api/accounts/{id}/villages/{villageId}/evade`.

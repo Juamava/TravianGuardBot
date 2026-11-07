@@ -131,6 +131,8 @@ namespace WPFUI
             app.MapPut("/api/accounts/{id:int}/villages/{villageId:int}/settings", (int id, int villageId, Dictionary<string, int> body) => SaveVillageSettings(services, id, villageId, body));
             app.MapGet("/api/accounts/{id:int}/villages/{villageId:int}/troops", (int id, int villageId) => GetTroopStatus(services, id, villageId));
             app.MapPost("/api/accounts/{id:int}/villages/{villageId:int}/troops/now", (int id, int villageId) => TrainTroopsNow(services, id, villageId));
+            app.MapGet("/api/accounts/{id:int}/villages/{villageId:int}/evade", (int id, int villageId) => GetEvadeStatus(services, id, villageId));
+            app.MapPost("/api/accounts/{id:int}/villages/{villageId:int}/evade/now", (int id, int villageId) => CheckEvadeNow(services, id, villageId));
 
             app.MapGet("/api/accounts/{id:int}/farming", (int id, int villageId) => GetFarming(services, id, villageId));
             app.MapGet("/api/accounts/{id:int}/scouting", (int id, int villageId) => GetScouting(services, id, villageId));
@@ -230,6 +232,47 @@ namespace WPFUI
                 running = task?.Stage == StageEnums.Executing,
                 buildings = buildings.Select(x => x.ToString()),
             });
+        }
+
+        private static IResult GetEvadeStatus(IServiceProvider services, int accountId, int villageId)
+        {
+            if (!OwnsVillage(services, accountId, villageId)) return Fail("La aldea no pertenece a esta cuenta.");
+            using var context = Context(services);
+            var village = context.Villages.Where(x => x.Id == villageId).Select(x => new { x.X, x.Y }).FirstOrDefault();
+            var task = services.GetRequiredService<TaskManager>().GetTaskList(new AccountId(accountId))
+                .OfType<EvadeAttackTask.Task>()
+                .FirstOrDefault(x => x.VillageId == new VillageId(villageId));
+            var state = services.GetRequiredService<EvadeStateStore>().Get(new VillageId(villageId));
+            List<string> history;
+            lock (state) history = [.. state.History];
+            return Ok("", new
+            {
+                queued = task is not null,
+                running = task?.Stage == StageEnums.Executing,
+                nextCheckAt = task?.ExecuteAt,
+                checkedAt = state.CheckedAt,
+                incoming = state.Incoming,
+                nextAttackAt = state.NextAttack,
+                waveFirstAt = state.WaveFirst,
+                waveLastAt = state.WaveEnd,
+                waveCount = state.WaveCount,
+                stationed = state.Stationed,
+                homeAt = state.HomeAt,
+                message = state.Message,
+                history,
+                villageX = village?.X,
+                villageY = village?.Y,
+            });
+        }
+
+        private static IResult CheckEvadeNow(IServiceProvider services, int accountId, int villageId)
+        {
+            if (!OwnsVillage(services, accountId, villageId)) return Fail("La aldea no pertenece a esta cuenta.");
+            using var context = Context(services);
+            var village = new VillageId(villageId);
+            if (!context.BooleanByName(village, VillageSettingEnums.EvadeEnable)) return Fail("Activá \"Evadir ataques\" primero.");
+            EvadeAttackTask.Schedule(context, services.GetRequiredService<TaskManager>(), new AccountId(accountId), village);
+            return Ok("Se revisan los ataques en el próximo turno del navegador.");
         }
 
         private static IResult TrainTroopsNow(IServiceProvider services, int accountId, int villageId)
@@ -958,7 +1001,12 @@ namespace WPFUI
         private static IResult SaveVillageSettings(IServiceProvider services, int accountId, int villageId, Dictionary<string, int> body)
         {
             if (!OwnsVillage(services, accountId, villageId)) return Fail("La aldea no pertenece a esta cuenta.");
-            var input = ApplyVillageSettings(ParseSettings<VillageSettingEnums>(body));
+            // Keys the body leaves out (an older settings file) keep the value already saved.
+            Dictionary<VillageSettingEnums, int> merged;
+            using (var current = Context(services))
+                merged = ReadVillageSettings(current, villageId).Get();
+            foreach (var (key, value) in ParseSettings<VillageSettingEnums>(body)) merged[key] = value;
+            var input = ApplyVillageSettings(merged);
             var validation = services.GetRequiredService<IValidator<VillageSettingInput>>().Validate(input);
             if (!validation.IsValid) return Fail(string.Join(Environment.NewLine, validation.Errors.Select(x => x.ErrorMessage)));
 
