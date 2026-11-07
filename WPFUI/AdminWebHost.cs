@@ -23,9 +23,23 @@ namespace WPFUI
         private Process _window;
         private int _exit;
 
+        private void EnsureDatabase()
+        {
+            try
+            {
+                using var context = services.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<MainCore.Infrasturecture.Persistence.AppDbContext>>().CreateDbContext();
+                if (!context.Database.EnsureCreated()) context.EnsureSchema();
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("arranque", "No se pudo preparar la base de datos: " + ex.Message);
+            }
+        }
+
         public async Task StartAsync(CancellationToken cancellationToken)
         {
             AppDomain.CurrentDomain.ProcessExit += (_, _) => CloseWindow();
+            EnsureDatabase();
             var wwwroot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
             AppLog.Write("arranque", DescribeInterface(wwwroot));
             var url = "";

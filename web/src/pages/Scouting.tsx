@@ -1,0 +1,663 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, Link, MenuItem, Stack, Switch, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material'
+import AddIcon from '@mui/icons-material/Add'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import ExpandLessIcon from '@mui/icons-material/ExpandLess'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import DirectionsRunIcon from '@mui/icons-material/DirectionsRun'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import GpsFixedIcon from '@mui/icons-material/GpsFixed'
+import ScheduleIcon from '@mui/icons-material/Schedule'
+import OpenInNewIcon from '@mui/icons-material/OpenInNew'
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
+import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import StopIcon from '@mui/icons-material/Stop'
+import { api, del, post, put } from '../api'
+import { Empty, panel, useUi } from '../ui'
+
+type Village = { id: number; name: string; x: number; y: number }
+type ScoutList = { id: number; name: string; minMinutes: number; repeatMinutes: number; autoStart: boolean; fullThreshold: number; keepScouts: number; running: boolean; countdown: string }
+type Target = {
+  id: number
+  listId: number
+  name: string
+  url: string
+  troops: string
+  status: string
+  owner: string
+  tribe: string
+  alliance: string
+  population: number
+  distance: number
+  x: number | null
+  y: number | null
+  pending: boolean
+  scoutedAt: string | null
+  scoutClass: string
+  danger: number
+  label: string
+  why: string
+  attack: Attack | null
+  attackedAt: string | null
+  attackReport: AttackReport | null
+  wood: number
+  clay: number
+  iron: number
+  crop: number
+  cranny: number
+  defenders: number
+  scoutsDied: boolean
+  playerPopulation: number
+  playerVillages: number
+  attackPoints: number
+  defensePoints: number
+  heroLevel: number
+}
+type OwnList = { id: number; name: string; sameVillage: boolean }
+type ScoutingData = { villages: Village[]; lists: ScoutList[]; targets: Target[]; ownLists: OwnList[]; scoutPlan: string; server: string }
+type Filter = 'todas' | 'gorda' | 'flaca' | 'peligro' | 'sin'
+type HomeTroop = { letter: string; index: number; name: string; available: number }
+type Attack = { state: 'cola' | 'enviando' | 'enviado' | 'llego' | 'error'; plan: string; raid: boolean; at: string | null; message: string }
+type AttackReport = {
+  won: boolean
+  timeUtc: string | null
+  attacker: { name: string; sent: number; dead: number; survived: number }[]
+  defender: { name: string; sent: number; dead: number }[]
+  bounty: { wood: number; clay: number; iron: number; crop: number; total: number }
+  carried: number
+  capacity: number
+  sent: number
+  lost: number
+}
+
+const attackLook: Record<Attack['state'], { label: string; bg: string; fg: string }> = {
+  cola: { label: 'En cola', bg: '#35373c', fg: '#dbdee1' },
+  enviando: { label: 'Enviando', bg: '#1e2a4a', fg: '#8ea1f7' },
+  enviado: { label: 'En camino', bg: '#1e2a4a', fg: '#8ea1f7' },
+  llego: { label: 'Llegó', bg: '#1f3b2b', fg: '#3ba55d' },
+  error: { label: 'No se envió', bg: '#3a2426', fg: '#ed4245' },
+}
+
+function AttackChip({ attack }: { attack: Attack }) {
+  const look = attackLook[attack.state] ?? attackLook.error
+  const icon = attack.state === 'enviando'
+    ? <CircularProgress size={12} sx={{ color: look.fg, ml: '6px !important' }} />
+    : attack.state === 'llego'
+      ? <CheckCircleOutlineIcon sx={{ fontSize: 14, color: `${look.fg} !important` }} />
+      : attack.state === 'enviado'
+        ? <DirectionsRunIcon sx={{ fontSize: 14, color: `${look.fg} !important` }} />
+      : attack.state === 'error'
+        ? <ErrorOutlineIcon sx={{ fontSize: 14, color: `${look.fg} !important` }} />
+        : <ScheduleIcon sx={{ fontSize: 14, color: `${look.fg} !important` }} />
+  return (
+    <Tooltip title={`${attack.raid ? 'Asalto' : 'Ataque normal'} con ${attack.plan}${attack.at ? ` · ${new Date(attack.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : ''}\n${attack.message}`} slotProps={{ tooltip: { sx: { whiteSpace: 'pre-line', fontSize: 13 } } }}>
+      <Chip size="small" icon={icon} label={`${look.label} ${attack.plan}`} sx={{ bgcolor: look.bg, color: look.fg, fontWeight: 600, height: 22, maxWidth: '100%' }} />
+    </Tooltip>
+  )
+}
+
+const columns = '34px minmax(150px, 1.4fr) 120px minmax(150px, 1fr) 70px 64px 110px 120px 34px 34px'
+const tipSx = { tooltip: { sx: { maxWidth: 360, fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-line' as const } } }
+
+function Hint({ text }: { text: string }) {
+  return (
+    <Tooltip title={text} placement="top" arrow enterDelay={200} slotProps={{ tooltip: { sx: { maxWidth: 300, fontSize: 13, lineHeight: 1.45 } } }}>
+      <InfoOutlinedIcon sx={{ fontSize: 16, color: '#949ba4', cursor: 'help' }} />
+    </Tooltip>
+  )
+}
+
+function classColor(target: Target) {
+  if (target.scoutClass === 'gorda') return { bg: '#1f3b2b', fg: '#3ba55d' }
+  if (target.scoutClass === 'flaca') return { bg: '#3d3420', fg: '#f0b232' }
+  if (target.scoutClass === 'peligro') {
+    const strong = Math.min(1, Math.max(0, (target.danger - 1) / 9))
+    return { bg: `rgba(237,66,69,${0.15 + strong * 0.35})`, fg: strong > 0.4 ? '#fff' : '#f2a3a4' }
+  }
+  return { bg: '#35373c', fg: '#b5bac1' }
+}
+
+function number(value: number) {
+  return value < 0 ? '—' : value.toLocaleString()
+}
+
+function ago(value: string | null) {
+  if (!value) return ''
+  const minutes = Math.floor((Date.now() - new Date(value).getTime()) / 60000)
+  if (!Number.isFinite(minutes) || minutes < 0) return ''
+  if (minutes < 60) return `hace ${minutes} min`
+  if (minutes < 60 * 48) return `hace ${Math.floor(minutes / 60)} h`
+  return `hace ${Math.floor(minutes / 1440)} días`
+}
+
+function toUrl(line: string, server: string) {
+  const text = line.trim()
+  if (!text) return ''
+  if (/^https?:\/\//i.test(text)) return text
+  const match = text.replace(/[()‭‬‪‫−]/g, value => (value === '−' ? '-' : '')).match(/(-?\d+)\s*[|,; ]\s*(-?\d+)/)
+  if (!match || !server) return ''
+  return `${server.replace(/\/$/, '')}/karte.php?x=${match[1]}&y=${match[2]}`
+}
+
+function attacked(target: Target) {
+  if (!target.attackedAt) return false
+  if (!target.scoutedAt) return true
+  return new Date(target.attackedAt).getTime() >= new Date(target.scoutedAt).getTime()
+}
+
+function AttackDetails({ target, report, onDelete }: { target: Target; report: AttackReport; onDelete: () => void }) {
+  const percent = report.capacity > 0 ? Math.round(report.carried / report.capacity * 100) : 0
+  const cell = { fontSize: 13, py: 0.25 } as const
+  return (
+    <Box sx={{ mx: 1, mb: 1, p: 1.5, borderRadius: 1, bgcolor: '#232428', display: 'grid', gap: 2, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', minWidth: 880 }}>
+      <Box>
+        <Typography sx={{ fontWeight: 700, mb: 0.5 }}>
+          Último ataque {target.attackedAt ? `· ${ago(target.attackedAt)}` : ''}
+        </Typography>
+        <Typography sx={{ fontSize: 13, color: report.won ? '#3ba55d' : '#ed4245', fontWeight: 600 }}>
+          {report.won ? 'Ganaste' : 'Perdiste'} · volvieron {report.sent - report.lost} de {report.sent}{report.lost > 0 ? ` (murieron ${report.lost})` : ''}
+        </Typography>
+        {report.timeUtc && <Typography sx={{ fontSize: 12, color: '#949ba4' }}>Llegó {new Date(report.timeUtc).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</Typography>}
+        <Button size="small" color="error" startIcon={<DeleteOutlineIcon />} onClick={onDelete} sx={{ mt: 1, px: 0 }}>Quitar de la lista</Button>
+      </Box>
+      <Box>
+        <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Tus tropas</Typography>
+        <Box component="table" sx={{ borderCollapse: 'collapse', width: '100%', '& td, & th': { textAlign: 'right', px: 0.75 }, '& td:first-of-type, & th:first-of-type': { textAlign: 'left', pl: 0 } }}>
+          <thead><tr>{['Tropa', 'Fueron', 'Murieron', 'Volvieron'].map(head => <Box component="th" key={head} sx={{ fontSize: 12, color: '#949ba4', fontWeight: 600 }}>{head}</Box>)}</tr></thead>
+          <tbody>
+            {report.attacker.map(unit => (
+              <tr key={unit.name}>
+                <Box component="td" sx={cell}>{unit.name}</Box>
+                <Box component="td" sx={cell}>{unit.sent}</Box>
+                <Box component="td" sx={{ ...cell, color: unit.dead > 0 ? '#ed4245' : undefined }}>{unit.dead}</Box>
+                <Box component="td" sx={{ ...cell, color: '#3ba55d' }}>{unit.survived}</Box>
+              </tr>
+            ))}
+          </tbody>
+        </Box>
+      </Box>
+      <Box>
+        <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Botín</Typography>
+        <Typography sx={{ fontSize: 13 }}>Madera {number(report.bounty.wood)} · Barro {number(report.bounty.clay)} · Hierro {number(report.bounty.iron)} · Cereal {number(report.bounty.crop)}</Typography>
+        <Typography sx={{ fontSize: 13, fontWeight: 600 }}>Total {number(report.bounty.total)} · capacidad {number(report.carried)}/{number(report.capacity)} ({percent}%)</Typography>
+        <Typography sx={{ fontSize: 12, color: '#949ba4', mt: 0.5 }}>
+          Quedan (estimado): {target.wood < 0 ? '—' : `${number(target.wood)} / ${number(target.clay)} / ${number(target.iron)} / ${number(target.crop)}`}
+        </Typography>
+        {percent >= 100 && <Typography sx={{ fontSize: 12, color: '#f0b232' }}>Volvieron llenas: hay más para sacar.</Typography>}
+      </Box>
+      <Box>
+        <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Defensa</Typography>
+        {report.defender.length === 0
+          ? <Typography sx={{ fontSize: 13, color: '#3ba55d' }}>No había tropas.</Typography>
+          : report.defender.map(unit => <Typography key={unit.name} sx={{ fontSize: 13 }}>{unit.name}: {unit.sent}{unit.dead > 0 ? ` (murieron ${unit.dead})` : ''}</Typography>)}
+      </Box>
+    </Box>
+  )
+}
+
+export function Scouting({ accountId, notify }: { accountId: number; notify: (message: string) => void }) {
+  const ui = useUi()
+  const [villageId, setVillageId] = useState(0)
+  const [data, setData] = useState<ScoutingData | null>(null)
+  const busy = (data?.targets ?? []).some(target => target.attack?.state === 'cola' || target.attack?.state === 'enviando')
+  const [listId, setListId] = useState(0)
+  const [filter, setFilter] = useState<Filter>('todas')
+  const [selected, setSelected] = useState<number[]>([])
+  const [draft, setDraft] = useState<{ minMinutes: string; repeatMinutes: string; fullThreshold: string; keepScouts: string; autoStart: boolean } | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
+  const [addText, setAddText] = useState('')
+  const [addTroops, setAddTroops] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [progress, setProgress] = useState({ done: 0, total: 0, added: 0, repeated: 0, failed: 0 })
+  const stopAdding = useRef<AbortController | null>(null)
+  const [promoteOpen, setPromoteOpen] = useState(false)
+  const [promoteList, setPromoteList] = useState(0)
+  const [promoteTroops, setPromoteTroops] = useState('A:5')
+  const [attackTarget, setAttackTarget] = useState<Target | null>(null)
+  const [attackTroops, setAttackTroops] = useState('')
+  const [attackRaid, setAttackRaid] = useState(true)
+  const [homeTroops, setHomeTroops] = useState<HomeTroop[] | null>(null)
+  const [homeError, setHomeError] = useState('')
+  const [open, setOpen] = useState<number[]>([])
+
+  async function load(village = villageId) {
+    const result = await api<ScoutingData>(`/api/accounts/${accountId}/scouting?villageId=${village}`)
+    setData(result.data)
+    if (!village && result.data.villages[0]) setVillageId(result.data.villages[0].id)
+    setListId(current => result.data.lists.some(list => list.id === current) ? current : (result.data.lists[0]?.id ?? 0))
+    return result.data
+  }
+
+  useEffect(() => { load(0).catch((error: Error) => notify(error.message)) }, [accountId])
+  useEffect(() => {
+    if (!villageId) return
+    load(villageId).catch((error: Error) => notify(error.message))
+    const timer = window.setInterval(() => load(villageId).catch(() => undefined), busy ? 1500 : 4000)
+    return () => window.clearInterval(timer)
+  }, [villageId, busy])
+
+  const list = data?.lists.find(item => item.id === listId) ?? null
+  useEffect(() => {
+    setDraft(list ? { minMinutes: String(list.minMinutes), repeatMinutes: String(list.repeatMinutes), fullThreshold: String(list.fullThreshold), keepScouts: String(list.keepScouts), autoStart: list.autoStart } : null)
+    setSelected([])
+  }, [listId, list?.minMinutes, list?.repeatMinutes, list?.fullThreshold, list?.keepScouts, list?.autoStart])
+
+  const targets = useMemo(() => {
+    const rows = (data?.targets ?? []).filter(target => target.listId === listId)
+    const filtered = rows.filter(target => {
+      if (filter === 'todas') return true
+      if (filter === 'sin') return !target.scoutClass
+      return target.scoutClass === filter
+    })
+    return filtered.sort((a, b) => {
+      const rank = (target: Target) => target.scoutClass === 'gorda' ? 0 : target.scoutClass === 'flaca' ? 1 : target.scoutClass === 'peligro' ? 2 : 3
+      return rank(a) - rank(b) || a.danger - b.danger || a.distance - b.distance
+    })
+  }, [data, listId, filter])
+
+  const counts = useMemo(() => {
+    const rows = (data?.targets ?? []).filter(target => target.listId === listId)
+    return {
+      todas: rows.length,
+      gorda: rows.filter(target => target.scoutClass === 'gorda').length,
+      flaca: rows.filter(target => target.scoutClass === 'flaca').length,
+      peligro: rows.filter(target => target.scoutClass === 'peligro').length,
+      sin: rows.filter(target => !target.scoutClass).length,
+    }
+  }, [data, listId])
+
+  async function run(action: () => Promise<{ message: string }>) {
+    try {
+      const result = await action()
+      notify(result.message)
+      await load()
+      return true
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo completar')
+      return false
+    }
+  }
+
+  async function createList() {
+    const name = await ui.prompt('Nombre de la lista de scouting', 'Vecinos')
+    if (!name) return
+    await run(() => post(`/api/accounts/${accountId}/scouting/lists`, { villageId, name }))
+  }
+
+  async function saveList() {
+    if (!list || !draft) return
+    await run(() => put(`/api/accounts/${accountId}/scouting/lists/${list.id}`, {
+      name: list.name,
+      minMinutes: Number(draft.minMinutes) || 0,
+      repeatMinutes: Number(draft.repeatMinutes) || 0,
+      fullThreshold: Number(draft.fullThreshold) || 0,
+      keepScouts: Number(draft.keepScouts) || 0,
+      autoStart: draft.autoStart,
+    }))
+  }
+
+  async function addTargets() {
+    if (!list || !data) return
+    const lines = addText.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+    const urls = lines.map(line => toUrl(line, data.server))
+    const bad = lines.filter((_, index) => !urls[index])
+    if (bad.length > 0) {
+      notify(`No entendí "${bad[0]}". Usá -59|29, (-59|29) o un enlace del mapa.`)
+      return
+    }
+
+    // The same tile twice in the paste only goes once.
+    const unique = urls.filter((url, index) => urls.indexOf(url) === index)
+    const controller = new AbortController()
+    stopAdding.current = controller
+    setAdding(true)
+    const counts = { done: 0, total: unique.length, added: 0, repeated: urls.length - unique.length, failed: 0 }
+    setProgress({ ...counts })
+    for (const url of unique) {
+      if (controller.signal.aborted) break
+      try {
+        const result = await api<{ added?: boolean }>(`/api/accounts/${accountId}/farming/lists/${list.id}/villages`, {
+          method: 'POST',
+          body: JSON.stringify({ url, troops: addTroops || data.scoutPlan }),
+          signal: controller.signal,
+        })
+        if (result.data?.added === false) counts.repeated++
+        else counts.added++
+      } catch (error) {
+        if (controller.signal.aborted) break
+        counts.failed++
+        notify(error instanceof Error ? error.message : 'No se pudo agregar')
+      }
+      counts.done++
+      setProgress({ ...counts })
+    }
+    const stopped = controller.signal.aborted
+    stopAdding.current = null
+    setAdding(false)
+    if (!stopped) {
+      setAddOpen(false)
+      setAddText('')
+    }
+    const parts = [`${counts.added} agregada${counts.added === 1 ? '' : 's'}`]
+    if (counts.repeated > 0) parts.push(`${counts.repeated} ya estaba${counts.repeated === 1 ? '' : 'n'} en la lista`)
+    if (counts.failed > 0) parts.push(`${counts.failed} con error`)
+    notify(`${stopped ? `Detenido en ${counts.done} de ${counts.total}: ` : ''}${parts.join(', ')}.`)
+    await load()
+  }
+
+  async function promote() {
+    if (!promoteList) {
+      notify('Elegí una lista propia.')
+      return
+    }
+    const ok = await run(() => post(`/api/accounts/${accountId}/scouting/promote`, { cowIds: selected, listId: promoteList, troops: promoteTroops }))
+    if (ok) {
+      setPromoteOpen(false)
+      setSelected([])
+    }
+  }
+
+  async function openAttack(target: Target) {
+    setAttackTarget(target)
+    setAttackTroops('')
+    setAttackRaid(true)
+    setHomeTroops(null)
+    setHomeError('')
+    try {
+      const result = await api<HomeTroop[]>(`/api/accounts/${accountId}/villages/${villageId}/home-troops`)
+      setHomeTroops(result.data)
+    } catch (error) {
+      setHomeError(error instanceof Error ? error.message : 'No se pudieron leer las tropas')
+      setHomeTroops([])
+    }
+  }
+
+  function addToPlan(troop: HomeTroop) {
+    const parts = attackTroops.trim().split(/\s+/).filter(Boolean).filter(part => !part.toUpperCase().startsWith(`${troop.letter}:`))
+    parts.push(`${troop.letter}:${troop.available}`)
+    setAttackTroops(parts.join(' '))
+  }
+
+  async function attack() {
+    if (!attackTarget) return
+    const troops = attackTroops.trim() || 'A:50'
+    const ok = await run(() => post(`/api/accounts/${accountId}/scouting/attack`, { cowId: attackTarget.id, troops, raid: attackRaid }))
+    if (ok) setAttackTarget(null)
+  }
+
+  if (data && data.villages.length === 0) return <Empty title="Todavía no hay aldeas" text="Conectá la cuenta. Cuando el juego cargue las aldeas, vas a poder espiar desde acá." />
+
+  const recentAttacks = (data?.targets ?? [])
+    .filter(target => target.listId === listId && target.attack && (target.attack.state === 'cola' || target.attack.state === 'enviando' || (target.attack.at && Date.now() - new Date(target.attack.at).getTime() < 6 * 3600 * 1000)))
+    .sort((a, b) => new Date(b.attack!.at ?? Date.now()).getTime() - new Date(a.attack!.at ?? Date.now()).getTime())
+    .slice(0, 8)
+
+  const allChecked = targets.length > 0 && targets.every(target => selected.includes(target.id))
+
+  return (
+    <Stack spacing={1.5} sx={{ flex: 1, minHeight: 0 }}>
+      <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
+        <Typography variant="h4">Scouting</Typography>
+        {data && (
+          <TextField select label="Los espías salen de" value={villageId || ''} onChange={event => setVillageId(Number(event.target.value))} sx={{ minWidth: 240 }}>
+            {data.villages.map(village => <MenuItem key={village.id} value={village.id}>{village.name} ({village.x}|{village.y})</MenuItem>)}
+          </TextField>
+        )}
+        {data && data.lists.length > 0 && (
+          <TextField select label="Lista" value={listId || ''} onChange={event => setListId(Number(event.target.value))} sx={{ minWidth: 220 }}>
+            {data.lists.map(item => <MenuItem key={item.id} value={item.id}>{item.name}{item.running ? ' · en curso' : ''}</MenuItem>)}
+          </TextField>
+        )}
+        <Button startIcon={<AddIcon />} onClick={createList} disabled={!villageId}>Nueva lista</Button>
+      </Stack>
+
+      {data && data.lists.length === 0 && (
+        <Empty title="Creá una lista de scouting" text="Agregá aldeas, el bot les manda espías y clasifica cada una: vaca gorda, vaca flaca o peligro del 1 al 10." />
+      )}
+
+      {list && draft && (
+        <Stack spacing={1.5} sx={{ ...panel, p: 2 }}>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+            <Typography sx={{ fontWeight: 700, fontSize: 16, mr: 1 }}>{list.name}</Typography>
+            <Chip size="small" label={list.running ? (list.countdown || 'en curso') : 'detenida'} color={list.running ? 'secondary' : 'default'} />
+            <Box sx={{ flex: 1 }} />
+            {!list.running && (
+              <Button variant="contained" startIcon={<PlayArrowIcon />} onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists/${list.id}/start`, { minMinutes: Number(draft.minMinutes) || 0, repeatMinutes: Number(draft.repeatMinutes) || 0 }))}>Iniciar</Button>
+            )}
+            {list.running && <Button variant="outlined" color="warning" startIcon={<StopIcon />} onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists/${list.id}/stop`))}>Detener</Button>}
+            <Tooltip title="Borrar la lista">
+              <IconButton sx={{ color: '#ed4245' }} onClick={async () => { if (await ui.confirm(`¿Borrar ${list.name} y sus aldeas?`)) run(() => del(`/api/accounts/${accountId}/farming/lists/${list.id}`)) }}><DeleteOutlineIcon /></IconButton>
+            </Tooltip>
+          </Stack>
+          <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
+            <TextField type="number" label="Volver a espiar cada (min)" value={draft.minMinutes} onChange={event => setDraft({ ...draft, minMinutes: event.target.value })} onBlur={saveList} sx={{ width: 200 }} />
+            <TextField type="number" label="Revisar la lista cada (min)" value={draft.repeatMinutes} onChange={event => setDraft({ ...draft, repeatMinutes: event.target.value })} onBlur={saveList} sx={{ width: 200 }} />
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <TextField type="number" label="Vaca gorda desde (recursos)" value={draft.fullThreshold} onChange={event => setDraft({ ...draft, fullThreshold: event.target.value })} onBlur={saveList} sx={{ width: 210 }} />
+              <Hint text="Sin defensas y con el almacén lleno (madera, barro y hierro iguales) es vaca gorda. Si ponés un número, también cuenta como gorda cuando el total de recursos llega a ese número. 0 = solo almacén lleno." />
+            </Stack>
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <TextField type="number" label="Espías que quedan en la aldea" value={draft.keepScouts} inputProps={{ min: 0 }} onChange={event => setDraft({ ...draft, keepScouts: event.target.value })} onBlur={saveList} sx={{ width: 210 }} />
+              <Hint text="Mínimo de espías que siempre quedan en casa, para defenderte de espionajes o tenerlos a mano. Si mandar a una aldea deja menos que esto, esa aldea se saltea en esta vuelta." />
+            </Stack>
+            <FormControlLabel control={<Switch checked={draft.autoStart} onChange={event => { const next = { ...draft, autoStart: event.target.checked }; setDraft(next); put(`/api/accounts/${accountId}/scouting/lists/${list.id}`, { name: list.name, minMinutes: Number(next.minMinutes) || 0, repeatMinutes: Number(next.repeatMinutes) || 0, fullThreshold: Number(next.fullThreshold) || 0, keepScouts: Number(next.keepScouts) || 0, autoStart: next.autoStart }).then(result => notify(result.message)).catch((error: Error) => notify(error.message)).finally(() => load()) }} />} label="Iniciar al conectar" />
+          </Stack>
+          <Typography variant="caption" color="text.secondary">
+            Cada vuelta primero lee los reportes de espionaje y visita el perfil de los dueños, después manda espías a las aldeas que toca. Se alterna con tus otras listas en el mismo navegador.
+          </Typography>
+        </Stack>
+      )}
+
+      {recentAttacks.length > 0 && (
+        <Stack spacing={0.5} sx={{ ...panel, p: 1.5 }}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <GpsFixedIcon sx={{ fontSize: 18, color: '#f0b232' }} />
+            <Typography sx={{ fontWeight: 700 }}>Ataques</Typography>
+            <Typography variant="caption" color="text.secondary">últimas 6 horas</Typography>
+          </Stack>
+          {recentAttacks.map(target => (
+            <Stack key={target.id} direction="row" spacing={1} alignItems="center" sx={{ px: 0.5, py: 0.25, borderRadius: 1, '&:hover': { bgcolor: '#35373c' } }}>
+              <Box sx={{ width: 190, flexShrink: 0 }}><AttackChip attack={target.attack!} /></Box>
+              <Typography sx={{ fontSize: 13, fontWeight: 600, minWidth: 0 }} noWrap>{target.name}{target.x != null ? ` (${target.x}|${target.y})` : ''}</Typography>
+              <Typography sx={{ fontSize: 12, color: target.attack!.state === 'error' ? '#ed4245' : '#949ba4', flex: 1, minWidth: 0 }} noWrap title={target.attack!.message}>{target.attack!.message}</Typography>
+              <Typography sx={{ fontSize: 12, color: '#949ba4', flexShrink: 0 }}>{target.attack!.at ? ago(target.attack!.at) : ''}</Typography>
+            </Stack>
+          ))}
+        </Stack>
+      )}
+
+      {list && (
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <ToggleButtonGroup exclusive size="small" value={filter} onChange={(_, value) => value && setFilter(value)} sx={{ bgcolor: '#2b2d31', p: 0.5, borderRadius: 1, '& .MuiToggleButton-root': { border: 0, borderRadius: 1, px: 1.5, color: '#b5bac1', textTransform: 'none', fontWeight: 600, '&.Mui-selected': { bgcolor: '#404249', color: '#fff' } } }}>
+            <ToggleButton value="todas">Todas {counts.todas}</ToggleButton>
+            <ToggleButton value="gorda">Vaca gorda {counts.gorda}</ToggleButton>
+            <ToggleButton value="flaca">Vaca flaca {counts.flaca}</ToggleButton>
+            <ToggleButton value="peligro">Peligro {counts.peligro}</ToggleButton>
+            <ToggleButton value="sin">Sin espiar {counts.sin}</ToggleButton>
+          </ToggleButtonGroup>
+          <Box sx={{ flex: 1 }} />
+          <Button startIcon={<AddIcon />} onClick={() => { setAddTroops(data?.scoutPlan ?? ''); setAddOpen(true) }}>Agregar aldeas</Button>
+          <Button variant="contained" startIcon={<PlaylistAddIcon />} disabled={selected.length === 0} onClick={() => { setPromoteList(data?.ownLists[0]?.id ?? 0); setPromoteTroops('A:5'); setPromoteOpen(true) }}>
+            Agregar a lista propia{selected.length > 0 ? ` (${selected.length})` : ''}
+          </Button>
+        </Stack>
+      )}
+
+      {list && (
+        <Box sx={{ ...panel, p: 0, flex: 1, minHeight: 0, overflow: 'auto' }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: columns, gap: 1, alignItems: 'center', px: 1, py: 0.75, position: 'sticky', top: 0, zIndex: 1, bgcolor: '#2b2d31', color: '#949ba4', fontSize: 12, fontWeight: 700, minWidth: 900 }}>
+            <Checkbox size="small" checked={allChecked} indeterminate={!allChecked && targets.some(target => selected.includes(target.id))} onChange={event => setSelected(event.target.checked ? targets.map(target => target.id) : [])} />
+            <Box>Aldea · dueño</Box>
+            <Box>Clasificación</Box>
+            <Box>Recursos (madera/barro/hierro/cereal)</Box>
+            <Box>Tropas</Box>
+            <Box>Dist.</Box>
+            <Box>Jugador</Box>
+            <Box>Estado</Box>
+            <Box />
+            <Box />
+          </Box>
+          {targets.length === 0 && <Typography sx={{ p: 2, color: '#949ba4' }}>{counts.todas === 0 ? 'La lista está vacía. Agregá aldeas con su enlace o sus coordenadas.' : 'Ninguna aldea en este filtro.'}</Typography>}
+          {targets.map(target => {
+            const color = classColor(target)
+            const checked = selected.includes(target.id)
+            return (
+              <Box key={target.id}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: columns, gap: 1, alignItems: 'center', px: 1, py: 0.6, borderTop: '1px solid #3f4147', minWidth: 900, bgcolor: checked || open.includes(target.id) ? '#35373c' : 'transparent' }}>
+                <Checkbox size="small" checked={checked} onChange={event => setSelected(current => event.target.checked ? [...current, target.id] : current.filter(id => id !== target.id))} />
+                <Box sx={{ minWidth: 0 }}>
+                  <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0 }}>
+                    <Typography sx={{ fontWeight: 600, fontSize: 14, minWidth: 0 }} noWrap>{target.name}</Typography>
+                    <Tooltip title="Abrir la aldea en el navegador">
+                      <Link href={target.url} target="_blank" rel="noreferrer" underline="hover" sx={{ fontSize: 13, color: '#00a8fc', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 0.25 }}>
+                        {target.x != null ? `(${target.x}|${target.y})` : 'mapa'}
+                        <OpenInNewIcon sx={{ fontSize: 12 }} />
+                      </Link>
+                    </Tooltip>
+                  </Stack>
+                  <Typography sx={{ fontSize: 12, color: '#949ba4' }} noWrap>{[target.owner, target.alliance && `[${target.alliance}]`, target.population >= 0 && `${target.population} hab.`].filter(Boolean).join(' · ') || '—'}</Typography>
+                </Box>
+                <Box>
+                  {target.label
+                    ? (
+                      <Tooltip title={target.why || target.label} placement="right" arrow slotProps={tipSx}>
+                        <Chip size="small" label={target.label} sx={{ bgcolor: color.bg, color: color.fg, fontWeight: 700, cursor: 'help' }} />
+                      </Tooltip>
+                    )
+                    : <Typography sx={{ fontSize: 12, color: '#949ba4' }}>{target.pending ? 'esperando reporte' : 'sin espiar'}</Typography>}
+                </Box>
+                <Typography sx={{ fontSize: 13 }}>
+                  {target.wood < 0 ? '—' : `${number(target.wood)} / ${number(target.clay)} / ${number(target.iron)} / ${number(target.crop)}`}
+                  {target.cranny > 0 && <Box component="span" sx={{ color: '#949ba4' }}> · escondite {target.cranny}</Box>}
+                </Typography>
+                <Typography sx={{ fontSize: 13, color: target.defenders === 0 ? '#3ba55d' : target.defenders < 0 && target.scoutedAt ? '#ed4245' : '#dbdee1' }}>
+                  {!target.scoutedAt ? '—' : target.scoutsDied ? 'mató espías' : number(target.defenders)}
+                </Typography>
+                <Typography sx={{ fontSize: 13 }}>{target.distance >= 0 ? target.distance.toFixed(1) : '—'}</Typography>
+                <Tooltip title={target.playerPopulation >= 0 ? `Población ${target.playerPopulation} · ${target.playerVillages} aldeas · ataque ${number(target.attackPoints)} · defensa ${number(target.defensePoints)} · héroe ${number(target.heroLevel)}` : 'Todavía no se leyó el perfil'}>
+                  <Typography sx={{ fontSize: 13, color: '#b5bac1' }} noWrap>{target.playerPopulation >= 0 ? `${target.playerPopulation} hab · ${target.playerVillages} ald.` : '—'}</Typography>
+                </Tooltip>
+                <Box sx={{ minWidth: 0 }}>
+                  {target.attack && target.attack.state !== 'llego' && (target.attack.state === 'cola' || target.attack.state === 'enviando' || target.attack.state === 'enviado' || (target.attack.at && Date.now() - new Date(target.attack.at).getTime() < 6 * 3600 * 1000))
+                    ? <AttackChip attack={target.attack} />
+                    : attacked(target)
+                      ? <Typography sx={{ fontSize: 12, color: '#3ba55d', fontWeight: 600 }} noWrap>atacada {ago(target.attackedAt)}</Typography>
+                      : <Typography sx={{ fontSize: 12 }} noWrap>{target.scoutedAt ? `espiada ${ago(target.scoutedAt)}` : target.status}</Typography>}
+                  {attacked(target) && target.scoutedAt && <Typography sx={{ fontSize: 11, color: '#949ba4' }} noWrap>espiada {ago(target.scoutedAt)}</Typography>}
+                  {!attacked(target) && target.scoutedAt && target.attack && <Typography sx={{ fontSize: 11, color: '#949ba4' }} noWrap>espiada {ago(target.scoutedAt)}</Typography>}
+                </Box>
+                <Tooltip title="Atacar">
+                  <span><IconButton size="small" sx={{ color: '#f0b232' }} disabled={target.attack?.state === 'cola' || target.attack?.state === 'enviando'} onClick={() => openAttack(target)}><GpsFixedIcon fontSize="small" /></IconButton></span>
+                </Tooltip>
+                {target.attackReport
+                  ? (
+                    <Tooltip title={open.includes(target.id) ? 'Ocultar el último ataque' : 'Ver el último ataque'}>
+                      <IconButton size="small" sx={{ color: '#dbdee1' }} onClick={() => setOpen(current => current.includes(target.id) ? current.filter(id => id !== target.id) : [...current, target.id])}>
+                        {open.includes(target.id) ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                      </IconButton>
+                    </Tooltip>
+                  )
+                  : (
+                    <Tooltip title="Quitar de la lista">
+                      <IconButton size="small" sx={{ color: '#ed4245' }} onClick={async () => { if (await ui.confirm(`¿Quitar ${target.name} de la lista?`)) run(() => del(`/api/accounts/${accountId}/farming/villages/${target.id}`)) }}><DeleteOutlineIcon fontSize="small" /></IconButton>
+                    </Tooltip>
+                  )}
+              </Box>
+              {open.includes(target.id) && target.attackReport && (
+                <AttackDetails target={target} report={target.attackReport} onDelete={async () => { if (await ui.confirm(`¿Quitar ${target.name} de la lista?`)) run(() => del(`/api/accounts/${accountId}/farming/villages/${target.id}`)) }} />
+              )}
+              </Box>
+            )
+          })}
+        </Box>
+      )}
+
+      <Dialog open={addOpen} onClose={() => !adding && setAddOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Agregar aldeas para espiar</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField
+              multiline
+              minRows={6}
+              label="Una aldea por línea"
+              disabled={adding}
+              placeholder={'Coordenadas x|y, una por línea:\n-59|29\n(-57|18)\n\nO el enlace del mapa:\nhttps://ts21.x2.international.travian.com/karte.php?x=-60&y=31'}
+              helperText="Formatos: -59|29, (-59|29), -59,29 o el enlace del mapa (karte.php?x=…&y=… o karte.php?d=…). Las que ya están en la lista se saltean."
+              value={addText}
+              onChange={event => setAddText(event.target.value)}
+            />
+            {adding && (
+              <Stack spacing={0.5}>
+                <Typography variant="body2">Agregando {progress.done} de {progress.total} · {progress.added} nuevas{progress.repeated > 0 ? ` · ${progress.repeated} repetidas` : ''}{progress.failed > 0 ? ` · ${progress.failed} con error` : ''}</Typography>
+                <Box sx={{ height: 6, borderRadius: 3, bgcolor: '#1e1f22', overflow: 'hidden' }}>
+                  <Box sx={{ height: '100%', width: `${progress.total ? Math.round(progress.done / progress.total * 100) : 0}%`, bgcolor: '#5865f2', transition: 'width .2s' }} />
+                </Box>
+              </Stack>
+            )}
+            <TextField label="Espías" helperText={`Por defecto ${data?.scoutPlan ?? ''}: la letra es la casilla del espía en el punto de reunión.`} value={addTroops} onChange={event => setAddTroops(event.target.value)} />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          {adding
+            ? <Button color="warning" variant="outlined" onClick={() => stopAdding.current?.abort()}>Detener</Button>
+            : <Button onClick={() => setAddOpen(false)}>Cancelar</Button>}
+          <Button variant="contained" disabled={adding || !addText.trim()} onClick={addTargets}>{adding ? 'Agregando...' : 'Agregar'}</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={attackTarget != null} onClose={() => setAttackTarget(null)} fullWidth maxWidth="sm">
+        <DialogTitle>Atacar {attackTarget?.name}{attackTarget?.x != null ? ` (${attackTarget.x}|${attackTarget.y})` : ''}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            {attackTarget?.label && (
+              <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-line' }}>{attackTarget.why || attackTarget.label}</Typography>
+            )}
+            <Box>
+              <Typography variant="caption" color="text.secondary">Tus tropas en {data?.villages.find(village => village.id === villageId)?.name ?? 'la aldea'} (click para mandar todas)</Typography>
+              {homeTroops == null && <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}><CircularProgress size={16} /><Typography variant="body2">Leyendo el punto de reunión...</Typography></Stack>}
+              {homeError && <Typography variant="body2" color="error" sx={{ mt: 1 }}>{homeError}</Typography>}
+              {homeTroops && homeTroops.length > 0 && (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
+                  {homeTroops.map(troop => (
+                    <Chip key={troop.letter} label={`${troop.letter} · ${troop.name}: ${troop.available}`} disabled={troop.available === 0} onClick={() => addToPlan(troop)} variant={troop.available > 0 ? 'filled' : 'outlined'} sx={{ bgcolor: troop.available > 0 ? '#404249' : 'transparent' }} />
+                  ))}
+                </Box>
+              )}
+            </Box>
+            <TextField label="Tropas" placeholder="A:50" helperText="Letra de la casilla y cantidad, por ejemplo A:50 o A:30 D:2. Vacío manda A:50." value={attackTroops} onChange={event => setAttackTroops(event.target.value)} />
+            <ToggleButtonGroup exclusive size="small" value={attackRaid ? 'raid' : 'normal'} onChange={(_, value) => value && setAttackRaid(value === 'raid')}>
+              <ToggleButton value="raid">Asalto</ToggleButton>
+              <ToggleButton value="normal">Ataque normal</ToggleButton>
+            </ToggleButtonGroup>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAttackTarget(null)}>Cancelar</Button>
+          <Button variant="contained" color="warning" startIcon={<GpsFixedIcon />} onClick={attack}>Atacar</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={promoteOpen} onClose={() => setPromoteOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>Agregar {selected.length} aldea{selected.length === 1 ? '' : 's'} a una lista propia</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            {(data?.ownLists.length ?? 0) === 0
+              ? <Typography color="text.secondary">Todavía no tenés listas propias. Creá una en Farming → Listas propias.</Typography>
+              : (
+                <TextField select label="Lista" value={promoteList || ''} onChange={event => setPromoteList(Number(event.target.value))}>
+                  {data?.ownLists.map(item => <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>)}
+                </TextField>
+              )}
+            <TextField label="Tropas a mandar" helperText="Ejemplo: A:5 o A:5 D:1" value={promoteTroops} onChange={event => setPromoteTroops(event.target.value)} />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPromoteOpen(false)}>Cancelar</Button>
+          <Button variant="contained" disabled={!promoteList || !promoteTroops.trim()} onClick={promote}>Agregar</Button>
+        </DialogActions>
+      </Dialog>
+    </Stack>
+  )
+}

@@ -34,9 +34,11 @@ export type AccountRow = {
   villages?: boolean
   farms?: boolean
   gameFarms?: boolean
+  scouts?: boolean
   villageNext?: string | null
   farmNext?: string | null
   gameFarmNext?: string | null
+  scoutNext?: string | null
   clan?: string | null
 }
 
@@ -48,7 +50,7 @@ export type Overview = {
 
 export type Meta = {
   tribes: { name: string; value: number }[]
-  troops: { name: string; value: number }[]
+  troops: { name: string; value: number; tribe: number; group: string }[]
   resourcePlans: { name: string; value: string }[]
 }
 
