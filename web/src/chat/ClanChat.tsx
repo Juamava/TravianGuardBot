@@ -182,13 +182,13 @@ function ChatLink({ part, onAttack }: { part: ChatPart; onAttack: (target: Attac
     <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25, maxWidth: '100%', verticalAlign: 'middle' }}>
       {village && (
         <Tooltip title="Atacar">
-          <IconButton size="small" aria-label={`Atacar Aldea (${part.x}|${part.y})`} onClick={() => onAttack({ url: part.value, x: part.x as number, y: part.y as number })} sx={{ color: '#f0b232', p: 0.25 }}>
+          <IconButton size="small" aria-label={`Atacar Aldea (${part.x}|${part.y})`} onClick={() => onAttack({ url: part.value, x: part.x as number, y: part.y as number })} sx={{ color: '#a86f08', p: 0.25 }}>
             <GpsFixedIcon sx={{ fontSize: 16 }} />
           </IconButton>
         </Tooltip>
       )}
       <Tooltip title="Abrir en Chrome">
-        <Box component="a" href={part.value} target="_blank" rel="noreferrer" sx={{ color: '#00a8fc', display: 'inline-flex', alignItems: 'center', gap: 0.25, minWidth: 0, wordBreak: 'break-all', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
+        <Box component="a" href={part.value} target="_blank" rel="noreferrer" sx={{ color: '#1f5e9c', fontWeight: 600, textDecoration: 'underline', display: 'inline-flex', alignItems: 'center', gap: 0.25, minWidth: 0, wordBreak: 'break-all', textUnderlineOffset: '2px', '&:hover': { textDecoration: 'underline' } }}>
           {village ? `Aldea (${part.x}|${part.y})` : part.value}
           <OpenInNewIcon sx={{ fontSize: 12, flex: 'none' }} />
         </Box>
@@ -468,10 +468,10 @@ export function ClanChat({ username, host, clan, page, accountId }: { username: 
               const mine = message.username === username
               const seen = seenBy(message, reads)
               return (
-                <Box key={message.id} sx={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '85%', bgcolor: mine ? '#e2cf9a' : '#5b3a1b', borderRadius: 1.5, px: 1.1, py: 0.7 }}>
-                  <Typography variant="caption" sx={{ color: '#4f8a10', fontWeight: 700 }}>{message.username}</Typography>
+                <Box key={message.id} sx={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '85%', bgcolor: mine ? '#e4efcc' : '#fffaf0', color: '#2e2010', border: '1px solid', borderColor: mine ? '#a9c27a' : '#d6c296', boxShadow: '0 1px 2px rgba(91,58,27,.15)', borderRadius: 1.5, px: 1.1, py: 0.7 }}>
+                  <Typography variant="caption" sx={{ color: mine ? '#3f6f0a' : '#8a4b12', fontWeight: 700 }}>{message.username}</Typography>
                   {message.body && (
-                    <Typography sx={{ fontSize: 14, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    <Typography sx={{ fontSize: 14, color: '#2e2010', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                       {messageParts(message.body).map((part, index) => part.kind === 'link' ? (
                         <ChatLink key={index} part={part} onAttack={openAttack} />
                       ) : (
@@ -482,7 +482,7 @@ export function ClanChat({ username, host, clan, page, accountId }: { username: 
                   {message.image_path && <Box component="img" src={imageUrl(message.image_path)} alt="" sx={{ display: 'block', mt: 0.5, maxWidth: '100%', borderRadius: 1 }} />}
                   <Typography variant="caption" color="text.secondary">{stamp(message.created_at)}</Typography>
                   {seen.length > 0 && (
-                    <Typography variant="caption" title={seen.join(', ')} sx={{ display: 'block', color: '#8fdbb0', lineHeight: 1.3 }}>
+                    <Typography variant="caption" title={seen.join(', ')} sx={{ display: 'block', color: '#3f6f0a', lineHeight: 1.3 }}>
                       Visto por {seen.join(', ')}
                     </Typography>
                   )}

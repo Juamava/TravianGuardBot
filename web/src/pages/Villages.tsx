@@ -234,7 +234,7 @@ export function Villages({ accountId, meta, notify, tab }: { accountId: number; 
 function ReloadTile({ icon, label, hint, onClick }: { icon: ReactNode; label: string; hint: string; onClick: () => void }) {
   return (
     <Tooltip title={hint}>
-      <Button onClick={onClick} sx={{ height: 48, color: '#3b2a17', bgcolor: '#fdf9ec', display: 'flex', gap: 1, '&:hover': { bgcolor: '#f1e5c2' } }}>
+      <Button onClick={onClick} sx={{ height: 48, color: '#3b2a17', bgcolor: 'var(--tg-panel)', display: 'flex', gap: 1, '&:hover': { bgcolor: '#f1e5c2' } }}>
         <Box sx={{ color: '#4f7a12', display: 'flex' }}>{icon}</Box>
         {label}
       </Button>
@@ -246,7 +246,7 @@ function BuildingGroup({ title, buildings, location, onChoose }: { title: string
   if (buildings.length === 0) return null
   return (
     <Box sx={{ mb: 1 }}>
-      <Typography sx={{ position: 'sticky', top: 0, zIndex: 1, px: 1, py: 0.5, bgcolor: '#fdf9ec', color: '#5c4529', fontSize: 13, fontWeight: 700 }}>{title}</Typography>
+      <Typography sx={{ position: 'sticky', top: 0, zIndex: 1, px: 1, py: 0.5, bgcolor: 'var(--tg-panel)', color: '#5c4529', fontSize: 13, fontWeight: 700 }}>{title}</Typography>
       {buildings.map(building => {
         const selected = location === building.location
         return (

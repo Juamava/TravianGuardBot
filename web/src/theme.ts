@@ -27,7 +27,7 @@ export const theme = createTheme({
     body1: { fontSize: '0.95rem', lineHeight: 1.5 },
     body2: { fontSize: '0.9rem', lineHeight: 1.5 },
     caption: { fontSize: '0.8rem', lineHeight: 1.45 },
-    h4: { fontFamily: '"Noto Serif", Georgia, serif', fontWeight: 700, color: '#4a2e15', textShadow: '0 1px 0 rgba(255,250,232,.9), 0 0 12px rgba(255,250,232,.8)', paddingBottom: 18, backgroundImage: divider, backgroundRepeat: 'no-repeat', backgroundPosition: 'left bottom', backgroundSize: '240px 14px' },
+    h4: { fontFamily: '"Noto Serif", Georgia, serif', fontWeight: 700, color: '#4a2e15', textShadow: '0 1px 0 rgba(255,250,232,.9), 0 0 12px rgba(255,250,232,.8)', paddingBottom: 18, backgroundImage: divider, backgroundRepeat: 'no-repeat', backgroundPosition: 'left bottom', backgroundSize: '240px 14px', '@media (max-width:600px)': { fontSize: '1.6rem' } },
     h5: { fontFamily: '"Noto Serif", Georgia, serif', fontWeight: 700, color: wood },
     h6: { fontFamily: '"Noto Serif", Georgia, serif', fontWeight: 700, fontSize: '1rem', color: wood },
     button: { fontWeight: 600, textTransform: 'none', fontSize: '0.9rem' },
@@ -61,7 +61,7 @@ export const theme = createTheme({
     },
     MuiPaper: {
       styleOverrides: {
-        root: { backgroundImage: 'none', backgroundColor: parchment, color: ink },
+        root: { backgroundImage: 'none', backgroundColor: 'var(--tg-panel, #fdf9ec)', color: ink },
       },
     },
     MuiDialog: {
@@ -88,7 +88,7 @@ export const theme = createTheme({
     MuiOutlinedInput: {
       styleOverrides: {
         root: {
-          backgroundColor: '#fffdf4',
+          backgroundColor: 'var(--tg-input, #fffdf4)',
           '& .MuiOutlinedInput-notchedOutline': { borderColor: '#c9b27c' },
           '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: woodLight },
           '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: green },
@@ -96,7 +96,7 @@ export const theme = createTheme({
       },
     },
     MuiInputLabel: {
-      styleOverrides: { root: { color: '#4a3820', fontWeight: 600, fontSize: '0.92rem', '&.MuiInputLabel-shrink': { color: '#3b2a17', transform: 'translate(10px, -11px) scale(0.88)', backgroundColor: '#fdf9ec', padding: '0 5px', borderRadius: 3 }, '&.Mui-focused': { color: green } } },
+      styleOverrides: { root: { color: '#4a3820', fontWeight: 600, fontSize: '0.92rem', '&.MuiInputLabel-shrink': { color: '#3b2a17', transform: 'translate(10px, -11px) scale(0.88)', backgroundColor: 'var(--tg-input, #fffdf4)', padding: '0 5px', borderRadius: 3 }, '&.Mui-focused': { color: green } } },
     },
     MuiToggleButtonGroup: {
       styleOverrides: {
