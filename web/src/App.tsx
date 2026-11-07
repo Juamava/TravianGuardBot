@@ -29,7 +29,8 @@ import { Debug } from './pages/Debug'
 import { Hero } from './pages/Hero'
 import { Alliance } from './pages/Alliance'
 import { Empty, UiProvider, useUi } from './ui'
-import { crest, landscape, nightLandscape, parchmentTexture, woodTexture } from './art'
+import banner from './bannerapp.jpg'
+import { crest, parchmentTexture, woodTexture } from './art'
 import { GlobalStyles, IconButton, useMediaQuery } from '@mui/material'
 import MenuIcon from '@mui/icons-material/Menu'
 
@@ -541,9 +542,7 @@ function Shell() {
       </Stack>
 
       <Box sx={{ overflow: 'auto', p: narrow ? 1.5 : 3, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', color: '#3b2a17', bgcolor: pageColor, backgroundImage: `${night ? 'radial-gradient(ellipse at 50% 35%, rgba(255,214,140,.35), rgba(60,38,15,.35) 95%), ' : ''}${parchmentTexture}`, backgroundSize: night ? '100% 100%, 300px 300px' : '300px 300px', backgroundRepeat: night ? 'no-repeat, repeat' : 'repeat', backgroundAttachment: 'local', position: 'relative', isolation: 'isolate', pt: '110px', borderLeft: '6px solid #6b4423', boxShadow: 'inset 0 0 0 2px #a07a44, inset 0 0 40px rgba(110,74,36,.25)' }}>
-        <Box aria-hidden sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 190, zIndex: -1, pointerEvents: 'none', backgroundImage: night ? nightLandscape : landscape, backgroundSize: 'cover', backgroundPosition: 'center bottom', backgroundRepeat: 'no-repeat', maskImage: headerMask, WebkitMaskImage: headerMask }} />
-        {/* Own header picture: put a hero.jpg next to index.html and it covers the drawn countryside. */}
-        <Box aria-hidden sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 190, zIndex: -1, pointerEvents: 'none', backgroundImage: `${night ? 'linear-gradient(rgba(10,18,50,.45), rgba(10,18,50,.2)), ' : ''}url(hero.jpg)`, backgroundSize: night ? '100% 100%, cover' : 'cover', backgroundPosition: night ? 'top, center 35%' : 'center 35%', backgroundRepeat: 'no-repeat', maskImage: headerMask, WebkitMaskImage: headerMask }} />
+        <Box aria-hidden sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 190, zIndex: -1, pointerEvents: 'none', backgroundImage: `linear-gradient(to bottom, transparent 0px, transparent 70px, ${pageColor} 190px), url(${banner})`, backgroundSize: '100% 100%, cover', backgroundPosition: 'center top, center 42%', backgroundRepeat: 'no-repeat', maskImage: headerMask, WebkitMaskImage: headerMask }} />
         {page === 'cuentas' && (
           <Stack spacing={3}>
             <Accounts notify={ui.notify} refresh={id => { void refresh(id).catch((error: Error) => ui.notify(error.message)) }} />
