@@ -17,10 +17,17 @@ namespace MainCore.UI.Models
 
         public static string GetServerUrl(this string input)
         {
-            if (string.IsNullOrEmpty(input))
+            if (string.IsNullOrWhiteSpace(input))
                 return "";
 
-            if (!Uri.TryCreate(input, UriKind.Absolute, out var uri))
+            var value = input.Trim();
+            if (!value.Contains("://", StringComparison.Ordinal))
+                value = "https://" + value;
+
+            if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || string.IsNullOrEmpty(uri.Host))
+                return "";
+
+            if (uri.Scheme is not ("http" or "https"))
                 return "";
 
             return $"{uri.Scheme}://{uri.Host}";
