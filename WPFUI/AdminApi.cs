@@ -215,9 +215,9 @@ namespace WPFUI
             using var context = Context(services);
             if (context.Accounts.Any(x => x.Username == dto.Username && x.Server == dto.Server)) return Fail("La cuenta ya existe.");
 
-            InsertAccounts(services, context, [dto]);
+            var ids = InsertAccounts(services, context, [dto]);
             services.GetRequiredService<RxQueue>().Enqueue(new AccountsModified());
-            return Ok("Cuenta agregada.");
+            return Ok("Cuenta guardada.", new { id = ids[0] });
         }
 
         private static IResult AddAccounts(IServiceProvider services, string text)
@@ -1365,17 +1365,20 @@ namespace WPFUI
             return Ok("Plantilla guardada.");
         }
 
-        private static void InsertAccounts(IServiceProvider services, AppDbContext context, List<AccountDto> dtos)
+        private static List<int> InsertAccounts(IServiceProvider services, AppDbContext context, List<AccountDto> dtos)
         {
             var settings = LoadAccountDefaults(services);
+            var created = new List<Account>();
             foreach (var dto in dtos)
             {
                 var account = dto.ToEntity();
                 account.Settings = settings.Select(setting => new AccountSetting { Setting = setting.Key, Value = setting.Value }).ToList();
                 context.Add(account);
+                created.Add(account);
             }
 
             context.SaveChanges();
+            return created.Select(account => account.Id).ToList();
         }
 
         private static Dictionary<AccountSettingEnums, int> LoadAccountDefaults(IServiceProvider services)

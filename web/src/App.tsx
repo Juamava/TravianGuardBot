@@ -147,10 +147,13 @@ function Shell() {
     if (updatePoll.current !== null) window.clearInterval(updatePoll.current)
   }, [])
 
-  async function refresh() {
+  async function refresh(selectId?: number) {
     const result = await api<Overview>('/api/overview')
     setOverview(result.data)
-    setAccountId(current => result.data.accounts.some(account => account.id === current) ? current : (result.data.accounts[0]?.id ?? null))
+    setAccountId(current => {
+      if (selectId != null && result.data.accounts.some(account => account.id === selectId)) return selectId
+      return result.data.accounts.some(account => account.id === current) ? current : (result.data.accounts[0]?.id ?? null)
+    })
   }
 
   useEffect(() => {
@@ -171,6 +174,7 @@ function Shell() {
   const farmsLive = !!account?.farms
   const gameLive = !!account?.gameFarms
   const heldByOther = holder != null && holder.id !== account?.id
+  const canConnect = account != null && account.status === 'Offline' && !heldByOther
   useEffect(() => {
     if (!update?.available || !update.publishedAt) return
     const published = Date.parse(update.publishedAt)
@@ -315,8 +319,8 @@ function Shell() {
           </Typography>
         </Box>
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.75, px: 1.5, py: 1.25 }}>
-          <Button onClick={() => act('login')} disabled={!account || account.status !== 'Offline' || heldByOther} sx={actionButton}>
-            <LinkIcon sx={{ fontSize: 18, color: '#5865f2' }} />
+          <Button onClick={() => act('login')} disabled={!canConnect} sx={{ ...actionButton, ...(canConnect ? { color: '#23a559' } : {}) }}>
+            <LinkIcon sx={{ fontSize: 18, color: 'inherit' }} />
             Conectar
           </Button>
           <Button onClick={() => act('pause')} disabled={!connected} sx={actionButton}>
@@ -352,7 +356,7 @@ function Shell() {
       <Box sx={{ overflow: 'auto', p: 3, bgcolor: '#313338', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {page === 'cuentas' && (
           <Stack spacing={3}>
-            <Accounts notify={ui.notify} refresh={() => refresh().catch((error: Error) => ui.notify(error.message))} />
+            <Accounts notify={ui.notify} refresh={id => { void refresh(id).catch((error: Error) => ui.notify(error.message)) }} />
             <Templates notify={ui.notify} refresh={() => refresh().catch(() => undefined)} />
           </Stack>
         )}
