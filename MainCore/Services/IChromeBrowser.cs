@@ -36,5 +36,7 @@ namespace MainCore.Services
         Task<Result> Wait(ILocator locator, string condition, [CallerArgumentExpression(nameof(locator))] string? expression = null);
 
         Task<Result> WaitPageChanged(string url);
+
+        Task<string> ReadAllianceName();
     }
 }

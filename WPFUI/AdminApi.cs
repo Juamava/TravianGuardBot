@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -130,7 +131,7 @@ namespace WPFUI
         {
             var progress = AppUpdate.Progress();
             var local = progress.Phase is "checking" or "downloading" or "extracting" or "installing" or "failed";
-            var info = local && !force ? AppUpdate.Peek() : await AppUpdate.Check(force);
+            var info = local && !force && !AppUpdate.SkipRemoteCheck ? AppUpdate.Peek() : await AppUpdate.Check(force);
             return Ok(info.Detail ?? "", new
             {
                 current = info.Current,
@@ -179,19 +180,36 @@ namespace WPFUI
                 or NpcTask.Task;
         }
 
-        private static IResult Overview(IServiceProvider services)
+        private static readonly ConcurrentDictionary<int, string> ClanNames = new();
+
+        private static async Task<string> ReadClan(IServiceProvider services, TaskManager tasks, int accountId, StatusEnums status)
+        {
+            if (ClanNames.TryGetValue(accountId, out var known)) return status == StatusEnums.Offline ? "" : known;
+            if (status != StatusEnums.Online) return "";
+            var id = new AccountId(accountId);
+            if (tasks.IsExecuting(id)) return "";
+            var browser = services.GetRequiredService<ChromeManager>().Get(id);
+            if (!browser.IsInitialized) return "";
+            var clan = (await browser.ReadAllianceName()).Trim();
+            if (clan.Length == 0) return "";
+            ClanNames[accountId] = clan;
+            return clan;
+        }
+
+        private static async Task<IResult> Overview(IServiceProvider services)
         {
             using var context = Context(services);
             var tasks = services.GetRequiredService<TaskManager>();
             var templates = services.GetRequiredService<DefaultTemplatePathStore>().Get();
             var versionAssembly = typeof(AppDbContext).Assembly.GetName().Version;
             var version = versionAssembly is null ? "" : $"{versionAssembly.Major}.{versionAssembly.Minor}.{versionAssembly.Build}";
-            var accounts = context.Accounts.AsEnumerable().Select(account =>
+            var accounts = new List<object>();
+            foreach (var account in context.Accounts.AsEnumerable())
             {
                 var accountId = new AccountId(account.Id);
                 var status = tasks.GetStatus(accountId);
                 var queued = status == StatusEnums.Online ? tasks.GetTaskList(accountId) : [];
-                return new
+                accounts.Add(new
                 {
                     id = account.Id,
                     username = account.Username,
@@ -206,8 +224,9 @@ namespace WPFUI
                     villageNext = NextAt(queued.Where(IsVillageWork)),
                     farmNext = NextAt(queued.Where(task => task is RaidCowListTask.Task)),
                     gameFarmNext = NextAt(queued.Where(task => task is StartFarmListTask.Task or UpdateFarmListTask.Task)),
-                };
-            }).ToList();
+                    clan = await ReadClan(services, tasks, account.Id, status),
+                });
+            }
 
             return Ok("", new
             {
@@ -359,6 +378,7 @@ namespace WPFUI
             await tasks.StopCurrentTask(accountId);
             await browser.Shutdown();
             tasks.SetStatus(accountId, StatusEnums.Offline);
+            ClanNames.TryRemove(id, out _);
             return Ok("Sesión cerrada.");
         }
 

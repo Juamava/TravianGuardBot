@@ -242,6 +242,23 @@ namespace MainCore.Services
             }
         }
 
+        public async Task<string> ReadAllianceName()
+        {
+            if (_mainPage is null) return "";
+            try
+            {
+                var name = await _mainPage.EvaluateAsync<string>(@"() => {
+                    const node = document.querySelector('div.boxTitle.withBanner div.name');
+                    return node ? (node.textContent || '').trim() : '';
+                }");
+                return string.IsNullOrWhiteSpace(name) ? "" : name.Trim();
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
         public async Task<Result> WaitPageChanged(string url)
         {
             if (_mainPage is null) return Stop.DriverNotReady;
