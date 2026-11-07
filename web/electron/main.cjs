@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, session, shell } = require('electron')
 const fs = require('fs')
 const path = require('path')
 
@@ -7,6 +7,9 @@ const logDir = process.env.TBS_LOG_DIR || path.join(appRoot, 'logs')
 const logFile = path.join(logDir, 'electron.log')
 
 app.setPath('userData', path.join(appRoot, 'Data', 'electron'))
+// Its own taskbar group and icon, instead of Electron's.
+app.setAppUserModelId('TravianGuard.Admin')
+const icon = [path.join(__dirname, 'icon.ico'), path.join(appRoot, 'favicon.ico')].find(file => fs.existsSync(file))
 
 function log(message) {
   try {
@@ -41,11 +44,26 @@ app.whenReady().then(() => {
     height: 840,
     minWidth: 1024,
     minHeight: 680,
-    backgroundColor: '#313338',
+    backgroundColor: '#3a2513',
     title: 'Travian Guard',
+    ...(icon ? { icon } : {}),
     autoHideMenuBar: true,
+    // No Windows title bar: the page draws a wood one with its own buttons.
+    frame: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.cjs') },
     show: false,
   })
+
+  ipcMain.on('window', (_event, action) => {
+    if (!window || window.isDestroyed()) return
+    if (action === 'minimize') window.minimize()
+    else if (action === 'maximize') window.isMaximized() ? window.unmaximize() : window.maximize()
+    else if (action === 'close') window.close()
+  })
+  const sendMaximized = () => { if (!window.isDestroyed()) window.webContents.send('window-maximized', window.isMaximized()) }
+  window.on('maximize', sendMaximized)
+  window.on('unmaximize', sendMaximized)
+  window.webContents.on('did-finish-load', sendMaximized)
 
   window.once('ready-to-show', () => {
     log('lista para mostrar')

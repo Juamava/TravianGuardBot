@@ -59,6 +59,8 @@
     </ItemGroup>
     <Copy SourceFiles="@(_ElectronFiles)" DestinationFiles="@(_ElectronFiles->'$(_ElectronOut)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="Exists('$(_ElectronDist)\electron.exe')" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\web\electron\main.cjs" DestinationFiles="$(_ElectronOut)main.cjs" SkipUnchangedFiles="true" Condition="Exists('$(MSBuildProjectDirectory)\..\web\electron\main.cjs')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\web\electron\preload.cjs" DestinationFiles="$(_ElectronOut)preload.cjs" SkipUnchangedFiles="true" Condition="Exists('$(MSBuildProjectDirectory)\..\web\electron\preload.cjs')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\favicon.ico" DestinationFiles="$(_ElectronOut)icon.ico" SkipUnchangedFiles="true" />
   </Target>
 
   <Target Name="CopyElectronRuntimeToPublish" AfterTargets="Publish">
@@ -71,6 +73,8 @@
     </ItemGroup>
     <Copy SourceFiles="@(_ElectronPublishFiles)" DestinationFiles="@(_ElectronPublishFiles->'$(_ElectronOut)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != '' and Exists('$(_ElectronDist)\electron.exe')" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\web\electron\main.cjs" DestinationFiles="$(_ElectronOut)main.cjs" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != '' and Exists('$(MSBuildProjectDirectory)\..\web\electron\main.cjs')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\web\electron\preload.cjs" DestinationFiles="$(_ElectronOut)preload.cjs" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != '' and Exists('$(MSBuildProjectDirectory)\..\web\electron\preload.cjs')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\favicon.ico" DestinationFiles="$(_ElectronOut)icon.ico" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
   </Target>
   
   <ItemGroup>
