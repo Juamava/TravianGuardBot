@@ -54,6 +54,7 @@ namespace MainCore.Infrasturecture.Persistence
             {AccountSettingEnums.EnableAutoClaimDailyQuest, 0 },
             {AccountSettingEnums.EnableAutoSetHeroPoint, 0 },
             {AccountSettingEnums.Gold, 0 },
+            {AccountSettingEnums.EnableAutoStartGameFarms, 0 },
         }.ToImmutableDictionary();
 
         private List<AccountSettingEnums> GetMissingAccountSettings()
@@ -276,6 +277,16 @@ namespace MainCore.Infrasturecture.Persistence
             EnsureColumn("CowVillages", "Distance", "REAL NOT NULL DEFAULT -1");
             EnsureColumn("CowVillages", "CoordX", "INTEGER NULL");
             EnsureColumn("CowVillages", "CoordY", "INTEGER NULL");
+        }
+
+        public void EnsureAccessColumns()
+        {
+            EnsureColumn("Accesses", "ProxyHost", "TEXT NULL");
+            EnsureColumn("Accesses", "ProxyPort", "INTEGER NOT NULL DEFAULT 0");
+            EnsureColumn("Accesses", "ProxyUsername", "TEXT NULL");
+            EnsureColumn("Accesses", "ProxyPassword", "TEXT NULL");
+            EnsureColumn("Accesses", "Useragent", "TEXT NULL");
+            EnsureColumn("Accesses", "LastUsed", "TEXT NOT NULL DEFAULT '0001-01-01 00:00:00'");
         }
 
         public void EnsureHeroLevelingTable()

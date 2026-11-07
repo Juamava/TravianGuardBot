@@ -2,6 +2,8 @@
 
 using MainCore.UI.Models.Input;
 
+using MainCore.UI.Models;
+
 namespace MainCore.UI.Models.Validators
 {
     public class AccountInputValidator : AbstractValidator<AccountInput>
@@ -10,11 +12,12 @@ namespace MainCore.UI.Models.Validators
         {
             RuleFor(x => x.Server)
                 .NotEmpty()
-                .WithName("Server url");
+                .WithMessage("Falta el servidor.");
 
             RuleFor(x => x.Server)
-                .Must(uri => Uri.TryCreate(uri, UriKind.Absolute, out _)).When(x => !string.IsNullOrEmpty(x.Server))
-                .WithMessage("Invalid Server url, please follow the pattern [https://ts1.x1.international.travian.com]");
+                .Must(server => !string.IsNullOrEmpty(server.GetServerUrl()))
+                .When(x => !string.IsNullOrWhiteSpace(x.Server))
+                .WithMessage("El servidor tiene que ser como https://ts1.x1.international.travian.com");
 
             RuleFor(x => x.Accesses)
                 .NotEmpty()
