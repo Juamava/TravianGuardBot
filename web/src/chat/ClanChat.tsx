@@ -197,6 +197,48 @@ function ChatLink({ part, onAttack }: { part: ChatPart; onAttack: (target: Attac
   )
 }
 
+const helpText = [
+  '/stop Nombre razón',
+  'Pausa todo el bot de esa persona.',
+  '',
+  '/stop farming Nombre razón',
+  'Detiene el farming: listas propias, listas del juego y ataques en cola.',
+  '',
+  '/stop building Nombre razón',
+  'Detiene la construcción de las aldeas. aldeas es lo mismo que building.',
+  '',
+  'La razón es obligatoria. /help y /stop solos muestran esta ayuda.',
+].join('\n')
+
+type ClanCommand =
+  | { kind: 'help' }
+  | { kind: 'need-reason' }
+  | { kind: 'stop'; feature: 'all' | 'farming' | 'building'; target: string; reason: string }
+
+function parseClanCommand(body: string): ClanCommand | null {
+  const parts = body.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return null
+  const command = parts[0].toLowerCase()
+  if (command === '/help') return parts.length === 1 ? { kind: 'help' } : null
+  if (command !== '/stop') return null
+  if (parts.length === 1) return { kind: 'help' }
+  let index = 1
+  let feature: 'all' | 'farming' | 'building' = 'all'
+  const word = parts[1].toLowerCase()
+  if (word === 'farming' || word === 'building' || word === 'aldeas') {
+    feature = word === 'farming' ? 'farming' : 'building'
+    index = 2
+  }
+  if (parts.length < index + 2) return { kind: 'need-reason' }
+  return { kind: 'stop', feature, target: parts[index], reason: parts.slice(index + 1).join(' ') }
+}
+
+function stopLabel(feature: 'all' | 'farming' | 'building') {
+  if (feature === 'farming') return 'el farming'
+  if (feature === 'building') return 'la construcción'
+  return 'el bot'
+}
+
 function stamp(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
@@ -230,6 +272,8 @@ export function ClanChat({ username, host, clan, page, accountId }: { username: 
   const [home, setHome] = useState<HomeTroop[] | null>(null)
   const [homeError, setHomeError] = useState('')
   const [attacking, setAttacking] = useState(false)
+  const [notice, setNotice] = useState<{ title: string; text: string } | null>(null)
+  const handled = useRef(new Set<string>())
   const [readAt, setReadAt] = useState(() => readMark(room))
   const pageRef = useRef(page)
   const listRef = useRef<HTMLDivElement | null>(null)
@@ -263,6 +307,21 @@ export function ClanChat({ username, host, clan, page, accountId }: { username: 
         const author = (message.username ?? '').trim()
         const joinNotice = body.trimEnd().endsWith(' se ha conectado.')
         if (author !== username.trim() && !joinNotice) playIncoming()
+        const command = parseClanCommand(body)
+        if (command && message.id && !handled.current.has(message.id)) {
+          handled.current.add(message.id)
+          const mine = author.localeCompare(username.trim(), 'es', { sensitivity: 'accent' }) === 0
+          if (command.kind === 'help' && mine) setNotice({ title: 'Comandos', text: helpText })
+          if (command.kind === 'need-reason' && mine) setNotice({ title: 'Falta la razón', text: `La razón es obligatoria.\n\n${helpText}` })
+          if (command.kind === 'stop' && command.target.localeCompare(username.trim(), 'es', { sensitivity: 'accent' }) === 0) {
+            const label = stopLabel(command.feature)
+            const text = `${author} te detuvo ${label} por: ${command.reason}`
+            setNotice({ title: 'Bot detenido', text })
+            void post(`/api/accounts/${accountId}/remote-stop`, { feature: command.feature }).catch((reason: unknown) => {
+              setNotice({ title: 'Bot detenido', text: `${text}\n\n${reason instanceof Error ? reason.message : 'No se pudo completar la detención.'}` })
+            })
+          }
+        }
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, payload => {
         const id = (payload.old as { id?: string }).id
@@ -316,7 +375,7 @@ export function ClanChat({ username, host, clan, page, accountId }: { username: 
       alive = false
       void supabase.removeChannel(channel)
     }
-  }, [room, username])
+  }, [room, username, accountId])
 
   useEffect(() => {
     sharedRead.current = 0
@@ -535,6 +594,15 @@ export function ClanChat({ username, host, clan, page, accountId }: { username: 
           </Box>
         )}
       </Box>
+      <Dialog open={notice != null} onClose={() => setNotice(null)} fullWidth maxWidth="xs">
+        <DialogTitle>{notice?.title}</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ whiteSpace: 'pre-line' }}>{notice?.text}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={() => setNotice(null)}>Entendido</Button>
+        </DialogActions>
+      </Dialog>
       <Dialog open={attack != null} onClose={() => !attacking && setAttack(null)} fullWidth maxWidth="sm">
         <DialogTitle>Atacar {attack ? `Aldea (${attack.x}|${attack.y})` : ''}</DialogTitle>
         <DialogContent>
