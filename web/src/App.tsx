@@ -80,7 +80,7 @@ function WindowButtons() {
   )
 }
 
-type Page = 'aldeas' | 'aldeas-tropas' | 'aldeas-comercio' | 'farming' | 'farming-juego' | 'farming-scout' | 'hero' | 'alianza' | 'debug' | 'ajustes' | 'cuentas'
+type Page = 'aldeas' | 'aldeas-tropas' | 'aldeas-comercio' | 'farming' | 'farming-juego' | 'farming-scout' | 'hero' | 'alianza' | 'alianza-comandos' | 'debug' | 'ajustes' | 'cuentas'
 
 const pages: { id: Page; label: string; icon: SvgIconComponent }[] = [
   { id: 'aldeas', label: 'Aldeas', icon: LocationCityIcon },
@@ -244,7 +244,7 @@ function Shell() {
     try { localStorage.setItem('tg-night', value ? '1' : '0') } catch { /* the choice just does not persist */ }
   }
   const pageColor = night ? '#d6c094' : '#f4ecd6'
-  const pageRgb = night ? '214,192,148' : '244,236,214'
+  const headerMask = 'linear-gradient(to bottom, #000 0px, #000 70px, transparent 190px)'
   const [showDebug, setShowDebug] = useState(false)
   const debugToggleAt = useRef(0)
   const [update, setUpdate] = useState<{ current: string; latest: string; available: boolean; mandatory: boolean; publishedAt: string; detail: string; phase?: string; percent?: number; progress?: string } | null>(null)
@@ -308,11 +308,15 @@ function Shell() {
   }, [account, page])
   const holder = overview?.accounts.find(item => item.status !== 'Offline') ?? null
   const connected = account != null && isConnected(account.status)
-  const villagesLive = !!account?.villages
+  const buildLive = !!account?.build
+  const troopsLive = !!account?.troops
+  const tradeLive = !!account?.trade
   const farmsLive = !!account?.farms
   const gameLive = !!account?.gameFarms
   const scoutLive = !!account?.scouts
-  const villageCount = villagesLive ? formatNext(account?.villageNext, now) : ''
+  const buildCount = buildLive ? formatNext(account?.buildNext, now) : ''
+  const troopCount = troopsLive ? formatNext(account?.troopNext, now) : ''
+  const tradeCount = tradeLive ? formatNext(account?.tradeNext, now) : ''
   const farmCount = farmsLive ? formatNext(account?.farmNext, now) : ''
   const gameCount = gameLive ? formatNext(account?.gameFarmNext, now) : ''
   const scoutCount = scoutLive ? formatNext(account?.scoutNext, now) : ''
@@ -501,10 +505,10 @@ function Shell() {
             if (item.id === 'aldeas') {
               return (
                 <Stack key="aldeas" spacing={0.15}>
-                  <NavItem selected={false} disabled={!connected} live={villagesLive} count={villageCount} icon={item.icon} label="Aldeas" onClick={() => setPage('aldeas')} />
-                  <SubNav selected={page === 'aldeas'} disabled={!connected} label="Construcción" onClick={() => setPage('aldeas')} />
-                  <SubNav selected={page === 'aldeas-tropas'} disabled={!connected} label="Tropas" onClick={() => setPage('aldeas-tropas')} />
-                  <SubNav selected={page === 'aldeas-comercio'} disabled={!connected} label="Comercio" onClick={() => setPage('aldeas-comercio')} />
+                  <NavItem selected={false} disabled={!connected} icon={item.icon} label="Aldeas" onClick={() => setPage('aldeas')} />
+                  <SubNav selected={page === 'aldeas'} disabled={!connected} live={buildLive} count={buildCount} label="Construcción" onClick={() => setPage('aldeas')} />
+                  <SubNav selected={page === 'aldeas-tropas'} disabled={!connected} live={troopsLive} count={troopCount} label="Tropas" onClick={() => setPage('aldeas-tropas')} />
+                  <SubNav selected={page === 'aldeas-comercio'} disabled={!connected} live={tradeLive} count={tradeCount} label="Comercio" onClick={() => setPage('aldeas-comercio')} />
                 </Stack>
               )
             }
@@ -518,7 +522,16 @@ function Shell() {
                 </Stack>
               )
             }
-            return <NavItem key={item.id} selected={page === item.id} disabled={item.id === 'alianza' ? !account : !connected} icon={item.icon} label={item.label} onClick={() => setPage(item.id)} />
+            if (item.id === 'alianza') {
+              return (
+                <Stack key="alianza" spacing={0.15}>
+                  <NavItem selected={false} disabled={!account} icon={item.icon} label="Alianza" onClick={() => setPage('alianza')} />
+                  <SubNav selected={page === 'alianza'} disabled={!account} label="Datos" onClick={() => setPage('alianza')} />
+                  <SubNav selected={page === 'alianza-comandos'} disabled={!account} label="Comandos" onClick={() => setPage('alianza-comandos')} />
+                </Stack>
+              )
+            }
+            return <NavItem key={item.id} selected={page === item.id} disabled={!connected} icon={item.icon} label={item.label} onClick={() => setPage(item.id)} />
           })}
         </Stack>
         <Stack spacing={0.3} sx={{ px: 1, pb: 1.5 }}>
@@ -527,9 +540,10 @@ function Shell() {
         </Stack>
       </Stack>
 
-      <Box sx={{ overflow: 'auto', p: narrow ? 1.5 : 3, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', color: '#3b2a17', bgcolor: pageColor, backgroundImage: `linear-gradient(rgba(${pageRgb},0) 70px, rgba(${pageRgb},.85) 150px, ${pageColor} 190px), ${night ? nightLandscape : landscape}, ${night ? 'radial-gradient(ellipse at 50% 35%, rgba(255,214,140,.35), rgba(60,38,15,.35) 95%), ' : ''}${parchmentTexture}`, backgroundSize: night ? '100% 190px, 100% 190px, 100% 100%, 300px 300px' : '100% 190px, 100% 190px, 300px 300px', backgroundRepeat: night ? 'no-repeat, no-repeat, no-repeat, repeat' : 'no-repeat, no-repeat, repeat', backgroundAttachment: 'local', position: 'relative', isolation: 'isolate', pt: '110px', borderLeft: '6px solid #6b4423', boxShadow: 'inset 0 0 0 2px #a07a44, inset 0 0 40px rgba(110,74,36,.25)' }}>
+      <Box sx={{ overflow: 'auto', p: narrow ? 1.5 : 3, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', color: '#3b2a17', bgcolor: pageColor, backgroundImage: `${night ? 'radial-gradient(ellipse at 50% 35%, rgba(255,214,140,.35), rgba(60,38,15,.35) 95%), ' : ''}${parchmentTexture}`, backgroundSize: night ? '100% 100%, 300px 300px' : '300px 300px', backgroundRepeat: night ? 'no-repeat, repeat' : 'repeat', backgroundAttachment: 'local', position: 'relative', isolation: 'isolate', pt: '110px', borderLeft: '6px solid #6b4423', boxShadow: 'inset 0 0 0 2px #a07a44, inset 0 0 40px rgba(110,74,36,.25)' }}>
+        <Box aria-hidden sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 190, zIndex: -1, pointerEvents: 'none', backgroundImage: night ? nightLandscape : landscape, backgroundSize: 'cover', backgroundPosition: 'center bottom', backgroundRepeat: 'no-repeat', maskImage: headerMask, WebkitMaskImage: headerMask }} />
         {/* Own header picture: put a hero.jpg next to index.html and it covers the drawn countryside. */}
-        <Box aria-hidden sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 190, zIndex: -1, pointerEvents: 'none', backgroundImage: `linear-gradient(rgba(${pageRgb},0) 60px, rgba(${pageRgb},.85) 150px, ${pageColor} 190px), ${night ? 'linear-gradient(rgba(10,18,50,.6), rgba(10,18,50,.35)), ' : ''}url(hero.jpg)`, backgroundSize: night ? '100% 100%, 100% 100%, cover' : '100% 100%, cover', backgroundPosition: night ? 'top, top, center 35%' : 'top, center 35%', backgroundRepeat: 'no-repeat' }} />
+        <Box aria-hidden sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 190, zIndex: -1, pointerEvents: 'none', backgroundImage: `${night ? 'linear-gradient(rgba(10,18,50,.45), rgba(10,18,50,.2)), ' : ''}url(hero.jpg)`, backgroundSize: night ? '100% 100%, cover' : 'cover', backgroundPosition: night ? 'top, center 35%' : 'center 35%', backgroundRepeat: 'no-repeat', maskImage: headerMask, WebkitMaskImage: headerMask }} />
         {page === 'cuentas' && (
           <Stack spacing={3}>
             <Accounts notify={ui.notify} refresh={id => { void refresh(id).catch((error: Error) => ui.notify(error.message)) }} />
@@ -538,9 +552,9 @@ function Shell() {
         )}
         {page === 'ajustes' && accountId && <AccountSettings key={accountId} accountId={accountId} meta={meta} notify={ui.notify} refresh={() => refresh().catch((error: Error) => ui.notify(error.message))} />}
         {page === 'ajustes' && !accountId && <Empty title="Elegí una cuenta" text="Creá una cuenta con el + y después vas a poder cambiar el servidor, la contraseña y el resto desde acá." />}
-        {page === 'alianza' && account && <Alliance key={account.id} account={account} meta={meta} />}
-        {page === 'alianza' && !account && <Empty title="Elegí una cuenta" text="Creá una cuenta con el + para ver sus datos y los de la alianza." />}
-        {page !== 'cuentas' && page !== 'ajustes' && page !== 'alianza' && connected && accountId && (
+        {(page === 'alianza' || page === 'alianza-comandos') && account && <Alliance key={account.id} account={account} meta={meta} tab={page === 'alianza-comandos' ? 'comandos' : 'datos'} />}
+        {(page === 'alianza' || page === 'alianza-comandos') && !account && <Empty title="Elegí una cuenta" text="Creá una cuenta con el + para ver sus datos y los de la alianza." />}
+        {page !== 'cuentas' && page !== 'ajustes' && page !== 'alianza' && page !== 'alianza-comandos' && connected && accountId && (
           <>
             {page === 'hero' && <Hero key={accountId} accountId={accountId} notify={ui.notify} />}
             {(page === 'aldeas' || page === 'aldeas-tropas' || page === 'aldeas-comercio') && <Villages key={accountId} accountId={accountId} meta={meta} notify={ui.notify} tab={page === 'aldeas-tropas' ? 'troops' : page === 'aldeas-comercio' ? 'trade' : 'build'} />}
@@ -549,7 +563,7 @@ function Shell() {
             {showDebug && page === 'debug' && <Debug key={accountId} accountId={accountId} notify={ui.notify} />}
           </>
         )}
-        {page !== 'cuentas' && page !== 'ajustes' && page !== 'alianza' && !connected && (
+        {page !== 'cuentas' && page !== 'ajustes' && page !== 'alianza' && page !== 'alianza-comandos' && !connected && (
           <Empty
             title={heldByOther && holder ? `${holder.username} está conectada en este bot` : 'Conectá la cuenta'}
             text={heldByOther && holder
@@ -558,7 +572,7 @@ function Shell() {
           />
         )}
       </Box>
-      {account?.clan && account.host && <ClanChat username={account.username} host={account.host} clan={account.clan} page={page} accountId={account.id} />}
+      {account?.clan && account.host && <ClanChat username={account.username} host={account.host} clan={account.clan} page={page} accountId={account.id} debug={showDebug} />}
       {mandatory && update && (
         <Box sx={{ position: 'fixed', inset: 0, zIndex: 30, bgcolor: 'rgba(0,0,0,.72)', display: 'grid', placeItems: 'center', p: 3 }}>
           <Stack spacing={2} sx={{ width: 420, maxWidth: '100%', bgcolor: '#3a2513', borderRadius: 2, p: 3 }}>

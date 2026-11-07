@@ -105,12 +105,15 @@ namespace WPFUI
             app.MapPost("/api/accounts/{id:int}/login", (int id) => Login(services, id));
             app.MapPost("/api/accounts/{id:int}/logout", (int id) => Logout(services, id));
             app.MapPost("/api/accounts/{id:int}/pause", (int id) => Pause(services, id));
-            app.MapPost("/api/accounts/{id:int}/remote-stop", (int id, RemoteStopBody body) => RemoteStop(services, id, body));
+            app.MapPost("/api/accounts/{id:int}/remote-stop", (int id, RemoteStopBody body) => RemoteCommand(services, id, body));
             app.MapPost("/api/accounts/{id:int}/restart", (int id) => Restart(services, id));
 
             app.MapGet("/api/accounts/{id:int}/settings", (int id) => GetAccountSettings(services, id));
             app.MapPut("/api/accounts/{id:int}/settings", (int id, Dictionary<string, int> body) => SaveAccountSettings(services, id, body));
             app.MapGet("/api/accounts/{id:int}/villages", (int id) => GetVillages(services, id));
+            app.MapGet("/api/accounts/{id:int}/villages/building", (int id) => GetBuilding(services, id));
+            app.MapPost("/api/accounts/{id:int}/villages/building/start", (int id) => StartBuilding(services, id));
+            app.MapPost("/api/accounts/{id:int}/villages/building/stop", (int id) => StopBuildingNow(services, id));
             app.MapPost("/api/accounts/{id:int}/villages/reload-missing", (int id) => ReloadVillages(services, id, false));
             app.MapPost("/api/accounts/{id:int}/villages/reload-all", (int id) => ReloadVillages(services, id, true));
             app.MapPost("/api/accounts/{id:int}/villages/{villageId:int}/reload", (int id, int villageId) => ReloadVillage(services, id, villageId));
@@ -259,15 +262,19 @@ namespace WPFUI
             return at.ToString("o");
         }
 
-        private static bool IsVillageWork(BaseTask task)
+        private static bool IsBuildWork(BaseTask task)
         {
             return task is UpgradeBuildingTask.Task
                 or UpdateBuildingTask.Task
                 or UpdateVillageTask.Task
-                or TrainTroopTask.Task
-                or InstantUpgradeTask.Task
-                or NpcTask.Task;
+                or InstantUpgradeTask.Task;
         }
+
+        private static bool IsTroopWork(BaseTask task) => task is TrainTroopTask.Task;
+
+        private static bool IsTradeWork(BaseTask task) => task is NpcTask.Task;
+
+        private static bool IsVillageWork(BaseTask task) => IsBuildWork(task) || IsTroopWork(task) || IsTradeWork(task);
 
         private static readonly ConcurrentDictionary<int, string> ClanNames = new();
 
@@ -309,10 +316,16 @@ namespace WPFUI
                     pause = PauseLabel(status),
                     gold = context.BooleanByName(accountId, AccountSettingEnums.Gold),
                     villages = queued.Any(IsVillageWork),
+                    build = queued.Any(IsBuildWork),
+                    troops = queued.Any(IsTroopWork),
+                    trade = queued.Any(IsTradeWork),
                     farms = queued.Any(task => task is RaidCowListTask.Task raid && !scoutLists.Contains(raid.CowListId)),
                     scouts = queued.Any(task => task is RaidCowListTask.Task raid && scoutLists.Contains(raid.CowListId)),
                     gameFarms = queued.Any(task => task is StartFarmListTask.Task or UpdateFarmListTask.Task),
                     villageNext = NextAt(queued.Where(IsVillageWork)),
+                    buildNext = NextAt(queued.Where(IsBuildWork)),
+                    troopNext = NextAt(queued.Where(IsTroopWork)),
+                    tradeNext = NextAt(queued.Where(IsTradeWork)),
                     farmNext = NextAt(queued.Where(task => task is RaidCowListTask.Task raid && !scoutLists.Contains(raid.CowListId))),
                     scoutNext = NextAt(queued.Where(task => task is RaidCowListTask.Task raid && scoutLists.Contains(raid.CowListId))),
                     gameFarmNext = NextAt(queued.Where(task => task is StartFarmListTask.Task or UpdateFarmListTask.Task)),
@@ -474,9 +487,17 @@ namespace WPFUI
             return Ok("Sesión cerrada.");
         }
 
-        private static async Task<IResult> RemoteStop(IServiceProvider services, int accountId, RemoteStopBody body)
+        private static async Task<IResult> RemoteCommand(IServiceProvider services, int accountId, RemoteStopBody body)
         {
+            var action = (body.Action ?? "stop").Trim().ToLowerInvariant();
             var feature = (body.Feature ?? "").Trim().ToLowerInvariant();
+            if (action == "resume") return Resume(services, accountId, feature);
+            if (action != "stop") return Fail("No se reconoce el comando.");
+            return await StopFeature(services, accountId, feature);
+        }
+
+        private static async Task<IResult> StopFeature(IServiceProvider services, int accountId, string feature)
+        {
             var account = new AccountId(accountId);
             var tasks = services.GetRequiredService<TaskManager>();
             switch (feature)
@@ -499,6 +520,122 @@ namespace WPFUI
                 default:
                     return Fail("No se reconoce qué hay que detener.");
             }
+        }
+
+        private static IResult Resume(IServiceProvider services, int accountId, string feature)
+        {
+            switch (feature)
+            {
+                case "all":
+                    return ResumeAccount(services, accountId);
+                case "farming":
+                    return ResumeFarming(services, accountId);
+                case "building":
+                    return StartBuilding(services, accountId);
+                default:
+                    return Fail("No se reconoce qué hay que reanudar.");
+            }
+        }
+
+        private static IResult ResumeAccount(IServiceProvider services, int accountId)
+        {
+            var account = new AccountId(accountId);
+            var tasks = services.GetRequiredService<TaskManager>();
+            var status = tasks.GetStatus(account);
+            if (status == StatusEnums.Paused)
+            {
+                tasks.SetStatus(account, StatusEnums.Online);
+                return Ok("Reanudada.");
+            }
+            if (status == StatusEnums.Online) return Ok("Ya estaba en marcha.");
+            return Ok($"La cuenta está {status}.");
+        }
+
+        private static IResult ResumeFarming(IServiceProvider services, int accountId)
+        {
+            var account = new AccountId(accountId);
+            var tasks = services.GetRequiredService<TaskManager>();
+            List<int> listIds;
+            using (var context = Context(services))
+            {
+                listIds = context.CowLists
+                    .Where(x => x.AccountId == accountId && x.MinAttackMinutes >= 1 && x.RepeatMinutes >= 1)
+                    .Where(x => context.CowVillages.Any(village => village.CowListId == x.Id))
+                    .Select(x => x.Id)
+                    .ToList();
+            }
+
+            var started = 0;
+            var already = 0;
+            foreach (var listId in listIds)
+            {
+                if (tasks.GetTaskList(account).OfType<RaidCowListTask.Task>().Any(x => x.CowListId == listId))
+                {
+                    already++;
+                    continue;
+                }
+
+                tasks.Add(new RaidCowListTask.Task(account, listId));
+                started++;
+            }
+
+            var game = "";
+            if (IsGold(services, accountId))
+            {
+                var (gameStarted, _, activeCount) = QueueActiveGameFarms(services, accountId);
+                if (activeCount > 0)
+                    game = gameStarted > 0
+                        ? $" Las listas del juego que arrancan: {gameStarted}."
+                        : " Las listas activas del juego ya estaban en curso.";
+            }
+
+            if (started == 0 && already == 0 && game.Length == 0)
+                return Ok("No hay listas con tiempos y aldeas para reanudar.");
+            if (started == 0) return Ok($"El farming ya estaba en marcha.{game}");
+            return Ok($"Vuelven a arrancar {started} listas.{game}");
+        }
+
+        private static IResult GetBuilding(IServiceProvider services, int accountId)
+        {
+            var tasks = services.GetRequiredService<TaskManager>();
+            var running = tasks.GetTaskList(new AccountId(accountId)).OfType<UpgradeBuildingTask.Task>().Any();
+            return Ok("", new { running });
+        }
+
+        private static IResult StartBuilding(IServiceProvider services, int accountId)
+        {
+            var account = new AccountId(accountId);
+            var tasks = services.GetRequiredService<TaskManager>();
+            List<int> villageIds;
+            using (var context = Context(services))
+            {
+                villageIds = context.Villages
+                    .Where(x => x.AccountId == accountId)
+                    .Where(x => x.Jobs.Any(job => job.Type == JobTypeEnums.NormalBuild || job.Type == JobTypeEnums.ResourceBuild))
+                    .Select(x => x.Id)
+                    .ToList();
+            }
+
+            var started = 0;
+            foreach (var villageId in villageIds)
+            {
+                var village = new VillageId(villageId);
+                if (tasks.IsExist<UpgradeBuildingTask.Task>(account, village)) continue;
+                tasks.Add(new UpgradeBuildingTask.Task(account, village));
+                started++;
+            }
+
+            if (villageIds.Count == 0) return Ok("No hay trabajos de construcción.");
+            if (started == 0) return Ok("La construcción ya estaba en marcha.");
+            return Ok(started == 1
+                ? "La construcción vuelve a arrancar en 1 aldea."
+                : $"La construcción vuelve a arrancar en {started} aldeas.");
+        }
+
+        private static IResult StopBuildingNow(IServiceProvider services, int accountId)
+        {
+            StopBuilding(services, accountId);
+            return Ok("Construcción detenida.");
         }
 
         private static void StopFarming(IServiceProvider services, int accountId)
@@ -2407,6 +2544,7 @@ namespace WPFUI
 
     public sealed class RemoteStopBody
     {
+        public string Action { get; set; }
         public string Feature { get; set; }
     }
 
