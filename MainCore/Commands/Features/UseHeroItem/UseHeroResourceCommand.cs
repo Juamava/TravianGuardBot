@@ -11,11 +11,21 @@
 
             Result result;
             var fillUpButton = await UpgradeParser.GetFillUpButton(browser.CurrentPage, building);
+            if (await fillUpButton.CountAsync() == 0)
+                return Retry.Error.WithError("The page has no control to use hero resources");
+
             result = await browser.Click(fillUpButton);
             if (result.IsFailed) return result;
 
-            result = await browser.Wait(InventoryParser.GetResourceTransferDialog(browser.CurrentPage));
-            if (result.IsFailed) return result;
+            // Short wait: when the dialog does not open, the caller falls back to "wait for resources".
+            try
+            {
+                await InventoryParser.GetResourceTransferDialog(browser.CurrentPage).WaitForAsync(new() { Timeout = DialogTimeoutMs });
+            }
+            catch (TimeoutException)
+            {
+                return Retry.Error.WithError("The hero resource dialog did not open");
+            }
 
             result = await IsEnoughResource(resource);
             if (result.IsFailed)
@@ -45,6 +55,8 @@
 
             return Result.Ok();
         }
+
+        private const float DialogTimeoutMs = 5_000;
 
         private static readonly List<string> _itemInputName =
         [
