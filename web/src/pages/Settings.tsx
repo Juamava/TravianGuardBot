@@ -164,7 +164,7 @@ function SettingGroups({ groups, values, set, meta }: { groups: { title: string;
   )
 }
 
-type SettingsBag = {
+export type SettingsBag = {
   values: Record<string, number>
   set: (key: string, value: number, immediate?: boolean) => void
   replace: (values: Record<string, number>) => void

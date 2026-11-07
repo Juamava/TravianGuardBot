@@ -17,6 +17,7 @@ The app is written in C# on .NET 10. The UI uses WPF, and the bot automates Chro
 - Instant upgrade (complete immediately).
 - NPC resource exchange.
 - Train troops.
+- Evade attacks: every troop at home leaves as reinforcement to an ally just before the attacks land, and comes back after the last one (trains of attacks included).
 - Claim village quests.
 
 **Farming:**
