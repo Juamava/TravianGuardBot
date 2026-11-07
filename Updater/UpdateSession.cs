@@ -19,6 +19,7 @@ namespace Updater
         private readonly int _pid;
         private readonly string _pipeName;
         private readonly string _url;
+        private readonly CancellationTokenSource _cancel = new();
         private Stream? _pipe;
         private bool _closing;
 
@@ -55,17 +56,31 @@ namespace Updater
             return Run(progress);
         }
 
+        public bool Cancel()
+        {
+            if (_closing) return false;
+            _cancel.Cancel();
+            return true;
+        }
+
         private async Task Run(Action<string, int> progress)
         {
             if (!File.Exists(Path.Combine(_install, "TravianBotSharp.exe")))
                 throw new InvalidOperationException("No está el programa en la carpeta de instalación.");
 
             await using var pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+            string? zipPath = null;
             try
             {
                 try
                 {
-                    await pipe.ConnectAsync(90000);
+                    using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(_cancel.Token);
+                    connectTimeout.CancelAfter(TimeSpan.FromSeconds(90));
+                    await pipe.ConnectAsync(connectTimeout.Token);
+                }
+                catch (OperationCanceledException) when (!_cancel.IsCancellationRequested)
+                {
+                    throw new InvalidOperationException("No se pudo hablar con el programa.");
                 }
                 catch (TimeoutException)
                 {
@@ -75,15 +90,17 @@ namespace Updater
                 _pipe = pipe;
                 var root = UpdateRoot();
                 Directory.CreateDirectory(root);
-                var zipPath = Path.Combine(root, AssetName);
+                zipPath = Path.Combine(root, AssetName);
                 var staging = Path.Combine(root, "staging");
                 if (Directory.Exists(staging)) Directory.Delete(staging, true);
                 Directory.CreateDirectory(staging);
 
                 await Report(progress, "downloading", 10, "Descargando " + Version + "...");
-                await Download(zipPath, progress);
+                await Download(zipPath, progress, _cancel.Token);
+                _cancel.Token.ThrowIfCancellationRequested();
                 await Report(progress, "extracting", 90, "Preparando los archivos...");
                 Extract(zipPath, staging);
+                _cancel.Token.ThrowIfCancellationRequested();
                 if (!File.Exists(Path.Combine(staging, "TravianBotSharp.exe")))
                     throw new InvalidOperationException("El paquete no trae el programa.");
 
@@ -94,6 +111,23 @@ namespace Updater
                 await WaitForClient();
                 await Task.Delay(2000);
                 Install(staging);
+            }
+            catch (OperationCanceledException) when (_cancel.IsCancellationRequested)
+            {
+                if (zipPath != null) TryDeleteFile(zipPath);
+                if (!_closing && _pipe != null)
+                {
+                    try
+                    {
+                        await Send(new { type = "progress", phase = "failed", percent = 0, message = "Actualización cancelada." });
+                    }
+                    catch
+                    {
+                        // The client sees the pipe close either way.
+                    }
+                }
+
+                throw;
             }
             catch (Exception ex)
             {
@@ -307,18 +341,18 @@ namespace Updater
             }
         }
 
-        private async Task Download(string zipPath, Action<string, int> progress)
+        private async Task Download(string zipPath, Action<string, int> progress, CancellationToken cancellationToken)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, _url);
             request.Headers.UserAgent.ParseAdd("TravianGuardBot");
             if (_url.Contains("api.github.com", StringComparison.OrdinalIgnoreCase))
                 request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
 
-            using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             if (!response.IsSuccessStatusCode)
                 throw new InvalidOperationException("GitHub respondió " + (int)response.StatusCode + ".");
 
-            await using var source = await response.Content.ReadAsStreamAsync();
+            await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
             await using var destination = File.Create(zipPath);
             var total = response.Content.Headers.ContentLength.GetValueOrDefault();
             var buffer = new byte[81920];
@@ -326,9 +360,9 @@ namespace Updater
             var last = 10;
             while (true)
             {
-                var count = await source.ReadAsync(buffer);
+                var count = await source.ReadAsync(buffer, cancellationToken);
                 if (count == 0) break;
-                await destination.WriteAsync(buffer.AsMemory(0, count));
+                await destination.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
                 read += count;
                 if (total <= 0) continue;
                 var percent = 10 + (int)(read * 70 / total);
@@ -434,6 +468,18 @@ namespace Updater
         private static string UpdateRoot()
         {
             return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TravianGuardBot", "update");
+        }
+
+        private static void TryDeleteFile(string path)
+        {
+            try
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+            catch
+            {
+                // A leftover download is replaced the next time.
+            }
         }
 
         private static bool TryDelete(string path)

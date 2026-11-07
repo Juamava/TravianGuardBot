@@ -15,12 +15,15 @@ namespace MainCore.Tasks
         TaskManager taskManager,
         ILogger logger)
     {
-        public sealed class Task(AccountId accountId, int cowVillageId, string url, string troopPlan, bool raid) : AccountTask(accountId)
+        public sealed class Task(AccountId accountId, int cowVillageId, string url, string troopPlan, bool raid, int originVillageId = 0) : AccountTask(accountId)
         {
             public int CowVillageId { get; } = cowVillageId;
             public string Url { get; } = url;
             public string TroopPlan { get; } = troopPlan;
             public bool Raid { get; } = raid;
+
+            /// <summary>Village the troops leave from. 0 keeps whatever village the browser already has open.</summary>
+            public int OriginVillageId { get; } = originVillageId;
 
             protected override string TaskName => $"Attack {TroopPlan} {(Raid ? "raid" : "normal")}";
         }
@@ -28,6 +31,17 @@ namespace MainCore.Tasks
         private async ValueTask<Result> HandleAsync(Task task, CancellationToken cancellationToken)
         {
             if (!CowTroopPlan.TryParse(task.TroopPlan, out var slots, out var planError)) return Stop(task, planError);
+            if (task.OriginVillageId != 0)
+            {
+                string? server;
+                using (var context = contextFactory.CreateDbContext())
+                    server = context.Accounts.Where(x => x.Id == task.AccountId.Value).Select(x => x.Server).FirstOrDefault();
+                if (string.IsNullOrWhiteSpace(server)) return Stop(task, "no se encontró el servidor");
+                var home = $"{server.TrimEnd('/')}/dorf1.php?newdid={task.OriginVillageId}";
+                var switched = await browser.Navigate(home);
+                if (switched.IsFailed) return Stop(task, "no se pudo cambiar a la aldea desde la que salen las tropas");
+            }
+
             SetState(task, ScoutResult.AttackSending, "Abriendo la aldea en el navegador");
 
             try
@@ -98,8 +112,11 @@ namespace MainCore.Tasks
 
             logger.Information("Attack sent to {Url} with {Plan} ({Mission})", task.Url, task.TroopPlan, task.Raid ? "raid" : "normal");
             SetState(task, ScoutResult.AttackSent, $"{(task.Raid ? "Asalto" : "Ataque normal")} con {task.TroopPlan} en camino. Se lee el reporte cuando llegue.");
-            MarkSent(task);
-            taskManager.Add(new CheckAttackReportTask.Task(task.AccountId, task.CowVillageId) { ExecuteAt = DateTime.Now.AddMinutes(1) });
+            if (task.CowVillageId != 0)
+            {
+                MarkSent(task);
+                taskManager.Add(new CheckAttackReportTask.Task(task.AccountId, task.CowVillageId) { ExecuteAt = DateTime.Now.AddMinutes(1) });
+            }
             return Result.Ok();
         }
 
@@ -130,6 +147,7 @@ namespace MainCore.Tasks
 
         private void MarkSent(Task task)
         {
+            if (task.CowVillageId == 0) return;
             using var context = contextFactory.CreateDbContext();
             var now = DateTime.UtcNow;
             context.ScoutResults.Where(x => x.CowVillageId == task.CowVillageId)
@@ -138,6 +156,7 @@ namespace MainCore.Tasks
 
         private void SetState(Task task, string state, string message)
         {
+            if (task.CowVillageId == 0) return;
             try
             {
                 using var context = contextFactory.CreateDbContext();

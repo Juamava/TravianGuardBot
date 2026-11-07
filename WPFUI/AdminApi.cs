@@ -134,6 +134,7 @@ namespace WPFUI
             app.MapPut("/api/accounts/{id:int}/scouting/lists/{listId:int}", (int id, int listId, ScoutListBody body) => UpdateScoutList(services, id, listId, body));
             app.MapPost("/api/accounts/{id:int}/scouting/promote", (int id, PromoteBody body) => PromoteScouted(services, id, body));
             app.MapPost("/api/accounts/{id:int}/scouting/attack", (int id, AttackBody body) => AttackScouted(services, id, body));
+            app.MapPost("/api/accounts/{id:int}/chat/attack", (int id, ChatAttackBody body) => AttackFromChat(services, id, body));
             app.MapGet("/api/accounts/{id:int}/villages/{villageId:int}/home-troops", (int id, int villageId, HttpContext http) => GetHomeTroops(services, id, villageId, http.RequestAborted));
             app.MapPost("/api/accounts/{id:int}/farming/lists", (int id, CowListBody body) => CreateCowList(services, id, body));
             app.MapPut("/api/accounts/{id:int}/farming/lists/{listId:int}", (int id, int listId, CowListBody body) => UpdateCowList(services, id, listId, body));
@@ -1048,6 +1049,36 @@ namespace WPFUI
             return Ok(status == StatusEnums.Paused
                 ? $"{mission} a {VillageLabel(target.Name)} con {plan} en cola. El bot está en pausa: sale cuando lo reanudes."
                 : $"{mission} a {VillageLabel(target.Name)} con {plan} en cola: sale en el próximo turno del navegador.");
+        }
+
+        private static IResult AttackFromChat(IServiceProvider services, int accountId, ChatAttackBody body)
+        {
+            if (!CowTroopPlan.TryParse(string.IsNullOrWhiteSpace(body.Troops) ? "A:50" : body.Troops, out var slots, out var error)) return Fail(error);
+            var plan = CowTroopPlan.Format(slots);
+            if (!CowOasisParser.TryReadCoordinates(body.Url ?? "", out var x, out var y)) return Fail("Ese enlace no es una aldea del mapa.");
+            if (!OwnsVillage(services, accountId, body.VillageId)) return Fail("Elegí la aldea desde la que salen las tropas.");
+
+            string server;
+            using (var context = Context(services))
+                server = context.Accounts.Where(account => account.Id == accountId).Select(account => account.Server).FirstOrDefault() ?? "";
+            if (!Uri.TryCreate(server, UriKind.Absolute, out var serverUri)) return Fail("No se encontró el servidor de la cuenta.");
+            if (!Uri.TryCreate(body.Url, UriKind.Absolute, out var link) || !string.Equals(serverUri.Host, link.Host, StringComparison.OrdinalIgnoreCase) || !link.AbsolutePath.EndsWith("/karte.php", StringComparison.OrdinalIgnoreCase))
+                return Fail("Ese enlace es de otro servidor.");
+
+            var url = $"{server.TrimEnd('/')}/karte.php?x={x.ToString(CultureInfo.InvariantCulture)}&y={y.ToString(CultureInfo.InvariantCulture)}";
+            var account = new AccountId(accountId);
+            var tasks = services.GetRequiredService<TaskManager>();
+            var status = tasks.GetStatus(account);
+            if (status is not (StatusEnums.Online or StatusEnums.Paused)) return Fail("Conectá la cuenta para atacar.");
+            if (tasks.GetTaskList(account).OfType<AttackVillageTask.Task>().Any(task => string.Equals(task.Url, url, StringComparison.OrdinalIgnoreCase)))
+                return Fail("Ya hay un ataque en cola para esta aldea. Esperá a que salga.");
+
+            tasks.Add(new AttackVillageTask.Task(account, 0, url, plan, body.Raid, body.VillageId));
+            var mission = body.Raid ? "asalto" : "ataque normal";
+            var place = $"({x}|{y})";
+            return Ok(status == StatusEnums.Paused
+                ? $"{mission} a {place} con {plan} en cola. El bot está en pausa: sale cuando lo reanudes."
+                : $"{mission} a {place} con {plan} en cola: sale en el próximo turno del navegador.");
         }
 
         /// <summary>
@@ -2309,6 +2340,14 @@ namespace WPFUI
     public sealed class AttackBody
     {
         public int CowId { get; set; }
+        public string Troops { get; set; }
+        public bool Raid { get; set; } = true;
+    }
+
+    public sealed class ChatAttackBody
+    {
+        public string Url { get; set; }
+        public int VillageId { get; set; }
         public string Troops { get; set; }
         public bool Raid { get; set; } = true;
     }
