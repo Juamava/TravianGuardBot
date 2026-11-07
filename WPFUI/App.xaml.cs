@@ -41,8 +41,10 @@ namespace WPFUI
             AppLog.Write("arranque", StayAwake.Hold()
                 ? "Windows no entra en Sleep mientras el bot está abierto."
                 : "No se pudo impedir que Windows entre en Sleep.");
+            AppUpdate.CaptureLaunch();
             AppLog.Write("arranque", "Versión " + AppUpdate.CurrentVersion() + " en " + AppContext.BaseDirectory);
-            UpdateSplash.Show(AppUpdate.CurrentVersion());
+            var startupStatus = AppUpdate.StartupStatus();
+            UpdateSplash.Show(AppUpdate.CurrentVersion(), startupStatus.Length == 0 ? null : startupStatus, AppUpdate.StartupPercent());
             var hostBuilder = AppMixins.GetHostBuilder()
                 .ConfigureServices(services => services.AddHostedService<AdminWebHost>())
                 .ConfigureSplatForMicrosoftDependencyResolver()
