@@ -1,4 +1,5 @@
 using MainCore.Commands.Features.HeroHunt;
+using MainCore.Commands.Features.Scouting;
 using MainCore.Infrasturecture.Extensions;
 using MainCore.Tasks.Base;
 
@@ -10,7 +11,8 @@ namespace MainCore.Tasks
         IChromeBrowser browser,
         RxQueue rxQueue,
         ILogger logger,
-        HuntAnimalOasisCommand.Handler huntAnimalOasisCommand)
+        HuntAnimalOasisCommand.Handler huntAnimalOasisCommand,
+        ReadScoutReportsCommand.Handler readScoutReportsCommand)
     {
         public sealed class Task(AccountId accountId, int cowListId) : AccountTask(accountId)
         {
@@ -21,11 +23,18 @@ namespace MainCore.Tasks
 
             /// <summary>Hero state for this pass over the list ("Levear héroe"). Reset with NextIndex.</summary>
             public HeroRunState Hero { get; } = new();
+
+            /// <summary>Scouting lists read their reports once at the start of each pass.</summary>
+            public bool ReportsRead { get; set; }
+
             protected override string TaskName => $"Raid cow list #{CowListId}";
         }
 
         /// <summary>List options that only matter for "Levear héroe".</summary>
-        private readonly record struct HeroOptions(bool LevelHero, int ListVillageId, string Server);
+        private readonly record struct HeroOptions(bool LevelHero, int ListVillageId, string Server, bool Scout);
+
+        /// <summary>A target waits this long for its scouting report before it is scouted again.</summary>
+        private static readonly TimeSpan ScoutReportWait = TimeSpan.FromHours(3);
 
         private readonly record struct CowTarget(int Id, string Url, string Name, string? TroopPlan, int TroopCount, DateTime? LastAttackedAt, int MinAttackMinutes);
 
@@ -38,6 +47,16 @@ namespace MainCore.Tasks
             if (targets.Count == 0) return Skip.Error.WithError("Cow list has no villages");
             var hero = GetHeroOptions(task);
 
+            // Scouting: the reports of the last pass are read first, as a turn of their own.
+            if (hero.Scout && task.NextIndex == 0 && !task.ReportsRead)
+            {
+                task.ReportsRead = true;
+                var read = await readScoutReportsCommand.HandleAsync(new(task.AccountId, task.CowListId, hero.Server), cancellationToken);
+                if (read.IsFailed) logger.Warning("Scouting reports were not read: {Message}", string.Join(" ", read.Errors.Select(x => x.Message)));
+                task.ExecuteAt = DateTime.Now;
+                return Result.Ok();
+            }
+
             try
             {
                 for (var index = task.NextIndex; index < targets.Count; index++)
@@ -49,6 +68,12 @@ namespace MainCore.Tasks
                     if (IsOnCooldown(target, minMinutes, out var elapsedMinutes))
                     {
                         logger.Information("Skipping {Url}: attacked {Elapsed} min ago, minimum is {Minimum} min", target.Url, elapsedMinutes, minMinutes);
+                        continue;
+                    }
+
+                    if (hero.Scout && IsWaitingReport(target.Id))
+                    {
+                        logger.Information("Skipping {Url}: waiting for the scouting report", target.Url);
                         continue;
                     }
 
@@ -143,6 +168,13 @@ namespace MainCore.Tasks
 
             var tile = await CowOasisParser.ReadTile(browser.CurrentPage);
             await CaptureDetails(task, target);
+            if (hero.Scout && tile.IsOasis)
+            {
+                logger.Information("Skipping {Url}: Scouting lists only scout villages", target.Url);
+                MarkSkipped(target.Id, "Es oasis");
+                return Result.Ok();
+            }
+
             if (!tile.IsOasis)
             {
                 var troopsLink = CowOasisParser.GetSendTroopsLink(browser.CurrentPage);
@@ -168,7 +200,7 @@ namespace MainCore.Tasks
                     return result;
                 }
 
-                return await SendPlannedTroops(task, target, slots);
+                return await SendPlannedTroops(task, target, slots, hero.Scout);
             }
 
             if (!tile.IsUnoccupied)
@@ -194,10 +226,10 @@ namespace MainCore.Tasks
                 return result;
             }
 
-            return await SendPlannedTroops(task, target, slots);
+            return await SendPlannedTroops(task, target, slots, false);
         }
 
-        private async Task<Result> SendPlannedTroops(Task task, CowTarget target, IReadOnlyList<CowTroopSlot> slots)
+        private async Task<Result> SendPlannedTroops(Task task, CowTarget target, IReadOnlyList<CowTroopSlot> slots, bool scout)
         {
             var result = await browser.Wait(CowOasisParser.GetTroopTable(browser.CurrentPage));
             if (result.IsFailed)
@@ -256,6 +288,8 @@ namespace MainCore.Tasks
                 return result;
             }
 
+            if (scout) await ChooseScoutResources();
+
             result = await browser.Click(confirmButton);
             if (result.IsFailed)
             {
@@ -267,6 +301,7 @@ namespace MainCore.Tasks
                 task.KnownTroops[slot.TroopIndex] -= slot.Amount;
 
             MarkAttacked(target.Id);
+            if (scout) MarkScoutSent(target.Id);
             return Result.Ok();
         }
 
@@ -303,11 +338,12 @@ namespace MainCore.Tasks
             using var context = contextFactory.CreateDbContext();
             var list = context.CowLists
                 .Where(x => x.Id == task.CowListId && x.AccountId == task.AccountId.Value)
-                .Select(x => new { x.LevelHero, x.VillageId })
+                .Select(x => new { x.LevelHero, x.VillageId, x.Kind })
                 .FirstOrDefault();
             var server = context.Accounts.Where(x => x.Id == task.AccountId.Value).Select(x => x.Server).FirstOrDefault();
-            if (list is null || string.IsNullOrWhiteSpace(server)) return new HeroOptions(false, 0, "");
-            return new HeroOptions(list.LevelHero, list.VillageId, server);
+            if (list is null || string.IsNullOrWhiteSpace(server)) return new HeroOptions(false, 0, "", false);
+            var scout = list.Kind == CowList.ScoutKind;
+            return new HeroOptions(list.LevelHero && !scout, list.VillageId, server, scout);
         }
 
         private static bool IsOnCooldown(CowTarget target, int minAttackMinutes, out int elapsedMinutes)
@@ -340,6 +376,7 @@ namespace MainCore.Tasks
             if (repeat <= 0 || !task.KeepRepeating) return;
 
             task.NextIndex = 0;
+            task.ReportsRead = false;
             task.KnownTroops.Clear();
             task.Hero.Reset();
             task.ExecuteAt = DateTime.Now.AddMinutes(repeat);
@@ -376,6 +413,51 @@ namespace MainCore.Tasks
             context.SaveChanges();
             if (browser.AccountId == AccountId.Empty) return;
             rxQueue.Enqueue(new CowVillagesModified(browser.AccountId));
+        }
+
+        /// <summary>
+        /// On the confirmation page of a scouting, picks "resources and troops" when the game offers the choice.
+        /// Without it the game default stays, which is the same option.
+        /// </summary>
+        private async System.Threading.Tasks.Task ChooseScoutResources()
+        {
+            try
+            {
+                var option = browser.CurrentPage.Locator("label:has(input[type=radio])")
+                    .Filter(new() { HasTextRegex = new System.Text.RegularExpressions.Regex("resources|recursos", System.Text.RegularExpressions.RegexOptions.IgnoreCase) })
+                    .Locator("input[type=radio]");
+                if (await option.CountAsync() > 0) await option.First.CheckAsync(new() { Timeout = 3_000 });
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.Warning("Could not choose the scouting option: {Message}", ex.Message);
+            }
+        }
+
+        private bool IsWaitingReport(int cowVillageId)
+        {
+            using var context = contextFactory.CreateDbContext();
+            var sentAt = context.ScoutResults
+                .Where(x => x.CowVillageId == cowVillageId && x.Pending)
+                .Select(x => x.SentAt)
+                .FirstOrDefault();
+            return sentAt is not null && DateTime.Now - sentAt.Value < ScoutReportWait;
+        }
+
+        private void MarkScoutSent(int cowVillageId)
+        {
+            using var context = contextFactory.CreateDbContext();
+            var row = context.ScoutResults.FirstOrDefault(x => x.CowVillageId == cowVillageId);
+            if (row is null)
+            {
+                row = new ScoutResult { CowVillageId = cowVillageId };
+                context.ScoutResults.Add(row);
+            }
+
+            row.Pending = true;
+            row.SentAt = DateTime.Now;
+            context.SaveChanges();
+            context.CowVillages.Where(x => x.Id == cowVillageId).ExecuteUpdate(x => x.SetProperty(village => village.LastSkipReason, "Esperando reporte"));
         }
 
         private void MarkPhase(int cowVillageId, string phase)

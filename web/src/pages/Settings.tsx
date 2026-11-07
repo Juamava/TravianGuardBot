@@ -43,6 +43,7 @@ const villageConstruction: { title: string; fields: Field[] }[] = [
     { kind: 'bool', label: 'Completar al instante', key: 'CompleteImmediately', hint: 'Termina la construcción al instante cuando la cola supera el tiempo indicado.' },
     { kind: 'number', label: 'Completar si la cola supera (minutos)', key: 'CompleteImmediatelyTime', hint: 'Minutos de cola a partir de los cuales se completa la construcción al instante.' },
     { kind: 'bool', label: 'Usar la mejora especial', key: 'UseSpecialUpgrade', hint: 'Usa la mejora especial del edificio cuando está disponible.' },
+    { kind: 'bool', label: 'Reclamar misiones de la aldea', key: 'AutoClaimQuestEnable', hint: 'Reclama las misiones que se completan en esta aldea.' },
   ]},
   { title: 'Refresco', fields: [
     { kind: 'bool', label: 'Refrescar solo', key: 'AutoRefreshEnable', hint: 'Vuelve a entrar a la aldea para actualizar recursos y edificios, aunque no haya nada que construir.' },
@@ -62,24 +63,6 @@ const villageTrade: { title: string; fields: Field[] }[] = [
   ]},
 ]
 
-const villageTroops: { title: string; fields: Field[] }[] = [
-  { title: 'Tropas', fields: [
-    { kind: 'bool', label: 'Entrenar tropas', key: 'TrainTroopEnable', hint: 'Entrena en los edificios que tengan una tropa y una cantidad.' },
-    { kind: 'bool', label: 'Entrenar el máximo si faltan recursos', key: 'TrainWhenLowResource', hint: 'Si no alcanzan los recursos para la cantidad elegida, entrena la mayor cantidad posible.' },
-    { kind: 'range', label: 'Repetir cada', unit: 'minutos', min: 'TrainTroopRepeatTimeMin', max: 'TrainTroopRepeatTimeMax', hint: 'Cada cuánto vuelve a intentar entrenar.' + normal },
-    { kind: 'troop', label: 'Cuartel', hint: 'Tropa que entrena en el cuartel.', key: 'BarrackTroop' },
-    { kind: 'range', label: 'Cantidad cuartel', unit: 'unidades', min: 'BarrackAmountMin', max: 'BarrackAmountMax', hint: 'Cuántas unidades entrena en el cuartel.' + normal },
-    { kind: 'troop', label: 'Gran cuartel', hint: 'Tropa que entrena en el gran cuartel.', key: 'GreatBarrackTroop' },
-    { kind: 'range', label: 'Cantidad gran cuartel', unit: 'unidades', min: 'GreatBarrackAmountMin', max: 'GreatBarrackAmountMax', hint: 'Cuántas unidades entrena en el gran cuartel.' + normal },
-    { kind: 'troop', label: 'Establo', hint: 'Tropa que entrena en el establo.', key: 'StableTroop' },
-    { kind: 'range', label: 'Cantidad establo', unit: 'unidades', min: 'StableAmountMin', max: 'StableAmountMax', hint: 'Cuántas unidades entrena en el establo.' + normal },
-    { kind: 'troop', label: 'Gran establo', hint: 'Tropa que entrena en el gran establo.', key: 'GreatStableTroop' },
-    { kind: 'range', label: 'Cantidad gran establo', unit: 'unidades', min: 'GreatStableAmountMin', max: 'GreatStableAmountMax', hint: 'Cuántas unidades entrena en el gran establo.' + normal },
-    { kind: 'troop', label: 'Taller', hint: 'Tropa que entrena en el taller.', key: 'WorkshopTroop' },
-    { kind: 'range', label: 'Cantidad taller', unit: 'unidades', min: 'WorkshopAmountMin', max: 'WorkshopAmountMax', hint: 'Cuántas unidades entrena en el taller.' + normal },
-    { kind: 'bool', label: 'Reclamar misiones de la aldea', key: 'AutoClaimQuestEnable', hint: 'Reclama las misiones que se completan en esta aldea.' },
-  ]},
-]
 
 function Hint({ text }: { text: string }) {
   return (
@@ -305,9 +288,10 @@ export function AccountSettings(props: { accountId: number; meta: Meta | null; n
 
 const villageSections = {
   build: villageConstruction,
-  troops: villageTroops,
   trade: villageTrade,
 } as const
+
+export { SettingsFiles }
 
 export function VillageSettings(props: { accountId: number; villageId: number; meta: Meta | null; notify: (message: string) => void; section: keyof typeof villageSections }) {
   const path = `/api/accounts/${props.accountId}/villages/${props.villageId}/settings`

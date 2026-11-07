@@ -68,7 +68,7 @@ namespace MainCore.Services
                 var trainTroopTask = new TrainTroopTask.Task(accountId, village);
                 if (trainTroopTask.CanStart(context) && !taskManager.IsExist<TrainTroopTask.Task>(accountId, village))
                 {
-                    taskManager.Add(trainTroopTask);
+                    taskManager.Add(trainTroopTask.RestoreSchedule(context));
                 }
             }
             var hasBuildJobVillages = context.Villages

@@ -18,11 +18,12 @@ import { Accounts } from './pages/Accounts'
 import { AccountSettings, Templates } from './pages/Settings'
 import { Villages } from './pages/Villages'
 import { Farming } from './pages/Farming'
+import { Scouting } from './pages/Scouting'
 import { Debug } from './pages/Debug'
 import { Hero } from './pages/Hero'
 import { Empty, UiProvider, useUi } from './ui'
 
-type Page = 'aldeas' | 'farming' | 'farming-juego' | 'hero' | 'debug' | 'ajustes' | 'cuentas'
+type Page = 'aldeas' | 'aldeas-tropas' | 'aldeas-comercio' | 'farming' | 'farming-juego' | 'farming-scout' | 'hero' | 'debug' | 'ajustes' | 'cuentas'
 
 const pages: { id: Page; label: string; icon: SvgIconComponent }[] = [
   { id: 'aldeas', label: 'Aldeas', icon: LocationCityIcon },
@@ -170,6 +171,7 @@ function Shell() {
   const villagesLive = !!account?.villages
   const farmsLive = !!account?.farms
   const gameLive = !!account?.gameFarms
+  const scoutLive = !!account?.scouts
   const heldByOther = holder != null && holder.id !== account?.id
   useEffect(() => {
     if (!update?.available || !update.publishedAt) return
@@ -333,15 +335,29 @@ function Shell() {
           </Button>
         </Box>
         <Stack spacing={0.3} sx={{ px: 1, pt: 1, overflow: 'auto', flex: 1 }}>
-          {pages.map(item => item.id === 'farming' && account?.gold ? (
-            <Stack key="farming" spacing={0.15}>
-              <NavItem selected={false} disabled={!connected} icon={item.icon} label="Farming" onClick={() => setPage('farming')} />
-              <SubNav selected={page === 'farming'} disabled={!connected} live={farmsLive} label="Listas propias" onClick={() => setPage('farming')} />
-              <SubNav selected={page === 'farming-juego'} disabled={!connected} live={gameLive} label="Listas del juego" onClick={() => setPage('farming-juego')} />
-            </Stack>
-          ) : (
-            <NavItem key={item.id} selected={page === item.id} disabled={!connected} live={item.id === 'aldeas' ? villagesLive : item.id === 'farming' && (farmsLive || gameLive)} icon={item.icon} label={item.label} onClick={() => setPage(item.id)} />
-          ))}
+          {pages.map(item => {
+            if (item.id === 'aldeas') {
+              return (
+                <Stack key="aldeas" spacing={0.15}>
+                  <NavItem selected={false} disabled={!connected} live={villagesLive} icon={item.icon} label="Aldeas" onClick={() => setPage('aldeas')} />
+                  <SubNav selected={page === 'aldeas'} disabled={!connected} label="Construcción" onClick={() => setPage('aldeas')} />
+                  <SubNav selected={page === 'aldeas-tropas'} disabled={!connected} label="Tropas" onClick={() => setPage('aldeas-tropas')} />
+                  <SubNav selected={page === 'aldeas-comercio'} disabled={!connected} label="Comercio" onClick={() => setPage('aldeas-comercio')} />
+                </Stack>
+              )
+            }
+            if (item.id === 'farming') {
+              return (
+                <Stack key="farming" spacing={0.15}>
+                  <NavItem selected={false} disabled={!connected} live={!account?.gold && (farmsLive || scoutLive)} icon={item.icon} label="Farming" onClick={() => setPage('farming')} />
+                  <SubNav selected={page === 'farming'} disabled={!connected} live={farmsLive} label="Listas propias" onClick={() => setPage('farming')} />
+                  {account?.gold && <SubNav selected={page === 'farming-juego'} disabled={!connected} live={gameLive} label="Listas del juego" onClick={() => setPage('farming-juego')} />}
+                  <SubNav selected={page === 'farming-scout'} disabled={!connected} live={scoutLive} label="Scouting" onClick={() => setPage('farming-scout')} />
+                </Stack>
+              )
+            }
+            return <NavItem key={item.id} selected={page === item.id} disabled={!connected} icon={item.icon} label={item.label} onClick={() => setPage(item.id)} />
+          })}
         </Stack>
         <Stack spacing={0.3} sx={{ px: 1, pb: 1.5 }}>
           <NavItem selected={page === 'ajustes'} disabled={!account} icon={SettingsIcon} label="Ajustes" onClick={() => setPage('ajustes')} />
@@ -361,8 +377,9 @@ function Shell() {
         {page !== 'cuentas' && page !== 'ajustes' && connected && accountId && (
           <>
             {page === 'hero' && <Hero key={accountId} accountId={accountId} notify={ui.notify} />}
-            {page === 'aldeas' && <Villages key={accountId} accountId={accountId} meta={meta} notify={ui.notify} />}
+            {(page === 'aldeas' || page === 'aldeas-tropas' || page === 'aldeas-comercio') && <Villages key={accountId} accountId={accountId} meta={meta} notify={ui.notify} tab={page === 'aldeas-tropas' ? 'troops' : page === 'aldeas-comercio' ? 'trade' : 'build'} />}
             {(page === 'farming' || page === 'farming-juego') && <Farming key={`${accountId}-${page}`} accountId={accountId} notify={ui.notify} mode={page === 'farming-juego' ? 'game' : 'bot'} />}
+            {page === 'farming-scout' && <Scouting key={accountId} accountId={accountId} notify={ui.notify} />}
             {page === 'debug' && <Debug key={accountId} accountId={accountId} notify={ui.notify} />}
           </>
         )}

@@ -22,6 +22,20 @@ namespace MainCore.Tasks
                 if (!settingEnable) return false;
                 return true;
             }
+
+            /// <summary>
+            /// A new task (app restart, training turned back on) starts at the time the last run left
+            /// in the database instead of right now, so troops are not queued twice.
+            /// </summary>
+            public Task RestoreSchedule(AppDbContext context)
+            {
+                var next = context.Villages
+                    .Where(x => x.Id == VillageId.Value)
+                    .Select(x => x.NextTrainAt)
+                    .FirstOrDefault();
+                if (next is not null && next.Value > ExecuteAt) ExecuteAt = next.Value;
+                return this;
+            }
         }
 
         private async ValueTask<Result> HandleAsync(Task task, CancellationToken cancellationToken)
@@ -65,7 +79,21 @@ namespace MainCore.Tasks
 
             SaveSetting(task, settings);
             task.ExecuteAt = GetNextExecute(task.VillageId);
+            SaveSchedule(task);
             return Result.Ok();
+        }
+
+        private void SaveSchedule(Task task)
+        {
+            using var context = contextFactory.CreateDbContext();
+            var now = DateTime.Now;
+            var next = task.ExecuteAt;
+            context.Villages
+                .Where(x => x.Id == task.VillageId.Value)
+                .ExecuteUpdate(x => x
+                    .SetProperty(village => village.LastTrainAt, now)
+                    .SetProperty(village => village.NextTrainAt, next));
+            logger.Information("Next troop training at {Time}", next.ToString("yyyy-MM-dd HH:mm:ss"));
         }
 
         private void SaveSetting(Task task, Dictionary<VillageSettingEnums, int> settings)

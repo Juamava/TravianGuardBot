@@ -95,8 +95,14 @@ namespace WPFUI
             app.MapGet("/api/accounts/{id:int}/villages/{villageId:int}/jobs/export", (int id, int villageId) => ExportJobs(services, id, villageId));
             app.MapGet("/api/accounts/{id:int}/villages/{villageId:int}/settings", (int id, int villageId) => GetVillageSettings(services, id, villageId));
             app.MapPut("/api/accounts/{id:int}/villages/{villageId:int}/settings", (int id, int villageId, Dictionary<string, int> body) => SaveVillageSettings(services, id, villageId, body));
+            app.MapGet("/api/accounts/{id:int}/villages/{villageId:int}/troops", (int id, int villageId) => GetTroopStatus(services, id, villageId));
+            app.MapPost("/api/accounts/{id:int}/villages/{villageId:int}/troops/now", (int id, int villageId) => TrainTroopsNow(services, id, villageId));
 
             app.MapGet("/api/accounts/{id:int}/farming", (int id, int villageId) => GetFarming(services, id, villageId));
+            app.MapGet("/api/accounts/{id:int}/scouting", (int id, int villageId) => GetScouting(services, id, villageId));
+            app.MapPost("/api/accounts/{id:int}/scouting/lists", (int id, CowListBody body) => CreateScoutList(services, id, body));
+            app.MapPut("/api/accounts/{id:int}/scouting/lists/{listId:int}", (int id, int listId, ScoutListBody body) => UpdateScoutList(services, id, listId, body));
+            app.MapPost("/api/accounts/{id:int}/scouting/promote", (int id, PromoteBody body) => PromoteScouted(services, id, body));
             app.MapPost("/api/accounts/{id:int}/farming/lists", (int id, CowListBody body) => CreateCowList(services, id, body));
             app.MapPut("/api/accounts/{id:int}/farming/lists/{listId:int}", (int id, int listId, CowListBody body) => UpdateCowList(services, id, listId, body));
             app.MapDelete("/api/accounts/{id:int}/farming/lists/{listId:int}", (int id, int listId) => DeleteCowList(services, id, listId));
@@ -155,9 +161,58 @@ namespace WPFUI
             return Ok("", new
             {
                 tribes = Enum.GetValues<TribeEnums>().Select(x => new { name = x.ToString(), value = (int)x }),
-                troops = Enum.GetValues<TroopEnums>().Select(x => new { name = x.ToString(), value = (int)x }),
+                troops = Enum.GetValues<TroopEnums>().Select(x => new { name = x.Humanize(LetterCasing.Title), value = (int)x, tribe = (int)x.GetTribe(), group = TroopGroup(x) }),
                 resourcePlans = Enum.GetValues<ResourcePlanEnums>().Select(x => new { name = x.Humanize(), value = x.ToString() }),
             });
+        }
+
+        private static string TroopGroup(TroopEnums troop)
+        {
+            var tribe = troop.GetTribe();
+            if (tribe.GetInfantryTroops().Contains(troop)) return "infantry";
+            if (tribe.GetCavalryTroops().Contains(troop)) return "cavalry";
+            if (tribe.GetSiegeTroops().Contains(troop)) return "siege";
+            return "";
+        }
+
+        private static IResult GetTroopStatus(IServiceProvider services, int accountId, int villageId)
+        {
+            if (!OwnsVillage(services, accountId, villageId)) return Fail("La aldea no pertenece a esta cuenta.");
+            using var context = Context(services);
+            var village = context.Villages.Where(x => x.Id == villageId).Select(x => new { x.LastTrainAt, x.NextTrainAt }).FirstOrDefault();
+            var task = services.GetRequiredService<TaskManager>().GetTaskList(new AccountId(accountId))
+                .OfType<TrainTroopTask.Task>()
+                .FirstOrDefault(x => x.VillageId == new VillageId(villageId));
+            var buildings = context.Buildings.Where(x => x.VillageId == villageId && x.Level > 0).Select(x => x.Type).Distinct().ToList();
+            return Ok("", new
+            {
+                lastTrainAt = village?.LastTrainAt,
+                nextTrainAt = task?.ExecuteAt ?? village?.NextTrainAt,
+                queued = task is not null,
+                running = task?.Stage == StageEnums.Executing,
+                buildings = buildings.Select(x => x.ToString()),
+            });
+        }
+
+        private static IResult TrainTroopsNow(IServiceProvider services, int accountId, int villageId)
+        {
+            if (!OwnsVillage(services, accountId, villageId)) return Fail("La aldea no pertenece a esta cuenta.");
+            using var context = Context(services);
+            var village = new VillageId(villageId);
+            if (!context.BooleanByName(village, VillageSettingEnums.TrainTroopEnable)) return Fail("Activá \"Entrenar tropas\" primero.");
+
+            context.Villages.Where(x => x.Id == villageId).ExecuteUpdate(x => x.SetProperty(row => row.NextTrainAt, (DateTime?)null));
+            var tasks = services.GetRequiredService<TaskManager>();
+            var task = tasks.GetTaskList(new AccountId(accountId)).OfType<TrainTroopTask.Task>().FirstOrDefault(x => x.VillageId == village);
+            if (task is null)
+            {
+                tasks.Add(new TrainTroopTask.Task(new AccountId(accountId), village));
+            }
+            else if (task.Stage != StageEnums.Executing)
+            {
+                task.ExecuteAt = DateTime.Now;
+            }
+            return Ok("Las tropas se entrenan en el próximo turno del navegador.");
         }
 
         private static bool IsVillageWork(BaseTask task)
@@ -182,6 +237,7 @@ namespace WPFUI
                 var accountId = new AccountId(account.Id);
                 var status = tasks.GetStatus(accountId);
                 var queued = status == StatusEnums.Online ? tasks.GetTaskList(accountId) : [];
+                var scoutLists = context.CowLists.Where(x => x.AccountId == account.Id && x.Kind == CowList.ScoutKind).Select(x => x.Id).ToHashSet();
                 return new
                 {
                     id = account.Id,
@@ -192,7 +248,8 @@ namespace WPFUI
                     pause = PauseLabel(status),
                     gold = context.BooleanByName(accountId, AccountSettingEnums.Gold),
                     villages = queued.Any(IsVillageWork),
-                    farms = queued.Any(task => task is RaidCowListTask.Task),
+                    farms = queued.Any(task => task is RaidCowListTask.Task raid && !scoutLists.Contains(raid.CowListId)),
+                    scouts = queued.Any(task => task is RaidCowListTask.Task raid && scoutLists.Contains(raid.CowListId)),
                     gameFarms = queued.Any(task => task is StartFarmListTask.Task or UpdateFarmListTask.Task),
                 };
             }).ToList();
@@ -648,7 +705,7 @@ namespace WPFUI
             var villages = context.Villages.Where(x => x.AccountId == accountId).OrderBy(x => x.Name)
                 .Select(x => new { id = x.Id, name = x.Name, x = x.X, y = x.Y }).ToList();
             var raidTasks = services.GetRequiredService<TaskManager>().GetTaskList(new AccountId(accountId)).OfType<RaidCowListTask.Task>().ToList();
-            var lists = context.CowLists.Where(x => x.AccountId == accountId && x.VillageId == villageId).OrderBy(x => x.Name)
+            var lists = context.CowLists.Where(x => x.AccountId == accountId && x.VillageId == villageId && x.Kind != CowList.ScoutKind).OrderBy(x => x.Name)
                 .Select(x => new { x.Id, x.Name, x.MinAttackMinutes, x.RepeatMinutes, x.LevelHero, x.AutoStart })
                 .AsEnumerable()
                 .Select(x =>
@@ -739,6 +796,199 @@ namespace WPFUI
                 gameLists,
                 gameRunning = gameTasks.Count > 0,
             });
+        }
+
+        private static IResult GetScouting(IServiceProvider services, int accountId, int villageId)
+        {
+            using var context = Context(services);
+            var account = new AccountId(accountId);
+            var villages = context.Villages.Where(x => x.AccountId == accountId).OrderBy(x => x.Name)
+                .Select(x => new { id = x.Id, name = x.Name, x = x.X, y = x.Y }).ToList();
+            var villageNames = villages.ToDictionary(x => x.id, x => x.name);
+            var raidTasks = services.GetRequiredService<TaskManager>().GetTaskList(account).OfType<RaidCowListTask.Task>().ToList();
+            var lists = context.CowLists.Where(x => x.AccountId == accountId && x.VillageId == villageId && x.Kind == CowList.ScoutKind).OrderBy(x => x.Name)
+                .Select(x => new { x.Id, x.Name, x.MinAttackMinutes, x.RepeatMinutes, x.AutoStart, x.FullThreshold })
+                .AsEnumerable()
+                .Select(x =>
+                {
+                    var raid = raidTasks.FirstOrDefault(task => task.CowListId == x.Id);
+                    return new
+                    {
+                        id = x.Id,
+                        name = x.Name,
+                        minMinutes = x.MinAttackMinutes,
+                        repeatMinutes = x.RepeatMinutes,
+                        autoStart = x.AutoStart,
+                        fullThreshold = x.FullThreshold,
+                        running = raid is not null,
+                        countdown = FormatCountdown(raid),
+                    };
+                })
+                .ToList();
+            var listIds = lists.Select(x => x.id).ToList();
+            var home = context.Villages.Where(x => x.Id == villageId).Select(x => new { x.X, x.Y }).FirstOrDefault();
+            var results = context.ScoutResults
+                .Where(x => context.CowVillages.Any(village => village.Id == x.CowVillageId && listIds.Contains(village.CowListId)))
+                .ToDictionary(x => x.CowVillageId);
+            var targets = context.CowVillages.Where(x => listIds.Contains(x.CowListId)).OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.CowListId, x.Name, x.Url, x.TroopCount, x.TroopPlan, x.LastAttackedAt, x.LastSkipReason, x.Owner, x.Tribe, x.Alliance, x.Population, x.Distance, x.CoordX, x.CoordY })
+                .AsEnumerable()
+                .Select(x =>
+                {
+                    var coordX = x.CoordX;
+                    var coordY = x.CoordY;
+                    if ((coordX is null || coordY is null) && CowOasisParser.TryReadCoordinates(x.Url, out var parsedX, out var parsedY))
+                    {
+                        coordX = parsedX;
+                        coordY = parsedY;
+                    }
+                    var distance = x.Distance;
+                    if (distance < 0 && coordX is int targetX && coordY is int targetY && home is not null)
+                        distance = CowOasisParser.TravelDistance(home.X, home.Y, targetX, targetY);
+                    results.TryGetValue(x.Id, out var result);
+                    var scouted = result?.ScoutedAt is not null;
+                    return new
+                    {
+                        id = x.Id,
+                        listId = x.CowListId,
+                        name = VillageLabel(x.Name),
+                        url = x.Url,
+                        troops = CowTroopPlan.Describe(x.TroopPlan, x.TroopCount),
+                        status = FormatStatus(x.LastAttackedAt, x.LastSkipReason),
+                        owner = x.Owner ?? "",
+                        tribe = x.Tribe ?? "",
+                        alliance = string.IsNullOrWhiteSpace(result?.Alliance) ? x.Alliance ?? "" : result.Alliance,
+                        population = x.Population,
+                        distance,
+                        x = coordX,
+                        y = coordY,
+                        pending = result?.Pending == true,
+                        scoutedAt = result?.ScoutedAt,
+                        scoutClass = scouted ? result.Class : "",
+                        danger = scouted ? result.Danger : 0,
+                        label = scouted ? ScoutRules.Label(result.Class, result.Danger) : "",
+                        wood = result?.Wood ?? -1,
+                        clay = result?.Clay ?? -1,
+                        iron = result?.Iron ?? -1,
+                        crop = result?.Crop ?? -1,
+                        cranny = result?.Cranny ?? -1,
+                        defenders = result?.Defenders ?? -1,
+                        scoutsDied = result?.ScoutsDied == true,
+                        playerPopulation = result?.PlayerPopulation ?? -1,
+                        playerVillages = result?.PlayerVillages ?? -1,
+                        attackPoints = result?.AttackPoints ?? -1,
+                        defensePoints = result?.DefensePoints ?? -1,
+                        heroLevel = result?.HeroLevel ?? -1,
+                    };
+                }).ToList();
+            var ownLists = context.CowLists.Where(x => x.AccountId == accountId && x.Kind != CowList.ScoutKind)
+                .OrderBy(x => x.Name)
+                .Select(x => new { x.Id, x.Name, x.VillageId })
+                .AsEnumerable()
+                .Select(x => new { id = x.Id, name = villageNames.TryGetValue(x.VillageId, out var village) && x.VillageId != villageId ? $"{x.Name} · {village}" : x.Name, sameVillage = x.VillageId == villageId })
+                .OrderByDescending(x => x.sameVillage)
+                .ToList();
+            var tribe = (TribeEnums)context.ByName(account, AccountSettingEnums.Tribe);
+            return Ok("", new
+            {
+                villages,
+                lists,
+                targets,
+                ownLists,
+                scoutPlan = ScoutRules.DefaultScoutPlan(tribe),
+                server = context.Accounts.Where(x => x.Id == accountId).Select(x => x.Server).FirstOrDefault() ?? "",
+            });
+        }
+
+        private static IResult CreateScoutList(IServiceProvider services, int accountId, CowListBody body)
+        {
+            var name = (body.Name ?? "").Trim();
+            if (name.Length == 0) return Fail("Escribí un nombre para la lista.");
+            if (!OwnsVillage(services, accountId, body.VillageId)) return Fail("Seleccioná una aldea. Los espías salen de esa aldea.");
+            using var context = Context(services);
+            if (context.CowLists.Any(x => x.AccountId == accountId && x.VillageId == body.VillageId && x.Name == name))
+                return Fail("Ya existe una lista con ese nombre en esta aldea.");
+
+            context.CowLists.Add(new CowList { AccountId = accountId, VillageId = body.VillageId, Name = name, Kind = CowList.ScoutKind, MinAttackMinutes = 360, RepeatMinutes = 30 });
+            context.SaveChanges();
+            return Ok("Lista de scouting creada.");
+        }
+
+        private static IResult UpdateScoutList(IServiceProvider services, int accountId, int listId, ScoutListBody body)
+        {
+            if (body.FullThreshold < 0) return Fail("El umbral de vaca gorda tiene que ser 0 o más.");
+            using (var context = Context(services))
+            {
+                if (!context.CowLists.Any(x => x.Id == listId && x.AccountId == accountId && x.Kind == CowList.ScoutKind)) return Fail("No se encontró la lista de scouting.");
+                context.CowLists.Where(x => x.Id == listId).ExecuteUpdate(x => x.SetProperty(list => list.FullThreshold, body.FullThreshold));
+            }
+
+            return UpdateCowList(services, accountId, listId, new CowListBody
+            {
+                Name = body.Name,
+                MinMinutes = body.MinMinutes,
+                RepeatMinutes = body.RepeatMinutes,
+                AutoStart = body.AutoStart,
+            });
+        }
+
+        private static IResult PromoteScouted(IServiceProvider services, int accountId, PromoteBody body)
+        {
+            var ids = (body.CowIds ?? []).Distinct().ToList();
+            if (ids.Count == 0) return Fail("Elegí al menos una aldea.");
+            if (!CowTroopPlan.TryParse(body.Troops, out var slots, out var error)) return Fail(error);
+            var plan = CowTroopPlan.Format(slots);
+
+            using var context = Context(services);
+            var list = context.CowLists.Where(x => x.Id == body.ListId && x.AccountId == accountId && x.Kind != CowList.ScoutKind)
+                .Select(x => new { x.Id, x.Name, x.VillageId })
+                .FirstOrDefault();
+            if (list is null) return Fail("Elegí una de tus listas propias.");
+
+            var sources = context.CowVillages
+                .Where(x => ids.Contains(x.Id) && x.CowList.AccountId == accountId && x.CowList.Kind == CowList.ScoutKind)
+                .ToList();
+            var existing = context.CowVillages.Where(x => x.CowListId == list.Id).Select(x => x.Url).ToList()
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var origin = context.Villages.Where(x => x.Id == list.VillageId).Select(x => new { x.X, x.Y }).FirstOrDefault();
+
+            var added = 0;
+            var skipped = 0;
+            foreach (var source in sources)
+            {
+                if (!existing.Add(source.Url))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                var distance = source.Distance;
+                if (origin is not null && source.CoordX is int x && source.CoordY is int y)
+                    distance = CowOasisParser.TravelDistance(origin.X, origin.Y, x, y);
+                context.CowVillages.Add(new CowVillage
+                {
+                    CowListId = list.Id,
+                    Name = source.Name,
+                    Url = source.Url,
+                    TroopPlan = plan,
+                    TroopCount = 0,
+                    Kind = source.Kind,
+                    Owner = source.Owner,
+                    Tribe = source.Tribe,
+                    Alliance = source.Alliance,
+                    Population = source.Population,
+                    Distance = distance,
+                    CoordX = source.CoordX,
+                    CoordY = source.CoordY,
+                    LastSkipReason = "",
+                });
+                added++;
+            }
+
+            context.SaveChanges();
+            var message = $"{added} aldea{(added == 1 ? "" : "s")} agregada{(added == 1 ? "" : "s")} a {list.Name} con {plan}.";
+            if (skipped > 0) message += $" {skipped} ya estaba{(skipped == 1 ? "" : "n")} en la lista.";
+            return Ok(message);
         }
 
         private static IResult CreateCowList(IServiceProvider services, int accountId, CowListBody body)
@@ -1771,6 +2021,22 @@ namespace WPFUI
         public int RepeatMinutes { get; set; }
         public bool? LevelHero { get; set; }
         public bool AutoStart { get; set; }
+    }
+
+    public sealed class ScoutListBody
+    {
+        public string Name { get; set; }
+        public int MinMinutes { get; set; }
+        public int RepeatMinutes { get; set; }
+        public bool AutoStart { get; set; }
+        public int FullThreshold { get; set; }
+    }
+
+    public sealed class PromoteBody
+    {
+        public List<int> CowIds { get; set; }
+        public int ListId { get; set; }
+        public string Troops { get; set; }
     }
 
     public sealed class CowVillageBody

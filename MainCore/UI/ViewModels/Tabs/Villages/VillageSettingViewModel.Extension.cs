@@ -27,7 +27,7 @@ namespace MainCore.UI.ViewModels.Tabs.Villages
                     var task = new TrainTroopTask.Task(accountId, villageId);
                     if (task.CanStart(context) && !taskManager.IsExist<TrainTroopTask.Task>(accountId, villageId))
                     {
-                        taskManager.Add(task);
+                        taskManager.Add(task.RestoreSchedule(context));
                     }
                 }
                 else

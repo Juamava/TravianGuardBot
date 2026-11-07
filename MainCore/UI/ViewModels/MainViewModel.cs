@@ -34,6 +34,8 @@ namespace MainCore.UI.ViewModels
                 var notExist = context.Database.EnsureCreated();
                 context.EnsureCowListTables();
                 context.EnsureHeroLevelingTable();
+                context.EnsureVillageColumns();
+                context.EnsureScoutTables();
 
                 if (!notExist)
                 {

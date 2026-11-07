@@ -29,6 +29,7 @@ namespace MainCore.Infrasturecture.Persistence
         public DbSet<CowList> CowLists { get; set; }
         public DbSet<CowVillage> CowVillages { get; set; }
         public DbSet<HeroLeveling> HeroLevelings { get; set; }
+        public DbSet<ScoutResult> ScoutResults { get; set; }
 
         #endregion table
 
@@ -250,6 +251,8 @@ namespace MainCore.Infrasturecture.Persistence
             EnsureColumn("CowLists", "RepeatMinutes", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("CowLists", "LevelHero", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("CowLists", "AutoStart", "INTEGER NOT NULL DEFAULT 0");
+            EnsureColumn("CowLists", "Kind", "TEXT NOT NULL DEFAULT ''");
+            EnsureColumn("CowLists", "FullThreshold", "INTEGER NOT NULL DEFAULT 0");
             EnsureFarmIntervals();
 
             Database.ExecuteSqlRaw(
@@ -276,6 +279,45 @@ namespace MainCore.Infrasturecture.Persistence
             EnsureColumn("CowVillages", "Distance", "REAL NOT NULL DEFAULT -1");
             EnsureColumn("CowVillages", "CoordX", "INTEGER NULL");
             EnsureColumn("CowVillages", "CoordY", "INTEGER NULL");
+        }
+
+        public void EnsureScoutTables()
+        {
+            Database.ExecuteSqlRaw(
+                """
+                CREATE TABLE IF NOT EXISTS "ScoutResults" (
+                    "CowVillageId" INTEGER NOT NULL CONSTRAINT "PK_ScoutResults" PRIMARY KEY,
+                    "Pending" INTEGER NOT NULL DEFAULT 0,
+                    "SentAt" TEXT NULL,
+                    "ScoutedAt" TEXT NULL,
+                    "ReportTime" TEXT NOT NULL DEFAULT '',
+                    "Wood" INTEGER NOT NULL DEFAULT -1,
+                    "Clay" INTEGER NOT NULL DEFAULT -1,
+                    "Iron" INTEGER NOT NULL DEFAULT -1,
+                    "Crop" INTEGER NOT NULL DEFAULT -1,
+                    "Cranny" INTEGER NOT NULL DEFAULT -1,
+                    "Defenders" INTEGER NOT NULL DEFAULT -1,
+                    "ScoutsDied" INTEGER NOT NULL DEFAULT 0,
+                    "Class" TEXT NOT NULL DEFAULT '',
+                    "Danger" INTEGER NOT NULL DEFAULT 0,
+                    "PlayerUrl" TEXT NOT NULL DEFAULT '',
+                    "PlayerPopulation" INTEGER NOT NULL DEFAULT -1,
+                    "Alliance" TEXT NOT NULL DEFAULT '',
+                    "PlayerVillages" INTEGER NOT NULL DEFAULT -1,
+                    "AttackPoints" INTEGER NOT NULL DEFAULT -1,
+                    "DefensePoints" INTEGER NOT NULL DEFAULT -1,
+                    "DaysPlaying" INTEGER NOT NULL DEFAULT -1,
+                    "HeroLevel" INTEGER NOT NULL DEFAULT -1,
+                    "ProfileAt" TEXT NULL,
+                    CONSTRAINT "FK_ScoutResults_CowVillages_CowVillageId" FOREIGN KEY ("CowVillageId") REFERENCES "CowVillages" ("Id") ON DELETE CASCADE
+                );
+                """);
+        }
+
+        public void EnsureVillageColumns()
+        {
+            EnsureColumn("Villages", "LastTrainAt", "TEXT NULL");
+            EnsureColumn("Villages", "NextTrainAt", "TEXT NULL");
         }
 
         public void EnsureHeroLevelingTable()
