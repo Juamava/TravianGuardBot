@@ -233,6 +233,18 @@ namespace MainCore.Infrasturecture.Persistence
 
         #endregion village setting
 
+        /// <summary>
+        /// Creates the tables and columns added after the first release. Safe to call on every start;
+        /// the web admin calls it before serving, because it does not go through MainViewModel.Load.
+        /// </summary>
+        public void EnsureSchema()
+        {
+            EnsureCowListTables();
+            EnsureHeroLevelingTable();
+            EnsureVillageColumns();
+            EnsureScoutTables();
+        }
+
         public void EnsureCowListTables()
         {
             Database.ExecuteSqlRaw(
@@ -253,6 +265,7 @@ namespace MainCore.Infrasturecture.Persistence
             EnsureColumn("CowLists", "AutoStart", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("CowLists", "Kind", "TEXT NOT NULL DEFAULT ''");
             EnsureColumn("CowLists", "FullThreshold", "INTEGER NOT NULL DEFAULT 0");
+            EnsureColumn("CowLists", "KeepScouts", "INTEGER NOT NULL DEFAULT 0");
             EnsureFarmIntervals();
 
             Database.ExecuteSqlRaw(

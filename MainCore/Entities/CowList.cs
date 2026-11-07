@@ -25,6 +25,9 @@ namespace MainCore.Entities
         /// <summary>Scouting only: total resources from which a village without defense is a fat cow. 0 = only full warehouses.</summary>
         public int FullThreshold { get; set; }
 
+        /// <summary>Scouting only: scouts that always stay home. A target is skipped when sending would leave fewer.</summary>
+        public int KeepScouts { get; set; }
+
         public const string ScoutKind = "scout";
 
         public ICollection<CowVillage> Villages { get; set; }

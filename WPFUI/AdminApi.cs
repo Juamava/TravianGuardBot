@@ -807,7 +807,7 @@ namespace WPFUI
             var villageNames = villages.ToDictionary(x => x.id, x => x.name);
             var raidTasks = services.GetRequiredService<TaskManager>().GetTaskList(account).OfType<RaidCowListTask.Task>().ToList();
             var lists = context.CowLists.Where(x => x.AccountId == accountId && x.VillageId == villageId && x.Kind == CowList.ScoutKind).OrderBy(x => x.Name)
-                .Select(x => new { x.Id, x.Name, x.MinAttackMinutes, x.RepeatMinutes, x.AutoStart, x.FullThreshold })
+                .Select(x => new { x.Id, x.Name, x.MinAttackMinutes, x.RepeatMinutes, x.AutoStart, x.FullThreshold, x.KeepScouts })
                 .AsEnumerable()
                 .Select(x =>
                 {
@@ -820,6 +820,7 @@ namespace WPFUI
                         repeatMinutes = x.RepeatMinutes,
                         autoStart = x.AutoStart,
                         fullThreshold = x.FullThreshold,
+                        keepScouts = x.KeepScouts,
                         running = raid is not null,
                         countdown = FormatCountdown(raid),
                     };
@@ -917,10 +918,13 @@ namespace WPFUI
         private static IResult UpdateScoutList(IServiceProvider services, int accountId, int listId, ScoutListBody body)
         {
             if (body.FullThreshold < 0) return Fail("El umbral de vaca gorda tiene que ser 0 o más.");
+            if (body.KeepScouts < 0) return Fail("Los espías que quedan en la aldea tienen que ser 0 o más.");
             using (var context = Context(services))
             {
                 if (!context.CowLists.Any(x => x.Id == listId && x.AccountId == accountId && x.Kind == CowList.ScoutKind)) return Fail("No se encontró la lista de scouting.");
-                context.CowLists.Where(x => x.Id == listId).ExecuteUpdate(x => x.SetProperty(list => list.FullThreshold, body.FullThreshold));
+                context.CowLists.Where(x => x.Id == listId).ExecuteUpdate(x => x
+                    .SetProperty(list => list.FullThreshold, body.FullThreshold)
+                    .SetProperty(list => list.KeepScouts, body.KeepScouts));
             }
 
             return UpdateCowList(services, accountId, listId, new CowListBody
@@ -2030,6 +2034,7 @@ namespace WPFUI
         public int RepeatMinutes { get; set; }
         public bool AutoStart { get; set; }
         public int FullThreshold { get; set; }
+        public int KeepScouts { get; set; }
     }
 
     public sealed class PromoteBody

@@ -31,7 +31,7 @@ namespace MainCore.Tasks
         }
 
         /// <summary>List options that only matter for "Levear héroe".</summary>
-        private readonly record struct HeroOptions(bool LevelHero, int ListVillageId, string Server, bool Scout);
+        private readonly record struct HeroOptions(bool LevelHero, int ListVillageId, string Server, bool Scout, int KeepScouts = 0);
 
         /// <summary>A target waits this long for its scouting report before it is scouted again.</summary>
         private static readonly TimeSpan ScoutReportWait = TimeSpan.FromHours(3);
@@ -87,7 +87,11 @@ namespace MainCore.Tasks
                         continue;
                     }
 
-                    if (CowTroopPlan.TryBlocked(task.KnownTroops, slots, out var shortage))
+                    // Scouting keeps a reserve at home: the plan only goes when the reserve stays.
+                    var needed = hero.Scout && hero.KeepScouts > 0
+                        ? slots.Select(slot => slot with { Amount = slot.Amount + hero.KeepScouts }).ToList()
+                        : slots;
+                    if (CowTroopPlan.TryBlocked(task.KnownTroops, needed, out var shortage))
                     {
                         logger.Information("Skipping {Url}: {Shortage}", target.Url, shortage);
                         MarkSkipped(target.Id, "Sin tropas");
@@ -200,7 +204,7 @@ namespace MainCore.Tasks
                     return result;
                 }
 
-                return await SendPlannedTroops(task, target, slots, hero.Scout);
+                return await SendPlannedTroops(task, target, slots, hero.Scout, hero.Scout ? hero.KeepScouts : 0);
             }
 
             if (!tile.IsUnoccupied)
@@ -226,10 +230,10 @@ namespace MainCore.Tasks
                 return result;
             }
 
-            return await SendPlannedTroops(task, target, slots, false);
+            return await SendPlannedTroops(task, target, slots, false, 0);
         }
 
-        private async Task<Result> SendPlannedTroops(Task task, CowTarget target, IReadOnlyList<CowTroopSlot> slots, bool scout)
+        private async Task<Result> SendPlannedTroops(Task task, CowTarget target, IReadOnlyList<CowTroopSlot> slots, bool scout, int keep)
         {
             var result = await browser.Wait(CowOasisParser.GetTroopTable(browser.CurrentPage));
             if (result.IsFailed)
@@ -252,8 +256,10 @@ namespace MainCore.Tasks
 
                 var available = await CowOasisParser.ReadAvailable(input);
                 task.KnownTroops[slot.TroopIndex] = available;
-                if (available < slot.Amount)
-                    missing.Add($"{slot.Letter} has {available}, need {slot.Amount}");
+                if (available < slot.Amount + keep)
+                    missing.Add(keep > 0
+                        ? $"{slot.Letter} has {available}, need {slot.Amount} and {keep} stay home"
+                        : $"{slot.Letter} has {available}, need {slot.Amount}");
             }
 
             if (missing.Count > 0)
@@ -338,12 +344,12 @@ namespace MainCore.Tasks
             using var context = contextFactory.CreateDbContext();
             var list = context.CowLists
                 .Where(x => x.Id == task.CowListId && x.AccountId == task.AccountId.Value)
-                .Select(x => new { x.LevelHero, x.VillageId, x.Kind })
+                .Select(x => new { x.LevelHero, x.VillageId, x.Kind, x.KeepScouts })
                 .FirstOrDefault();
             var server = context.Accounts.Where(x => x.Id == task.AccountId.Value).Select(x => x.Server).FirstOrDefault();
             if (list is null || string.IsNullOrWhiteSpace(server)) return new HeroOptions(false, 0, "", false);
             var scout = list.Kind == CowList.ScoutKind;
-            return new HeroOptions(list.LevelHero && !scout, list.VillageId, server, scout);
+            return new HeroOptions(list.LevelHero && !scout, list.VillageId, server, scout, scout ? Math.Max(0, list.KeepScouts) : 0);
         }
 
         private static bool IsOnCooldown(CowTarget target, int minAttackMinutes, out int elapsedMinutes)

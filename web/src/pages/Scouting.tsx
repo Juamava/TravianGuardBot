@@ -10,7 +10,7 @@ import { api, del, post, put } from '../api'
 import { Empty, panel, useUi } from '../ui'
 
 type Village = { id: number; name: string; x: number; y: number }
-type ScoutList = { id: number; name: string; minMinutes: number; repeatMinutes: number; autoStart: boolean; fullThreshold: number; running: boolean; countdown: string }
+type ScoutList = { id: number; name: string; minMinutes: number; repeatMinutes: number; autoStart: boolean; fullThreshold: number; keepScouts: number; running: boolean; countdown: string }
 type Target = {
   id: number
   listId: number
@@ -96,7 +96,7 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
   const [listId, setListId] = useState(0)
   const [filter, setFilter] = useState<Filter>('todas')
   const [selected, setSelected] = useState<number[]>([])
-  const [draft, setDraft] = useState<{ minMinutes: string; repeatMinutes: string; fullThreshold: string; autoStart: boolean } | null>(null)
+  const [draft, setDraft] = useState<{ minMinutes: string; repeatMinutes: string; fullThreshold: string; keepScouts: string; autoStart: boolean } | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [addText, setAddText] = useState('')
   const [addTroops, setAddTroops] = useState('')
@@ -123,9 +123,9 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
 
   const list = data?.lists.find(item => item.id === listId) ?? null
   useEffect(() => {
-    setDraft(list ? { minMinutes: String(list.minMinutes), repeatMinutes: String(list.repeatMinutes), fullThreshold: String(list.fullThreshold), autoStart: list.autoStart } : null)
+    setDraft(list ? { minMinutes: String(list.minMinutes), repeatMinutes: String(list.repeatMinutes), fullThreshold: String(list.fullThreshold), keepScouts: String(list.keepScouts), autoStart: list.autoStart } : null)
     setSelected([])
-  }, [listId, list?.minMinutes, list?.repeatMinutes, list?.fullThreshold, list?.autoStart])
+  }, [listId, list?.minMinutes, list?.repeatMinutes, list?.fullThreshold, list?.keepScouts, list?.autoStart])
 
   const targets = useMemo(() => {
     const rows = (data?.targets ?? []).filter(target => target.listId === listId)
@@ -176,6 +176,7 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
       minMinutes: Number(draft.minMinutes) || 0,
       repeatMinutes: Number(draft.repeatMinutes) || 0,
       fullThreshold: Number(draft.fullThreshold) || 0,
+      keepScouts: Number(draft.keepScouts) || 0,
       autoStart: draft.autoStart,
     }))
   }
@@ -264,7 +265,11 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
               <TextField type="number" label="Vaca gorda desde (recursos)" value={draft.fullThreshold} onChange={event => setDraft({ ...draft, fullThreshold: event.target.value })} onBlur={saveList} sx={{ width: 210 }} />
               <Hint text="Sin defensas y con el almacén lleno (madera, barro y hierro iguales) es vaca gorda. Si ponés un número, también cuenta como gorda cuando el total de recursos llega a ese número. 0 = solo almacén lleno." />
             </Stack>
-            <FormControlLabel control={<Switch checked={draft.autoStart} onChange={event => { const next = { ...draft, autoStart: event.target.checked }; setDraft(next); put(`/api/accounts/${accountId}/scouting/lists/${list.id}`, { name: list.name, minMinutes: Number(next.minMinutes) || 0, repeatMinutes: Number(next.repeatMinutes) || 0, fullThreshold: Number(next.fullThreshold) || 0, autoStart: next.autoStart }).then(result => notify(result.message)).catch((error: Error) => notify(error.message)).finally(() => load()) }} />} label="Iniciar al conectar" />
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <TextField type="number" label="Espías que quedan en la aldea" value={draft.keepScouts} inputProps={{ min: 0 }} onChange={event => setDraft({ ...draft, keepScouts: event.target.value })} onBlur={saveList} sx={{ width: 210 }} />
+              <Hint text="Mínimo de espías que siempre quedan en casa, para defenderte de espionajes o tenerlos a mano. Si mandar a una aldea deja menos que esto, esa aldea se saltea en esta vuelta." />
+            </Stack>
+            <FormControlLabel control={<Switch checked={draft.autoStart} onChange={event => { const next = { ...draft, autoStart: event.target.checked }; setDraft(next); put(`/api/accounts/${accountId}/scouting/lists/${list.id}`, { name: list.name, minMinutes: Number(next.minMinutes) || 0, repeatMinutes: Number(next.repeatMinutes) || 0, fullThreshold: Number(next.fullThreshold) || 0, keepScouts: Number(next.keepScouts) || 0, autoStart: next.autoStart }).then(result => notify(result.message)).catch((error: Error) => notify(error.message)).finally(() => load()) }} />} label="Iniciar al conectar" />
           </Stack>
           <Typography variant="caption" color="text.secondary">
             Cada vuelta primero lee los reportes de espionaje y visita el perfil de los dueños, después manda espías a las aldeas que toca. Se alterna con tus otras listas en el mismo navegador.
