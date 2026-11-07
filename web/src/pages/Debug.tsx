@@ -25,7 +25,7 @@ export function Debug({ accountId, notify }: { accountId: number; notify: (messa
         {data.tasks.map((task, index) => <Typography key={index}>{task.stage} · {task.task} · {task.executeAt}</Typography>)}
         {data.tasks.length === 0 && <Typography color="text.secondary">No hay tareas en cola.</Typography>}
       </Stack>
-      <Typography component="pre" sx={{ whiteSpace: 'pre-wrap', bgcolor: '#1e1f22', color: '#dbdee1', p: 2, borderRadius: 2, minHeight: 240, fontFamily: 'Consolas, monospace', fontSize: 13 }}>{data.logs || 'Sin mensajes todavía.'}</Typography>
+      <Typography component="pre" sx={{ whiteSpace: 'pre-wrap', bgcolor: '#221a12', color: '#f3e9cf', p: 2.5, borderRadius: 1.5, border: '2px solid #6b4423', minHeight: 240, fontFamily: 'Consolas, "Cascadia Mono", monospace', fontSize: 14, lineHeight: 1.6 }}>{data.logs || 'Sin mensajes todavía.'}</Typography>
     </Stack>
   )
 }

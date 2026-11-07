@@ -65,20 +65,20 @@ const tile = {
   alignItems: 'center',
   justifyContent: 'center',
   gap: 0.25,
-  fontSize: 12,
+  fontSize: 13,
   lineHeight: 1.2,
   whiteSpace: 'nowrap',
-  color: '#dbdee1',
-  bgcolor: '#313338',
-  '&:hover': { bgcolor: '#35373c' },
-  '&.Mui-disabled': { color: '#6d6f78' },
-  '&.Mui-disabled .MuiSvgIcon-root': { color: '#6d6f78' },
+  color: '#3b2a17',
+  bgcolor: '#efe4c6',
+  '&:hover': { bgcolor: '#f1e5c2' },
+  '&.Mui-disabled': { color: '#7a6342' },
+  '&.Mui-disabled .MuiSvgIcon-root': { color: '#7a6342' },
 } as const
 
 function Hint({ text }: { text: string }) {
   return (
     <Tooltip title={text} placement="top" arrow enterDelay={200} slotProps={{ tooltip: { sx: { maxWidth: 280, fontSize: 13, lineHeight: 1.45 } } }}>
-      <InfoOutlinedIcon sx={{ fontSize: 16, color: '#949ba4', cursor: 'help' }} />
+      <InfoOutlinedIcon sx={{ fontSize: 16, color: '#5c4529', cursor: 'help' }} />
     </Tooltip>
   )
 }
@@ -105,9 +105,9 @@ function GameFarming({ accountId, data, notify, reload }: { accountId: number; d
       <Typography color="text.secondary">Iniciar arranca las listas activas. Después cada una se repite con su propia frecuencia. Si hay una lista propia en curso, espera a que el navegador se libere.</Typography>
       <Box sx={{ ...panel }}>
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 1 }}>
-          <Tile color="#5865f2" icon={<SyncIcon />} label="Actualizar" disabled={busy} onClick={() => act(() => post(`/api/accounts/${accountId}/farming/game/refresh`))} />
-          <Tile color="#23a559" icon={<PlayArrowIcon />} label="Iniciar" disabled={busy || !pending} onClick={() => act(() => post(`/api/accounts/${accountId}/farming/game/start`))} />
-          <Tile color="#ed4245" icon={<StopIcon />} label="Detener" disabled={busy || !data.gameRunning} onClick={() => act(() => post(`/api/accounts/${accountId}/farming/game/stop`))} />
+          <Tile color="#4f7a12" icon={<SyncIcon />} label="Actualizar" disabled={busy} onClick={() => act(() => post(`/api/accounts/${accountId}/farming/game/refresh`))} />
+          <Tile color="#4f8a10" icon={<PlayArrowIcon />} label="Iniciar" disabled={busy || !pending} onClick={() => act(() => post(`/api/accounts/${accountId}/farming/game/start`))} />
+          <Tile color="#b8281d" icon={<StopIcon />} label="Detener" disabled={busy || !data.gameRunning} onClick={() => act(() => post(`/api/accounts/${accountId}/farming/game/stop`))} />
         </Box>
       </Box>
       <Stack direction="row" spacing={1} alignItems="center" sx={{ ...panel, py: 1 }}>
@@ -156,7 +156,7 @@ function GameFarmRow({ accountId, list, disabled, notify, reload }: { accountId:
   }
 
   return (
-    <Stack spacing={0.75} sx={{ px: 1, py: 0.75, borderRadius: 1, '&:hover': { bgcolor: '#35373c' } }}>
+    <Stack spacing={0.75} sx={{ px: 1, py: 0.75, borderRadius: 1, '&:hover': { bgcolor: '#f1e5c2' } }}>
       <Stack direction="row" spacing={1} alignItems="center">
         <Switch checked={list.active} disabled={disabled} onChange={async () => {
           try {
@@ -181,7 +181,7 @@ function GameFarmRow({ accountId, list, disabled, notify, reload }: { accountId:
 function Tile({ icon, label, color, disabled, onClick }: { icon: ReactNode; label: string; color: string; disabled?: boolean; onClick: () => void }) {
   return (
     <Button onClick={onClick} disabled={disabled} sx={tile}>
-      <Box sx={{ color: disabled ? '#6d6f78' : color, display: 'flex', '& .MuiSvgIcon-root': { fontSize: 18 } }}>{icon}</Box>
+      <Box sx={{ color: disabled ? '#7a6342' : color, display: 'flex', '& .MuiSvgIcon-root': { fontSize: 18 } }}>{icon}</Box>
       {label}
     </Button>
   )
@@ -503,19 +503,19 @@ export function Farming({ accountId, notify, mode }: { accountId: number; notify
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 1 }}>
               <Tooltip title={anyRunning ? 'Hay una lista en curso. Detenela para poder sincronizar.' : ''}>
                 <Box sx={{ minWidth: 0, display: 'flex', '& > .MuiButton-root': { flex: 1 } }}>
-                  <Tile color="#5865f2" icon={<SyncIcon />} label={syncing ? 'Sync...' : 'Sync'} disabled={!listId || cows.length === 0 || saving || syncing || anyRunning} onClick={syncNames} />
+                  <Tile color="#4f7a12" icon={<SyncIcon />} label={syncing ? 'Sync...' : 'Sync'} disabled={!listId || cows.length === 0 || saving || syncing || anyRunning} onClick={syncNames} />
                 </Box>
               </Tooltip>
-              <Tile color="#23a559" icon={<AddIcon />} label="Agregar" disabled={!listId || saving || syncing} onClick={() => { setAdding(true); setCowId(0); setCowName(''); setUrl(''); setTroops('') }} />
-              <Tile color="#f0b232" icon={<SearchIcon />} label="Oasis" disabled={!listId || saving || syncing} onClick={() => setOasisOpen(true)} />
+              <Tile color="#4f8a10" icon={<AddIcon />} label="Agregar" disabled={!listId || saving || syncing} onClick={() => { setAdding(true); setCowId(0); setCowName(''); setUrl(''); setTroops('') }} />
+              <Tile color="#a86f08" icon={<SearchIcon />} label="Oasis" disabled={!listId || saving || syncing} onClick={() => setOasisOpen(true)} />
               <Tooltip title={selectedRunning ? 'Esta lista ya está en curso.' : timesReady ? '' : 'Completá el mínimo por aldea y cada cuánto se revisa la lista. Los dos tienen que ser de 1 minuto o más.'}>
                 <Box sx={{ minWidth: 0, display: 'flex', '& > .MuiButton-root': { flex: 1 } }}>
-                  <Tile color="#23a559" icon={<PlayArrowIcon />} label="Iniciar" disabled={!listId || saving || syncing || !timesReady || selectedRunning} onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/start`, { minMinutes, repeatMinutes }))} />
+                  <Tile color="#4f8a10" icon={<PlayArrowIcon />} label="Iniciar" disabled={!listId || saving || syncing || !timesReady || selectedRunning} onClick={() => run(() => post(`/api/accounts/${accountId}/farming/lists/${listId}/start`, { minMinutes, repeatMinutes }))} />
                 </Box>
               </Tooltip>
               <Tooltip title={selectedRunning ? 'Detiene solo esta lista.' : listId > 0 && !syncing ? 'Se habilita cuando esta lista está en curso.' : ''}>
                 <Box sx={{ minWidth: 0, display: 'flex', '& > .MuiButton-root': { flex: 1 } }}>
-                  <Tile color="#ed4245" icon={<StopIcon />} label="Detener" disabled={!listId || (saving && !syncing) || (!selectedRunning && !syncing)} onClick={stopAll} />
+                  <Tile color="#b8281d" icon={<StopIcon />} label="Detener" disabled={!listId || (saving && !syncing) || (!selectedRunning && !syncing)} onClick={stopAll} />
                 </Box>
               </Tooltip>
             </Box>
@@ -618,17 +618,17 @@ export function Farming({ accountId, notify, mode }: { accountId: number; notify
                 {shown.map(cow => {
                   const live = cow.status === 'Analizando' || cow.status === 'Atacando'
                   return (
-                    <Box id={`cow-${cow.id}`} key={cow.id} onClick={() => selectCow(cow)} sx={{ display: 'grid', gridTemplateColumns: cowColumns, gap: 1.5, alignItems: 'center', px: 1.5, py: 1.25, borderRadius: 1, cursor: 'pointer', bgcolor: live ? '#3c4280' : cow.id === cowId ? '#404249' : 'transparent', boxShadow: live ? 'inset 3px 0 0 #5865f2' : 'none', '&:hover': { bgcolor: live ? '#3c4280' : cow.id === cowId ? '#404249' : '#35373c' } }}>
+                    <Box id={`cow-${cow.id}`} key={cow.id} onClick={() => selectCow(cow)} sx={{ display: 'grid', gridTemplateColumns: cowColumns, gap: 1.5, alignItems: 'center', px: 1.5, py: 1.25, borderRadius: 1, cursor: 'pointer', bgcolor: live ? '#d9e7b8' : cow.id === cowId ? '#e2cf9a' : 'transparent', boxShadow: live ? 'inset 3px 0 0 #4f7a12' : 'none', '&:hover': { bgcolor: live ? '#d9e7b8' : cow.id === cowId ? '#e2cf9a' : '#f1e5c2' } }}>
                       <Box sx={{ minWidth: 0 }}>
                         <Typography sx={{ fontWeight: 600, fontSize: 15, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{cow.name}</Typography>
                         {cow.x != null && cow.y != null && <Typography variant="caption" color="text.secondary">({cow.x}|{cow.y}){cow.tribe ? ` · ${cow.tribe}` : ''}{cow.alliance ? ` · ${cow.alliance}` : ''}</Typography>}
                       </Box>
-                      <Typography sx={{ color: '#dbdee1' }}>{kindLabel(cow.kind)}</Typography>
-                      <Typography sx={{ color: '#dbdee1', overflowWrap: 'anywhere' }}>{cow.owner || '—'}</Typography>
-                      <Typography sx={{ color: '#dbdee1' }}>{cow.population >= 0 ? cow.population : '—'}</Typography>
-                      <Typography sx={{ color: '#dbdee1' }}>{cow.distance >= 0 ? cow.distance.toLocaleString('es', { maximumFractionDigits: 2 }) : '—'}</Typography>
-                      <Typography sx={{ color: '#dbdee1' }}>{cow.troops}</Typography>
-                      <Typography sx={{ color: cow.status === 'Atacando' ? '#23a559' : cow.status === 'Analizando' ? '#f0b232' : '#b5bac1', fontSize: 13, fontWeight: live ? 700 : 400 }}>{cow.status}</Typography>
+                      <Typography sx={{ color: '#3b2a17' }}>{kindLabel(cow.kind)}</Typography>
+                      <Typography sx={{ color: '#3b2a17', overflowWrap: 'anywhere' }}>{cow.owner || '—'}</Typography>
+                      <Typography sx={{ color: '#3b2a17' }}>{cow.population >= 0 ? cow.population : '—'}</Typography>
+                      <Typography sx={{ color: '#3b2a17' }}>{cow.distance >= 0 ? cow.distance.toLocaleString('es', { maximumFractionDigits: 2 }) : '—'}</Typography>
+                      <Typography sx={{ color: '#3b2a17' }}>{cow.troops}</Typography>
+                      <Typography sx={{ color: cow.status === 'Atacando' ? '#4f8a10' : cow.status === 'Analizando' ? '#a86f08' : '#4a3820', fontSize: 13, fontWeight: live ? 700 : 400 }}>{cow.status}</Typography>
                     </Box>
                   )
                 })}
