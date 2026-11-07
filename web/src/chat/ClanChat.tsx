@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ClipboardEvent } from 'react'
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline'
 import CloseIcon from '@mui/icons-material/Close'
 import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined'
@@ -10,6 +10,21 @@ const supabase = createClient('https://uyzkcejpsjpavghbchoq.supabase.co', 'sb_pu
 
 const emojis = ['😀', '😁', '😂', '😉', '😎', '😭', '👍', '🙏', '🔥', '💪', '🎉', '✅', '⚔️', '🛡️', '🏰', '🌾', '🐎', '🏹']
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+
+function imageFromClipboard(data: DataTransfer | null) {
+  if (!data) return null
+  for (const item of data.items) {
+    if (item.kind !== 'file' || !item.type.startsWith('image/')) continue
+    const blob = item.getAsFile()
+    if (!blob) continue
+    const type = blob.type || item.type
+    const extension = type === 'image/jpeg' ? 'jpg' : (type.split('/')[1] || 'png')
+    const name = blob.name && !/^image\./i.test(blob.name) ? blob.name : `Imagen pegada.${extension}`
+    return new File([blob], name, { type })
+  }
+  return null
+}
+
 const announced = new Set<string>()
 let sharedAudio: AudioContext | null = null
 let lastChime = 0
@@ -70,6 +85,8 @@ function unlockChime() {
 
 window.addEventListener('pointerdown', unlockChime)
 
+const dayMs = 24 * 60 * 60 * 1000
+
 type ChatMessage = {
   id: string
   room: string
@@ -77,6 +94,33 @@ type ChatMessage = {
   body: string
   image_path: string | null
   created_at: string
+}
+
+type MessageRead = {
+  room: string
+  username: string
+  read_at: string
+}
+
+function isFresh(message: ChatMessage, now: number) {
+  return (Date.parse(message.created_at) || 0) > now - dayMs
+}
+
+function seenBy(message: ChatMessage, reads: MessageRead[]) {
+  const at = Date.parse(message.created_at) || 0
+  const author = (message.username ?? '').trim()
+  const names = new Set<string>()
+  for (const read of reads) {
+    const name = (read.username ?? '').trim()
+    if (!name || name === author) continue
+    if ((Date.parse(read.read_at) || 0) < at) continue
+    names.add(name)
+  }
+  return [...names].sort((left, right) => left.localeCompare(right, 'es'))
+}
+
+async function purgeOld() {
+  await supabase.rpc('purge_old_chat')
 }
 
 function roomOf(host: string, clan: string) {
@@ -103,20 +147,34 @@ export function ClanChat({ username, host, clan, page }: { username: string; hos
   const room = roomOf(host, clan)
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [reads, setReads] = useState<MessageRead[]>([])
   const [people, setPeople] = useState<string[]>([])
+  const [now, setNow] = useState(() => Date.now())
   const [draft, setDraft] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState('')
   const [emojisOpen, setEmojisOpen] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const [readAt, setReadAt] = useState(() => readMark(room))
   const pageRef = useRef(page)
   const listRef = useRef<HTMLDivElement | null>(null)
+  const sharedRead = useRef(0)
 
   useEffect(() => {
     if (pageRef.current !== page) setOpen(false)
     pageRef.current = page
   }, [page])
+
+  useEffect(() => {
+    const clock = window.setInterval(() => setNow(Date.now()), 60_000)
+    const cleaner = window.setInterval(() => { void purgeOld() }, 10 * 60 * 1000)
+    void purgeOld()
+    return () => {
+      window.clearInterval(clock)
+      window.clearInterval(cleaner)
+    }
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -125,11 +183,28 @@ export function ClanChat({ username, host, clan, page }: { username: string; hos
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
         const message = payload.new as ChatMessage
         if (message.room !== room) return
+        if (!isFresh(message, Date.now())) return
         setMessages(current => current.some(item => item.id === message.id) ? current : [...current, message])
         const body = message.body ?? ''
         const author = (message.username ?? '').trim()
         const joinNotice = body.trimEnd().endsWith(' se ha conectado.')
         if (author !== username.trim() && !joinNotice) playIncoming()
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, payload => {
+        const id = (payload.old as { id?: string }).id
+        if (!id) return
+        setMessages(current => current.filter(item => item.id !== id))
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'message_reads' }, payload => {
+        if (payload.eventType === 'DELETE') {
+          const read = payload.old as MessageRead
+          if (read.room && read.room !== room) return
+          setReads(current => current.filter(item => item.username !== read.username))
+          return
+        }
+        const read = payload.new as MessageRead
+        if (!read || read.room !== room) return
+        setReads(current => [...current.filter(item => item.username !== read.username), read])
       })
       .on('presence', { event: 'sync' }, () => {
         const names = new Set<string>()
@@ -142,10 +217,16 @@ export function ClanChat({ username, host, clan, page }: { username: string; hos
         if (status === 'SUBSCRIBED') void channel.track({ username })
       })
 
-    supabase.from('messages').select('id,room,username,body,image_path,created_at').eq('room', room).order('created_at', { ascending: false }).limit(80)
+    const since = new Date(Date.now() - dayMs).toISOString()
+    supabase.from('messages').select('id,room,username,body,image_path,created_at').eq('room', room).gte('created_at', since).order('created_at', { ascending: false }).limit(80)
       .then(({ data }) => {
         if (!alive || !data) return
         setMessages([...data].reverse() as ChatMessage[])
+      })
+    supabase.from('message_reads').select('room,username,read_at').eq('room', room)
+      .then(({ data }) => {
+        if (!alive || !data) return
+        setReads(data as MessageRead[])
       })
 
     const key = `${room}:${username}`
@@ -164,16 +245,52 @@ export function ClanChat({ username, host, clan, page }: { username: string; hos
   }, [room, username])
 
   useEffect(() => {
+    sharedRead.current = 0
+  }, [room, username])
+
+  useEffect(() => {
     if (!open) return
     const latest = messages.reduce((max, message) => Math.max(max, Date.parse(message.created_at) || 0), 0)
     if (latest > readAt) {
       localStorage.setItem(`clan-read:${room}`, String(latest))
       setReadAt(latest)
     }
+    if (latest > 0 && latest !== sharedRead.current) {
+      sharedRead.current = latest
+      void supabase.from('message_reads').upsert(
+        { room, username, read_at: new Date(latest).toISOString() },
+        { onConflict: 'room,username' },
+      ).then(({ error: upsertError }) => {
+        if (upsertError) sharedRead.current = 0
+      })
+    }
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
-  }, [open, messages, readAt, room])
+  }, [open, messages, readAt, room, username])
 
-  const unread = open ? 0 : messages.filter(message => message.username !== username && (Date.parse(message.created_at) || 0) > readAt).length
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl('')
+      return
+    }
+    const url = URL.createObjectURL(file)
+    setPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file])
+
+  function pasteImage(event: ClipboardEvent) {
+    const image = imageFromClipboard(event.clipboardData)
+    if (!image) return
+    event.preventDefault()
+    if (!imageTypes.has(image.type) || image.size > 1.5 * 1024 * 1024) {
+      setError('La imagen tiene que ser jpg, png, webp o gif, de hasta 1,5 MB.')
+      return
+    }
+    setError('')
+    setFile(image)
+  }
+
+  const visible = messages.filter(message => isFresh(message, now))
+  const unread = open ? 0 : visible.filter(message => message.username !== username && (Date.parse(message.created_at) || 0) > readAt).length
 
   async function send() {
     const text = draft.trim()
@@ -209,7 +326,7 @@ export function ClanChat({ username, host, clan, page }: { username: string; hos
   return (
     <Box sx={{ position: 'fixed', right: 16, bottom: 16, zIndex: 20, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
       {open && (
-        <Box sx={{ width: 'min(340px, calc(100vw - 32px))', height: 'min(480px, calc(100vh - 96px))', display: 'flex', flexDirection: 'column', bgcolor: '#2b2d31', borderRadius: 2, boxShadow: '0 12px 40px rgba(0,0,0,.45)', overflow: 'hidden' }}>
+        <Box onPasteCapture={pasteImage} sx={{ width: 'min(340px, calc(100vw - 32px))', height: 'min(480px, calc(100vh - 96px))', display: 'flex', flexDirection: 'column', bgcolor: '#2b2d31', borderRadius: 2, boxShadow: '0 12px 40px rgba(0,0,0,.45)', overflow: 'hidden' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1, bgcolor: '#232428' }}>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography noWrap sx={{ fontWeight: 700 }}>{clan}</Typography>
@@ -220,14 +337,20 @@ export function ClanChat({ username, host, clan, page }: { username: string; hos
             </IconButton>
           </Box>
           <Box ref={listRef} sx={{ flex: 1, overflow: 'auto', px: 1.25, py: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-            {messages.map(message => {
+            {visible.map(message => {
               const mine = message.username === username
+              const seen = seenBy(message, reads)
               return (
                 <Box key={message.id} sx={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '85%', bgcolor: mine ? '#404249' : '#1e1f22', borderRadius: 1.5, px: 1.1, py: 0.7 }}>
                   <Typography variant="caption" sx={{ color: '#23a559', fontWeight: 700 }}>{message.username}</Typography>
                   {message.body && <Typography sx={{ fontSize: 14, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{message.body}</Typography>}
                   {message.image_path && <Box component="img" src={imageUrl(message.image_path)} alt="" sx={{ display: 'block', mt: 0.5, maxWidth: '100%', borderRadius: 1 }} />}
                   <Typography variant="caption" color="text.secondary">{stamp(message.created_at)}</Typography>
+                  {seen.length > 0 && (
+                    <Typography variant="caption" title={seen.join(', ')} sx={{ display: 'block', color: '#8fdbb0', lineHeight: 1.3 }}>
+                      Visto por {seen.join(', ')}
+                    </Typography>
+                  )}
                 </Box>
               )
             })}
@@ -241,7 +364,12 @@ export function ClanChat({ username, host, clan, page }: { username: string; hos
               ))}
             </Box>
           )}
-          {file && <Typography variant="caption" color="text.secondary" sx={{ px: 1.5 }}>{file.name}</Typography>}
+          {file && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, minWidth: 0 }}>
+              {previewUrl && <Box component="img" src={previewUrl} alt="" sx={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 0.5, flex: 'none' }} />}
+              <Typography noWrap variant="caption" color="text.secondary">{file.name}</Typography>
+            </Box>
+          )}
           {error && <Typography variant="caption" color="error" sx={{ px: 1.5 }}>{error}</Typography>}
           <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 0.5, p: 1 }}>
             <IconButton size="small" aria-label="Iconos" onClick={() => setEmojisOpen(current => !current)} sx={{ color: '#b5bac1' }}>
