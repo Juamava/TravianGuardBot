@@ -43,6 +43,39 @@ namespace MainCore.Test.Parsers
         }
 
         [Fact]
+        public async Task Report_list_takes_the_subject_link_not_the_read_icon()
+        {
+            await using var context = await CreateContextAsync();
+            var page = await CreatePageAsync(context, "ScoutReportList.html");
+
+            var rows = await ScoutParser.ReadReportRows(page);
+            rows.Count.ShouldBe(2);
+            rows[0].Subject.ShouldBe("Alexandria scouts Village de alex35");
+            rows[0].Unread.ShouldBeTrue();
+            rows[0].Href.ShouldBe("?id=950001%7Cabc123&s=1");
+            rows[1].Unread.ShouldBeFalse();
+
+            ScoutParser.ReportUrl("https://ts21.x2.international.travian.com/report/scouting?page=2", rows[0].Href)
+                .ShouldBe("https://ts21.x2.international.travian.com/report/scouting?id=950001%7Cabc123&s=1");
+            ScoutParser.ListPageUrl("https://ts21.x2.international.travian.com", 1).ShouldBe("https://ts21.x2.international.travian.com/report/scouting");
+            ScoutParser.ListPageUrl("https://ts21.x2.international.travian.com", 3).ShouldBe("https://ts21.x2.international.travian.com/report/scouting?page=3");
+        }
+
+        [Fact]
+        public async Task Home_troops_are_read_from_the_rally_point()
+        {
+            await using var context = await CreateContextAsync();
+            var page = await CreatePageAsync(context, "RallyPointHero.html");
+
+            var troops = await RallyPointTroops.Read(page);
+            troops.Select(x => x.Letter).ShouldBe(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']);
+            troops[0].Name.ShouldBe("Slave Militia");
+            troops[0].Available.ShouldBe(7);
+            troops[3].Name.ShouldBe("Sopdu Explorer");
+            troops[3].Available.ShouldBe(0);
+        }
+
+        [Fact]
         public async Task Player_profile_is_read()
         {
             await using var context = await CreateContextAsync();
@@ -108,6 +141,18 @@ namespace MainCore.Test.Parsers
             mid.ShouldBeGreaterThan(empty);
             big.ShouldBeGreaterThan(mid);
             big.ShouldBe(10);
+        }
+
+        [Fact]
+        public void Danger_explains_each_reason()
+        {
+            var (level, parts) = ScoutRules.DangerBreakdown(new DangerInput(-1, true, 900, 1, 5, 200000, 50000, true, 30));
+            level.ShouldBe(10);
+            var text = ScoutRules.Explain(level, parts);
+            text.ShouldStartWith("Peligro 10 de 10");
+            text.ShouldContain("Mató a los espías");
+            text.ShouldContain("Está en una alianza");
+            text.ShouldContain("5 aldeas");
         }
 
         [Fact]

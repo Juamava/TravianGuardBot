@@ -15,7 +15,8 @@ namespace MainCore.Commands.Features.Scouting
     {
         public sealed record Command(AccountId AccountId, int ListId, string Server) : ICommand;
 
-        private const int MaxReportsPerTurn = 15;
+        private const int MaxReportsPerTurn = 30;
+        private const int MaxListPages = 5;
         private static readonly TimeSpan ProfileAge = TimeSpan.FromHours(12);
         private static readonly TimeSpan ReportWait = TimeSpan.FromHours(3);
 
@@ -30,20 +31,38 @@ namespace MainCore.Commands.Features.Scouting
 
             if (pending.Count > 0)
             {
-                var listUrl = root + ScoutParser.ReportsPath;
-                var result = await browser.Navigate(listUrl);
-                if (result.IsFailed) return result;
-                await WaitQuietly(ScoutParser.GetReportRows(browser.CurrentPage), 8_000);
-
-                var rows = await ScoutParser.ReadReportRows(browser.CurrentPage);
+                // Collect the links first (10 reports per page), then open each report by its URL.
                 var names = pending.Select(x => x.Name).Where(x => !string.IsNullOrWhiteSpace(x) && x != CowOasisParser.MissingName).ToList();
-                var candidates = rows
-                    .Where(row => row.Unread || names.Any(name => row.Subject.Contains(name, StringComparison.OrdinalIgnoreCase)))
-                    .Take(MaxReportsPerTurn)
-                    .ToList();
+                var candidates = new List<(string Subject, string Url)>();
+                for (var pageNumber = 1; pageNumber <= MaxListPages && candidates.Count < MaxReportsPerTurn; pageNumber++)
+                {
+                    var listUrl = ScoutParser.ListPageUrl(root, pageNumber);
+                    var result = await browser.Navigate(listUrl);
+                    if (result.IsFailed)
+                    {
+                        if (pageNumber == 1) return result;
+                        break;
+                    }
+
+                    await WaitQuietly(ScoutParser.GetReportRows(browser.CurrentPage), 8_000);
+                    var rows = await ScoutParser.ReadReportRows(browser.CurrentPage);
+                    if (rows.Count == 0) break;
+
+                    foreach (var row in rows)
+                    {
+                        if (!row.Unread && !names.Any(name => row.Subject.Contains(name, StringComparison.OrdinalIgnoreCase))) continue;
+                        var url = ScoutParser.ReportUrl(listUrl, row.Href);
+                        if (url.Length > 0 && candidates.All(x => x.Url != url)) candidates.Add((row.Subject, url));
+                    }
+
+                    // Every unread report on this page was taken; older pages only matter while something is unread.
+                    if (rows.All(row => !row.Unread)) break;
+                }
+
+                logger.Information("{Count} scouting reports to check for list #{ListId}", candidates.Count, listId);
 
                 var matched = 0;
-                foreach (var row in candidates)
+                foreach (var (subject, url) in candidates.Take(MaxReportsPerTurn))
                 {
                     if (pending.Count == 0) break;
                     cancellationToken.ThrowIfCancellationRequested();
@@ -51,26 +70,24 @@ namespace MainCore.Commands.Features.Scouting
                     ScoutReport? report = null;
                     try
                     {
-                        if (!browser.CurrentUrl.Contains(ScoutParser.ReportsPath, StringComparison.OrdinalIgnoreCase) || await ScoutParser.GetReport(browser.CurrentPage).CountAsync() > 0)
-                        {
-                            result = await browser.Navigate(listUrl);
-                            if (result.IsFailed) break;
-                            await WaitQuietly(ScoutParser.GetReportRows(browser.CurrentPage), 8_000);
-                        }
-
-                        result = await browser.Click(ScoutParser.GetReportLink(browser.CurrentPage, row.Index));
+                        var result = await browser.Navigate(url);
                         if (result.IsFailed) continue;
                         await WaitQuietly(ScoutParser.GetReport(browser.CurrentPage).First, 8_000);
                         report = await ScoutParser.ReadReport(browser.CurrentPage);
+                        if (report is null) logger.Warning("Scouting report \"{Subject}\" did not open", subject);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
-                        logger.Warning("Could not read scouting report \"{Subject}\": {Message}", row.Subject, ex.Message);
+                        logger.Warning("Could not read scouting report \"{Subject}\": {Message}", subject, ex.Message);
                     }
 
                     if (report is null) continue;
                     var target = Match(pending, report);
-                    if (target is null) continue;
+                    if (target is null)
+                    {
+                        logger.Information("Scouting report \"{Subject}\" ({X}|{Y}) is not for a target waiting in list #{ListId}", subject, report.X, report.Y, listId);
+                        continue;
+                    }
 
                     Apply(target.Id, report, threshold);
                     pending.Remove(target);

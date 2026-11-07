@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, MenuItem, Stack, Switch, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material'
+import { Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, Link, MenuItem, Stack, Switch, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import GpsFixedIcon from '@mui/icons-material/GpsFixed'
+import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
@@ -30,6 +32,7 @@ type Target = {
   scoutClass: string
   danger: number
   label: string
+  why: string
   wood: number
   clay: number
   iron: number
@@ -46,8 +49,10 @@ type Target = {
 type OwnList = { id: number; name: string; sameVillage: boolean }
 type ScoutingData = { villages: Village[]; lists: ScoutList[]; targets: Target[]; ownLists: OwnList[]; scoutPlan: string; server: string }
 type Filter = 'todas' | 'gorda' | 'flaca' | 'peligro' | 'sin'
+type HomeTroop = { letter: string; index: number; name: string; available: number }
 
-const columns = '34px minmax(150px, 1.4fr) 120px minmax(150px, 1fr) 70px 64px 110px 120px 34px'
+const columns = '34px minmax(150px, 1.4fr) 120px minmax(150px, 1fr) 70px 64px 110px 120px 34px 34px'
+const tipSx = { tooltip: { sx: { maxWidth: 360, fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-line' as const } } }
 
 function Hint({ text }: { text: string }) {
   return (
@@ -104,6 +109,11 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
   const [promoteOpen, setPromoteOpen] = useState(false)
   const [promoteList, setPromoteList] = useState(0)
   const [promoteTroops, setPromoteTroops] = useState('A:5')
+  const [attackTarget, setAttackTarget] = useState<Target | null>(null)
+  const [attackTroops, setAttackTroops] = useState('')
+  const [attackRaid, setAttackRaid] = useState(true)
+  const [homeTroops, setHomeTroops] = useState<HomeTroop[] | null>(null)
+  const [homeError, setHomeError] = useState('')
 
   async function load(village = villageId) {
     const result = await api<ScoutingData>(`/api/accounts/${accountId}/scouting?villageId=${village}`)
@@ -219,6 +229,34 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
     }
   }
 
+  async function openAttack(target: Target) {
+    setAttackTarget(target)
+    setAttackTroops('')
+    setAttackRaid(true)
+    setHomeTroops(null)
+    setHomeError('')
+    try {
+      const result = await api<HomeTroop[]>(`/api/accounts/${accountId}/villages/${villageId}/home-troops`)
+      setHomeTroops(result.data)
+    } catch (error) {
+      setHomeError(error instanceof Error ? error.message : 'No se pudieron leer las tropas')
+      setHomeTroops([])
+    }
+  }
+
+  function addToPlan(troop: HomeTroop) {
+    const parts = attackTroops.trim().split(/\s+/).filter(Boolean).filter(part => !part.toUpperCase().startsWith(`${troop.letter}:`))
+    parts.push(`${troop.letter}:${troop.available}`)
+    setAttackTroops(parts.join(' '))
+  }
+
+  async function attack() {
+    if (!attackTarget) return
+    const troops = attackTroops.trim() || 'A:50'
+    const ok = await run(() => post(`/api/accounts/${accountId}/scouting/attack`, { cowId: attackTarget.id, troops, raid: attackRaid }))
+    if (ok) setAttackTarget(null)
+  }
+
   if (data && data.villages.length === 0) return <Empty title="Todavía no hay aldeas" text="Conectá la cuenta. Cuando el juego cargue las aldeas, vas a poder espiar desde acá." />
 
   const allChecked = targets.length > 0 && targets.every(target => selected.includes(target.id))
@@ -295,7 +333,7 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
       )}
 
       {list && (
-        <Box sx={{ ...panel, flex: 1, minHeight: 0, overflow: 'auto' }}>
+        <Box sx={{ ...panel, p: 0, flex: 1, minHeight: 0, overflow: 'auto' }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: columns, gap: 1, alignItems: 'center', px: 1, py: 0.75, position: 'sticky', top: 0, zIndex: 1, bgcolor: '#2b2d31', color: '#949ba4', fontSize: 12, fontWeight: 700, minWidth: 900 }}>
             <Checkbox size="small" checked={allChecked} indeterminate={!allChecked && targets.some(target => selected.includes(target.id))} onChange={event => setSelected(event.target.checked ? targets.map(target => target.id) : [])} />
             <Box>Aldea · dueño</Box>
@@ -306,6 +344,7 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
             <Box>Jugador</Box>
             <Box>Estado</Box>
             <Box />
+            <Box />
           </Box>
           {targets.length === 0 && <Typography sx={{ p: 2, color: '#949ba4' }}>{counts.todas === 0 ? 'La lista está vacía. Agregá aldeas con su enlace o sus coordenadas.' : 'Ninguna aldea en este filtro.'}</Typography>}
           {targets.map(target => {
@@ -315,12 +354,24 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
               <Box key={target.id} sx={{ display: 'grid', gridTemplateColumns: columns, gap: 1, alignItems: 'center', px: 1, py: 0.6, borderTop: '1px solid #3f4147', minWidth: 900, bgcolor: checked ? '#35373c' : 'transparent' }}>
                 <Checkbox size="small" checked={checked} onChange={event => setSelected(current => event.target.checked ? [...current, target.id] : current.filter(id => id !== target.id))} />
                 <Box sx={{ minWidth: 0 }}>
-                  <Typography sx={{ fontWeight: 600, fontSize: 14 }} noWrap title={target.url}>{target.name}{target.x != null ? ` (${target.x}|${target.y})` : ''}</Typography>
+                  <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0 }}>
+                    <Typography sx={{ fontWeight: 600, fontSize: 14, minWidth: 0 }} noWrap>{target.name}</Typography>
+                    <Tooltip title="Abrir la aldea en el navegador">
+                      <Link href={target.url} target="_blank" rel="noreferrer" underline="hover" sx={{ fontSize: 13, color: '#00a8fc', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 0.25 }}>
+                        {target.x != null ? `(${target.x}|${target.y})` : 'mapa'}
+                        <OpenInNewIcon sx={{ fontSize: 12 }} />
+                      </Link>
+                    </Tooltip>
+                  </Stack>
                   <Typography sx={{ fontSize: 12, color: '#949ba4' }} noWrap>{[target.owner, target.alliance && `[${target.alliance}]`, target.population >= 0 && `${target.population} hab.`].filter(Boolean).join(' · ') || '—'}</Typography>
                 </Box>
                 <Box>
                   {target.label
-                    ? <Chip size="small" label={target.label} sx={{ bgcolor: color.bg, color: color.fg, fontWeight: 700 }} />
+                    ? (
+                      <Tooltip title={target.why || target.label} placement="right" arrow slotProps={tipSx}>
+                        <Chip size="small" label={target.label} sx={{ bgcolor: color.bg, color: color.fg, fontWeight: 700, cursor: 'help' }} />
+                      </Tooltip>
+                    )
                     : <Typography sx={{ fontSize: 12, color: '#949ba4' }}>{target.pending ? 'esperando reporte' : 'sin espiar'}</Typography>}
                 </Box>
                 <Typography sx={{ fontSize: 13 }}>
@@ -338,6 +389,9 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
                   <Typography sx={{ fontSize: 12 }} noWrap>{target.status}</Typography>
                   {target.scoutedAt && <Typography sx={{ fontSize: 11, color: '#949ba4' }} noWrap>espiada {ago(target.scoutedAt)}</Typography>}
                 </Box>
+                <Tooltip title="Atacar">
+                  <IconButton size="small" sx={{ color: '#f0b232' }} onClick={() => openAttack(target)}><GpsFixedIcon fontSize="small" /></IconButton>
+                </Tooltip>
                 <Tooltip title="Quitar de la lista">
                   <IconButton size="small" sx={{ color: '#ed4245' }} onClick={async () => { if (await ui.confirm(`¿Quitar ${target.name} de la lista?`)) run(() => del(`/api/accounts/${accountId}/farming/villages/${target.id}`)) }}><DeleteOutlineIcon fontSize="small" /></IconButton>
                 </Tooltip>
@@ -358,6 +412,38 @@ export function Scouting({ accountId, notify }: { accountId: number; notify: (me
         <DialogActions>
           <Button disabled={adding} onClick={() => setAddOpen(false)}>Cancelar</Button>
           <Button variant="contained" disabled={adding || !addText.trim()} onClick={addTargets}>{adding ? 'Agregando...' : 'Agregar'}</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={attackTarget != null} onClose={() => setAttackTarget(null)} fullWidth maxWidth="sm">
+        <DialogTitle>Atacar {attackTarget?.name}{attackTarget?.x != null ? ` (${attackTarget.x}|${attackTarget.y})` : ''}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            {attackTarget?.label && (
+              <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-line' }}>{attackTarget.why || attackTarget.label}</Typography>
+            )}
+            <Box>
+              <Typography variant="caption" color="text.secondary">Tus tropas en {data?.villages.find(village => village.id === villageId)?.name ?? 'la aldea'} (click para mandar todas)</Typography>
+              {homeTroops == null && <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}><CircularProgress size={16} /><Typography variant="body2">Leyendo el punto de reunión...</Typography></Stack>}
+              {homeError && <Typography variant="body2" color="error" sx={{ mt: 1 }}>{homeError}</Typography>}
+              {homeTroops && homeTroops.length > 0 && (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
+                  {homeTroops.map(troop => (
+                    <Chip key={troop.letter} label={`${troop.letter} · ${troop.name}: ${troop.available}`} disabled={troop.available === 0} onClick={() => addToPlan(troop)} variant={troop.available > 0 ? 'filled' : 'outlined'} sx={{ bgcolor: troop.available > 0 ? '#404249' : 'transparent' }} />
+                  ))}
+                </Box>
+              )}
+            </Box>
+            <TextField label="Tropas" placeholder="A:50" helperText="Letra de la casilla y cantidad, por ejemplo A:50 o A:30 D:2. Vacío manda A:50." value={attackTroops} onChange={event => setAttackTroops(event.target.value)} />
+            <ToggleButtonGroup exclusive size="small" value={attackRaid ? 'raid' : 'normal'} onChange={(_, value) => value && setAttackRaid(value === 'raid')}>
+              <ToggleButton value="raid">Asalto</ToggleButton>
+              <ToggleButton value="normal">Ataque normal</ToggleButton>
+            </ToggleButtonGroup>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAttackTarget(null)}>Cancelar</Button>
+          <Button variant="contained" color="warning" startIcon={<GpsFixedIcon />} onClick={attack}>Atacar</Button>
         </DialogActions>
       </Dialog>
 

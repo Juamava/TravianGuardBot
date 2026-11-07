@@ -104,6 +104,8 @@ namespace WPFUI
             app.MapPost("/api/accounts/{id:int}/scouting/lists", (int id, CowListBody body) => CreateScoutList(services, id, body));
             app.MapPut("/api/accounts/{id:int}/scouting/lists/{listId:int}", (int id, int listId, ScoutListBody body) => UpdateScoutList(services, id, listId, body));
             app.MapPost("/api/accounts/{id:int}/scouting/promote", (int id, PromoteBody body) => PromoteScouted(services, id, body));
+            app.MapPost("/api/accounts/{id:int}/scouting/attack", (int id, AttackBody body) => AttackScouted(services, id, body));
+            app.MapGet("/api/accounts/{id:int}/villages/{villageId:int}/home-troops", (int id, int villageId, HttpContext http) => GetHomeTroops(services, id, villageId, http.RequestAborted));
             app.MapPost("/api/accounts/{id:int}/farming/lists", (int id, CowListBody body) => CreateCowList(services, id, body));
             app.MapPut("/api/accounts/{id:int}/farming/lists/{listId:int}", (int id, int listId, CowListBody body) => UpdateCowList(services, id, listId, body));
             app.MapDelete("/api/accounts/{id:int}/farming/lists/{listId:int}", (int id, int listId) => DeleteCowList(services, id, listId));
@@ -864,6 +866,10 @@ namespace WPFUI
             var results = context.ScoutResults
                 .Where(x => context.CowVillages.Any(village => village.Id == x.CowVillageId && listIds.Contains(village.CowListId)))
                 .ToDictionary(x => x.CowVillageId);
+            var thresholds = context.CowLists.Where(x => listIds.Contains(x.Id)).ToDictionary(x => x.Id, x => x.FullThreshold);
+            var populationsByList = context.CowVillages.Where(x => listIds.Contains(x.CowListId)).Select(x => new { x.Id, x.CowListId }).AsEnumerable()
+                .GroupBy(x => x.CowListId)
+                .ToDictionary(group => group.Key, group => (IReadOnlyCollection<int>)group.Select(x => results.TryGetValue(x.Id, out var item) && item.ScoutedAt != null ? item.PlayerPopulation : -1).ToList());
             var targets = context.CowVillages.Where(x => listIds.Contains(x.CowListId)).OrderBy(x => x.Id)
                 .Select(x => new { x.Id, x.CowListId, x.Name, x.Url, x.TroopCount, x.TroopPlan, x.LastAttackedAt, x.LastSkipReason, x.Owner, x.Tribe, x.Alliance, x.Population, x.Distance, x.CoordX, x.CoordY })
                 .AsEnumerable()
@@ -881,6 +887,25 @@ namespace WPFUI
                         distance = CowOasisParser.TravelDistance(home.X, home.Y, targetX, targetY);
                     results.TryGetValue(x.Id, out var result);
                     var scouted = result?.ScoutedAt is not null;
+                    var why = "";
+                    if (scouted && result.Class == ScoutRules.Danger)
+                    {
+                        var (level, parts) = ScoutRules.DangerBreakdown(new DangerInput(
+                            result.Defenders,
+                            result.ScoutsDied,
+                            result.PlayerPopulation,
+                            ScoutRules.Percentile(result.PlayerPopulation, populationsByList.TryGetValue(x.CowListId, out var populations) ? populations : []),
+                            result.PlayerVillages,
+                            result.AttackPoints,
+                            result.DefensePoints,
+                            !string.IsNullOrWhiteSpace(result.Alliance),
+                            result.HeroLevel));
+                        why = ScoutRules.Explain(level, parts);
+                    }
+                    else if (scouted)
+                    {
+                        why = ScoutRules.ExplainCow(result.Class, result.Wood, result.Clay, result.Iron, result.Crop, thresholds.TryGetValue(x.CowListId, out var threshold) ? threshold : 0);
+                    }
                     return new
                     {
                         id = x.Id,
@@ -901,6 +926,7 @@ namespace WPFUI
                         scoutClass = scouted ? result.Class : "",
                         danger = scouted ? result.Danger : 0,
                         label = scouted ? ScoutRules.Label(result.Class, result.Danger) : "",
+                        why,
                         wood = result?.Wood ?? -1,
                         clay = result?.Clay ?? -1,
                         iron = result?.Iron ?? -1,
@@ -932,6 +958,58 @@ namespace WPFUI
                 scoutPlan = ScoutRules.DefaultScoutPlan(tribe),
                 server = context.Accounts.Where(x => x.Id == accountId).Select(x => x.Server).FirstOrDefault() ?? "",
             });
+        }
+
+        private static async Task<IResult> GetHomeTroops(IServiceProvider services, int accountId, int villageId, CancellationToken cancellationToken)
+        {
+            if (!OwnsVillage(services, accountId, villageId)) return Fail("La aldea no pertenece a esta cuenta.");
+            string server;
+            using (var context = Context(services))
+            {
+                server = context.Accounts.Where(x => x.Id == accountId).Select(x => x.Server).FirstOrDefault() ?? "";
+            }
+
+            var browser = services.GetRequiredService<ChromeManager>().Get(new AccountId(accountId));
+            if (!browser.IsInitialized) return Fail("Conectá la cuenta para ver las tropas.");
+            try
+            {
+                var troops = await browser.InNewTab(async page =>
+                {
+                    await page.GotoAsync(RallyPointTroops.SendPageUrl(server, villageId), new() { Timeout = 20_000 });
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await page.Locator("table#troops").WaitForAsync(new() { Timeout = 10_000 });
+                    return await RallyPointTroops.Read(page);
+                });
+                return Ok("", troops.Select(x => new { letter = x.Letter.ToString(), index = x.Index, name = x.Name, available = x.Available }));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return Fail("No se pudieron leer las tropas del punto de reunión: " + ex.Message);
+            }
+        }
+
+        private static IResult AttackScouted(IServiceProvider services, int accountId, AttackBody body)
+        {
+            if (!CowTroopPlan.TryParse(body.Troops, out var slots, out var error)) return Fail(error);
+            var plan = CowTroopPlan.Format(slots);
+            using var context = Context(services);
+            var target = context.CowVillages
+                .Where(x => x.Id == body.CowId && x.CowList.AccountId == accountId)
+                .Select(x => new { x.Id, x.Url, x.Name })
+                .FirstOrDefault();
+            if (target is null) return Fail("No se encontró la aldea.");
+
+            var account = new AccountId(accountId);
+            var tasks = services.GetRequiredService<TaskManager>();
+            var status = tasks.GetStatus(account);
+            if (status is not (StatusEnums.Online or StatusEnums.Paused)) return Fail("Conectá la cuenta para atacar.");
+
+            tasks.Add(new AttackVillageTask.Task(account, target.Id, target.Url, plan, body.Raid));
+            context.CowVillages.Where(x => x.Id == target.Id).ExecuteUpdate(x => x.SetProperty(village => village.LastSkipReason, $"Ataque en cola {plan}"));
+            var mission = body.Raid ? "asalto" : "ataque normal";
+            return Ok(status == StatusEnums.Paused
+                ? $"{mission} a {VillageLabel(target.Name)} con {plan} en cola. El bot está en pausa: sale cuando lo reanudes."
+                : $"{mission} a {VillageLabel(target.Name)} con {plan} en cola: sale en el próximo turno del navegador.");
         }
 
         private static IResult CreateScoutList(IServiceProvider services, int accountId, CowListBody body)
@@ -2071,6 +2149,13 @@ namespace WPFUI
         public bool AutoStart { get; set; }
         public int FullThreshold { get; set; }
         public int KeepScouts { get; set; }
+    }
+
+    public sealed class AttackBody
+    {
+        public int CowId { get; set; }
+        public string Troops { get; set; }
+        public bool Raid { get; set; } = true;
     }
 
     public sealed class PromoteBody

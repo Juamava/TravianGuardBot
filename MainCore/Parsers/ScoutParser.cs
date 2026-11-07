@@ -11,9 +11,14 @@ namespace MainCore.Parsers
     {
         public const string ReportsPath = "/report/scouting";
 
-        public sealed record ReportRow(int Index, string Subject, bool Unread);
+        /// <summary>One row of the report list. Href is the report link, relative to the list page.</summary>
+        public sealed record ReportRow(string Subject, bool Unread, string Href);
 
-        public static ILocator GetReportRows(IPage page) => page.Locator("#overview tbody tr:has(td.sub a)");
+        /// <summary>
+        /// Each row has two links: a 0x0 one around the read/unread icon (href="#") and the subject link
+        /// (?id=...). Only the subject link opens the report.
+        /// </summary>
+        public static ILocator GetReportRows(IPage page) => page.Locator("#overview tbody tr:has(td.sub div a[href*='id='])");
 
         public static ILocator GetReport(IPage page) => page.Locator("#reportWrapper .role.defender");
 
@@ -21,17 +26,27 @@ namespace MainCore.Parsers
         {
             var json = await page.EvaluateAsync<string>("""
                 () => JSON.stringify([...document.querySelectorAll('#overview tbody tr')]
-                    .filter(tr => tr.querySelector('td.sub a'))
-                    .map(tr => ({
-                        subject: (tr.querySelector('td.sub')?.innerText || '').trim(),
+                    .map(tr => ({ tr, link: tr.querySelector("td.sub div a[href*='id=']") }))
+                    .filter(row => row.link)
+                    .map(({ tr, link }) => ({
+                        subject: (link.textContent || '').trim(),
                         unread: !!tr.querySelector('.messageStatusUnread') || tr.querySelector('td.sub')?.classList.contains('newMessage') === true,
+                        href: link.getAttribute('href') || '',
                     })))
                 """);
             var rows = JsonSerializer.Deserialize<List<RowJson>>(json ?? "[]") ?? [];
-            return rows.Select((row, index) => new ReportRow(index, row.subject ?? "", row.unread)).ToList();
+            return rows.Select(row => new ReportRow(row.subject ?? "", row.unread, row.href ?? "")).ToList();
         }
 
-        public static ILocator GetReportLink(IPage page, int index) => GetReportRows(page).Nth(index).Locator("td.sub a").First;
+        /// <summary>Absolute URL of a report link read from the list page.</summary>
+        public static string ReportUrl(string listUrl, string href)
+        {
+            if (string.IsNullOrWhiteSpace(href)) return "";
+            return Uri.TryCreate(new Uri(listUrl), href, out var url) ? url.AbsoluteUri : "";
+        }
+
+        /// <summary>Page N of the scouting report list (10 reports per page).</summary>
+        public static string ListPageUrl(string root, int page) => page <= 1 ? root + ReportsPath : $"{root}{ReportsPath}?page={page}";
 
         public static async Task<ScoutReport?> ReadReport(IPage page, int worldSize = 200)
         {
@@ -195,6 +210,7 @@ namespace MainCore.Parsers
         {
             public string? subject { get; set; }
             public bool unread { get; set; }
+            public string? href { get; set; }
         }
 
         private sealed class ReportJson
